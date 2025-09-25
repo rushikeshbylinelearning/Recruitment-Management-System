@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, Plus, Edit, Trash2, Users, Shield, Bell, Globe, Database, Key, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TeamMember, Permission } from '../types';
 import { mockTeam } from '../data/mockData';
+import { usersAPI } from '../services/api';
 
 export default function Settings() {
   const { user, hasPermission } = useAuth();
@@ -10,6 +11,8 @@ export default function Settings() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEditMember, setShowEditMember] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(false);
   const [memberFormData, setMemberFormData] = useState({
     name: '',
     email: '',
@@ -84,6 +87,46 @@ export default function Settings() {
     { id: 'system', label: 'System', icon: Database },
   ];
 
+  // Load team members from API
+  const loadTeamMembers = async () => {
+    try {
+      setLoading(true);
+      const response = await usersAPI.getUsers({ limit: 100 });
+      if (response.success && response.data) {
+        // Transform API data to match TeamMember interface
+        const members: TeamMember[] = response.data.users.map((user: any) => ({
+          id: user.id.toString(),
+          name: user.name,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          avatar: user.avatar,
+          permissions: user.permissions || [],
+          assignedJobs: [],
+          tasksCompleted: user.statistics?.tasks_completed || 0,
+          candidatesProcessed: user.statistics?.candidates_processed || 0,
+          lastLogin: user.last_login,
+          createdDate: user.created_at
+        }));
+        setTeamMembers(members);
+      }
+    } catch (error) {
+      console.error('Error loading team members:', error);
+      // Fallback to mock data if API fails
+      setTeamMembers(mockTeam);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load team members on component mount
+  useEffect(() => {
+    if (activeTab === 'team') {
+      loadTeamMembers();
+    }
+  }, [activeTab]);
+
   const handleAddMember = () => {
     setMemberFormData({
       name: '',
@@ -129,39 +172,59 @@ export default function Settings() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmitMember = () => {
+  const handleSubmitMember = async () => {
     if (!validateForm()) return;
 
-    const memberData = {
-      ...memberFormData,
-      id: editingMember?.id || (mockTeam.length + 1).toString(),
-      permissions: getDefaultPermissions(memberFormData.role),
-      avatar: '',
-      assignedJobs: editingMember?.assignedJobs || [],
-      tasksCompleted: editingMember?.tasksCompleted || 0,
-      candidatesProcessed: editingMember?.candidatesProcessed || 0,
-      lastLogin: editingMember?.lastLogin || new Date().toISOString(),
-      createdDate: editingMember?.createdDate || new Date().toISOString()
-    };
+    try {
+      setLoading(true);
 
-    if (editingMember) {
-      alert(`Team member "${memberData.name}" has been updated successfully!`);
-    } else {
-      alert(`New team member "${memberData.name}" has been added successfully!`);
+      if (editingMember) {
+        // Update existing member
+        await usersAPI.updateUser(parseInt(editingMember.id), {
+          username: memberFormData.username,
+          email: memberFormData.email,
+          name: memberFormData.name,
+          role: memberFormData.role,
+          status: memberFormData.status,
+          avatar: editingMember.avatar
+        });
+        alert(`Team member "${memberFormData.name}" has been updated successfully!`);
+      } else {
+        // Create new member
+        await usersAPI.createUser({
+          username: memberFormData.username,
+          email: memberFormData.email,
+          name: memberFormData.name,
+          password: memberFormData.password,
+          role: memberFormData.role,
+          status: memberFormData.status
+        });
+        alert(`New team member "${memberFormData.name}" has been added successfully!`);
+      }
+
+      // Reload team members
+      await loadTeamMembers();
+
+      // Close modals and reset form
+      setShowAddMember(false);
+      setShowEditMember(false);
+      setEditingMember(null);
+      setMemberFormData({
+        name: '',
+        email: '',
+        username: '',
+        password: '',
+        role: 'Recruiter',
+        status: 'Active'
+      });
+      setErrors({});
+    } catch (error: any) {
+      console.error('Error saving member:', error);
+      const errorMessage = error.response?.data?.message || 'An error occurred while saving the member';
+      alert(`Error: ${errorMessage}`);
+    } finally {
+      setLoading(false);
     }
-
-    setShowAddMember(false);
-    setShowEditMember(false);
-    setEditingMember(null);
-    setMemberFormData({
-      name: '',
-      email: '',
-      username: '',
-      password: '',
-      role: 'Recruiter',
-      status: 'Active'
-    });
-    setErrors({});
   };
 
   const getDefaultPermissions = (role: string) => {
@@ -253,7 +316,20 @@ export default function Settings() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {mockTeam.map((member) => (
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                  Loading team members...
+                </td>
+              </tr>
+            ) : teamMembers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                  No team members found.
+                </td>
+              </tr>
+            ) : (
+              teamMembers.map((member) => (
               <tr key={member.id}>
                 <td className="px-6 py-4">
                   <div className="flex items-center space-x-3">
@@ -299,7 +375,8 @@ export default function Settings() {
                   </div>
                 </td>
               </tr>
-            ))}
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -676,10 +753,15 @@ export default function Settings() {
               </button>
               <button
                 onClick={handleSubmitMember}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                disabled={loading}
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                  loading 
+                    ? 'bg-gray-400 text-white cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
                 <Save size={16} />
-                <span>Add Member</span>
+                <span>{loading ? 'Adding...' : 'Add Member'}</span>
               </button>
             </div>
           </div>
@@ -827,10 +909,15 @@ export default function Settings() {
               </button>
               <button
                 onClick={handleSubmitMember}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                disabled={loading}
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                  loading 
+                    ? 'bg-gray-400 text-white cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
                 <Save size={16} />
-                <span>Save Changes</span>
+                <span>{loading ? 'Saving...' : 'Save Changes'}</span>
               </button>
             </div>
           </div>

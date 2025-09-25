@@ -1,10 +1,61 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission, requireAdmin } from '../middleware/auth.js';
 import { validateUser, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
+
+// Helper function to get default permissions for a role
+const getDefaultPermissions = (role) => {
+  const rolePermissions = {
+    'Admin': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'candidates', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'communications', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'tasks', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'team', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'analytics', actions: ['view'] },
+      { module: 'settings', actions: ['view', 'edit'] },
+    ],
+    'HR Manager': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view', 'create', 'edit'] },
+      { module: 'candidates', actions: ['view', 'create', 'edit'] },
+      { module: 'communications', actions: ['view', 'create', 'edit'] },
+      { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'team', actions: ['view'] },
+      { module: 'analytics', actions: ['view'] },
+    ],
+    'Team Lead': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view', 'edit'] },
+      { module: 'candidates', actions: ['view', 'edit'] },
+      { module: 'communications', actions: ['view', 'create', 'edit'] },
+      { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'team', actions: ['view'] },
+      { module: 'analytics', actions: ['view'] },
+    ],
+    'Recruiter': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view'] },
+      { module: 'candidates', actions: ['view', 'edit'] },
+      { module: 'communications', actions: ['view', 'create'] },
+      { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'analytics', actions: ['view'] },
+    ],
+    'Interviewer': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'candidates', actions: ['view'] },
+      { module: 'communications', actions: ['view'] },
+      { module: 'tasks', actions: ['view', 'edit'] },
+    ],
+  };
+  
+  return rolePermissions[role] || [];
+};
 
 // Get all users (Admin/HR Manager only)
 router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
@@ -82,6 +133,48 @@ router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagi
         pages: Math.ceil(total / limit)
       }
     }
+  });
+}));
+
+// Create new user (Admin/HR Manager only)
+router.post('/', authenticateToken, checkPermission('team', 'create'), validateUser, handleValidationErrors, asyncHandler(async (req, res) => {
+  const { username, email, name, password, role, avatar, status } = req.body;
+
+  // Check if username or email already exists
+  const existingUsers = await query(
+    'SELECT id FROM users WHERE username = ? OR email = ?',
+    [username, email]
+  );
+
+  if (existingUsers.length > 0) {
+    throw new ConflictError('Username or email already exists');
+  }
+
+  // Hash password
+  const saltRounds = 10;
+  const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+  // Insert new user
+  const result = await query(
+    'INSERT INTO users (username, email, name, password_hash, role, avatar, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+    [username, email, name, hashedPassword, role, avatar || null, status || 'Active']
+  );
+
+  const userId = result.insertId;
+
+  // Set default permissions based on role
+  const defaultPermissions = getDefaultPermissions(role);
+  for (const permission of defaultPermissions) {
+    await query(
+      'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
+      [userId, permission.module, JSON.stringify(permission.actions)]
+    );
+  }
+
+  res.status(201).json({
+    success: true,
+    message: 'User created successfully',
+    data: { userId }
   });
 }));
 
