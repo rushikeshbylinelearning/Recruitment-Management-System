@@ -461,25 +461,25 @@ export default function Tasks({}: TasksProps) {
                     </div>
                   </div>
                   
-                  <div className="space-y-4">
-                    <h4 className="font-semibold text-gray-900">Related Information</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Job ID:</span>
-                        <p className="text-sm text-gray-900">{task.jobId}</p>
-                      </div>
-                      {task.candidateId && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Candidate ID:</span>
-                          <p className="text-sm text-gray-900">{task.candidateId}</p>
-                        </div>
-                      )}
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Task ID:</span>
-                        <p className="text-sm text-gray-900 font-mono">{task.id}</p>
+                  {(task.jobTitle || task.candidateName) && (
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-gray-900">Related Information</h4>
+                      <div className="space-y-2">
+                        {task.jobTitle && (
+                          <div>
+                            <span className="text-sm font-medium text-gray-600">Job:</span>
+                            <p className="text-sm text-gray-900">{task.jobTitle}</p>
+                          </div>
+                        )}
+                        {task.candidateName && (
+                          <div>
+                            <span className="text-sm font-medium text-gray-600">Candidate:</span>
+                            <p className="text-sm text-gray-900">{task.candidateName}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
                 
                 <div className="mt-6 pt-4 border-t border-gray-100">
@@ -854,14 +854,10 @@ export default function Tasks({}: TasksProps) {
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 mb-2">Current Task Info</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="text-sm">
                   <div>
                     <p className="text-blue-700">Created Date</p>
                     <p className="font-semibold text-blue-900">{new Date(editingTask.createdDate).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-blue-700">Task ID</p>
-                    <p className="font-semibold text-blue-900 font-mono">{editingTask.id}</p>
                   </div>
                 </div>
               </div>

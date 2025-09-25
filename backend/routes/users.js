@@ -40,7 +40,7 @@ router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagi
   
   const users = await query(usersQuery, params);
 
-  // Get permissions for each user
+  // Get permissions and statistics for each user
   for (let user of users) {
     const permissions = await query(
       'SELECT module, actions FROM permissions WHERE user_id = ?',
@@ -59,6 +59,16 @@ router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagi
       );
       user.interviewerProfile = profiles.length > 0 ? profiles[0] : null;
     }
+
+    // Get user statistics
+    const stats = await query(
+      `SELECT 
+         (SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status = 'Completed') as tasks_completed,
+         (SELECT COUNT(*) FROM job_assignments WHERE user_id = ?) as assigned_jobs`,
+      [user.id, user.id]
+    );
+
+    user.statistics = stats[0];
   }
 
   res.json({

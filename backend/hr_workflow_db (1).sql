@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Sep 24, 2025 at 01:23 PM
+-- Generation Time: Sep 25, 2025 at 08:02 AM
 -- Server version: 9.1.0
 -- PHP Version: 8.1.31
 
@@ -138,14 +138,15 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   KEY `idx_candidates_stage_assigned` (`stage`,`assigned_to`),
   KEY `idx_resume_file_id` (`resume_file_id`),
   KEY `idx_job_id` (`job_id`)
-) ENGINE=MyISAM AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
+) ENGINE=MyISAM AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
 
 --
 -- Dumping data for table `candidates`
 --
 
 INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, `stage`, `source`, `applied_date`, `resume_path`, `notes`, `score`, `assigned_to`, `skills`, `experience`, `salary_expected`, `salary_offered`, `salary_negotiable`, `joining_time`, `notice_period`, `immediate_joiner`, `created_at`, `updated_at`, `resume_file_id`) VALUES
-(2, 1, 'Basic Candidate', 'candidate@gmail.com', '97676897762', 'Senior Full Stack Developer', 'Screening', 'Indeed', '2025-09-24', NULL, NULL, 0.00, NULL, '[]', '3', NULL, NULL, 0, '2 Weeks', '1 Week', 0, '2025-09-24 13:08:31', '2025-09-24 13:08:31', 3164);
+(4, 1, 'New Candidate', 'new@candidate.com', '678789543', 'Senior Full Stack Developer', 'Offer', 'AngelList', '2025-09-24', NULL, 'New Notes', 0.00, NULL, '[\"React\", \"Tailwind CSS\", \"JS\"]', '5', '12LPA', '9LPA', 1, '3 Weeks', '1 Month', 1, '2025-09-24 14:35:13', '2025-09-24 14:35:13', 7),
+(2, 1, 'Basic Candidate', 'candidate@gmail.com', '97676897762', 'Senior Full Stack Developer', 'Screening', 'Indeed', '2025-09-22', NULL, 'fdsdgf', 0.00, NULL, '[\"skill1\", \"skill2\", \"skill3\"]', '3', '5LPA', '4LPA', 1, '2 Weeks', '1 Week', 1, '2025-09-24 13:08:31', '2025-09-24 14:20:23', 3164);
 
 -- --------------------------------------------------------
 
@@ -155,14 +156,14 @@ INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, 
 --
 DROP VIEW IF EXISTS `candidate_files`;
 CREATE TABLE IF NOT EXISTS `candidate_files` (
-`candidate_id` int
+`candidate_email` varchar(100)
+,`candidate_id` int
 ,`candidate_name` varchar(100)
-,`candidate_email` varchar(100)
 ,`file_id` int
-,`filename` varchar(255)
-,`original_name` varchar(255)
 ,`file_size` int
+,`filename` varchar(255)
 ,`mime_type` varchar(100)
+,`original_name` varchar(255)
 ,`uploaded_at` timestamp
 ,`uploaded_by_name` varchar(100)
 );
@@ -252,7 +253,7 @@ CREATE TABLE IF NOT EXISTS `file_uploads` (
   KEY `idx_mime_type` (`mime_type`),
   KEY `idx_file_uploads_candidate_uploaded` (`candidate_id`,`uploaded_at`),
   KEY `idx_file_uploads_type_size` (`mime_type`,`file_size`)
-) ENGINE=MyISAM AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Stores metadata for uploaded files, primarily resumes';
+) ENGINE=MyISAM AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Stores metadata for uploaded files, primarily resumes';
 
 --
 -- Dumping data for table `file_uploads`
@@ -263,7 +264,9 @@ INSERT INTO `file_uploads` (`id`, `filename`, `original_name`, `file_path`, `fil
 (2, '65a42c66-c7a4-4954-b6d2-5d4f0c2cc0a8.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\65a42c66-c7a4-4954-b6d2-5d4f0c2cc0a8.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 12:29:40'),
 (3, 'a4e46eba-025b-4823-8550-9f504d2fa5a2.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\a4e46eba-025b-4823-8550-9f504d2fa5a2.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 12:36:33'),
 (4, '0c96756e-60f2-45e9-8f5b-c739e291919a.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\0c96756e-60f2-45e9-8f5b-c739e291919a.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 12:39:23'),
-(5, '3164ebba-d4eb-4173-b28b-6d251a53eb51.pdf', 'generate now.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\3164ebba-d4eb-4173-b28b-6d251a53eb51.pdf', 191712, 'application/pdf', NULL, 1, '2025-09-24 13:08:11');
+(5, '3164ebba-d4eb-4173-b28b-6d251a53eb51.pdf', 'generate now.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\3164ebba-d4eb-4173-b28b-6d251a53eb51.pdf', 191712, 'application/pdf', NULL, 1, '2025-09-24 13:08:11'),
+(6, '6f5d60cd-c7a4-4e52-9730-5059bea44d5d.pdf', '1749548393473-1749473685201-XYZ.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\6f5d60cd-c7a4-4e52-9730-5059bea44d5d.pdf', 68, 'application/pdf', NULL, 1, '2025-09-24 14:24:26'),
+(7, '3ca5c681-dc17-4fa8-a400-04303db40e33.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\3ca5c681-dc17-4fa8-a400-04303db40e33.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 14:32:01');
 
 --
 -- Triggers `file_uploads`
@@ -596,7 +599,7 @@ CREATE TABLE IF NOT EXISTS `tasks` (
   `description` text COLLATE utf8mb4_general_ci NOT NULL,
   `assigned_to` int DEFAULT NULL,
   `job_id` varchar(36) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `candidate_id` varchar(36) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `candidate_id` int DEFAULT NULL,
   `priority` enum('High','Medium','Low') COLLATE utf8mb4_general_ci DEFAULT 'Medium',
   `status` enum('Pending','In Progress','Completed') COLLATE utf8mb4_general_ci DEFAULT 'Pending',
   `due_date` date NOT NULL,
@@ -606,13 +609,21 @@ CREATE TABLE IF NOT EXISTS `tasks` (
   PRIMARY KEY (`id`),
   KEY `idx_assigned_to` (`assigned_to`),
   KEY `idx_job_id` (`job_id`),
-  KEY `idx_candidate_id` (`candidate_id`),
   KEY `idx_priority` (`priority`),
   KEY `idx_status` (`status`),
   KEY `idx_due_date` (`due_date`),
   KEY `idx_created_by` (`created_by`),
   KEY `idx_tasks_assigned_status` (`assigned_to`,`status`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `tasks`
+--
+
+INSERT INTO `tasks` (`id`, `title`, `description`, `assigned_to`, `job_id`, `candidate_id`, `priority`, `status`, `due_date`, `created_by`, `created_at`, `updated_at`) VALUES
+(2, 'Test Task', 'This is a test task to verify the data mapping works correctly', 1, '1', 2, 'High', 'In Progress', '2025-09-30', 1, '2025-09-25 07:24:29', '2025-09-25 07:24:29'),
+(4, 'Short Task', 'Test', 1, '1', 2, 'Medium', 'Pending', '2025-10-01', 1, '2025-09-25 07:26:51', '2025-09-25 07:26:51'),
+(5, 'dsfdsf', 'fbfdbcv', 1, NULL, NULL, 'Medium', 'Completed', '2025-09-26', 1, '2025-09-25 07:27:00', '2025-09-25 07:54:33');
 
 -- --------------------------------------------------------
 
@@ -648,8 +659,8 @@ CREATE TABLE IF NOT EXISTS `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `email`, `name`, `password_hash`, `role`, `avatar`, `status`, `last_login`, `created_at`, `updated_at`) VALUES
-(3, 'sarah.johnson1', 'sarah.johnson@abc.com', 'Sarah Johnson', '$2a$12$tYPNyK3XOeM7Ths0qhSAo.dnukrSVTcLeaKF7EwkHh6dryZfDrQE6', 'Team Lead', NULL, 'Active', '2025-09-24 10:25:49', '2025-09-24 10:04:29', '2025-09-24 10:25:49'),
-(1, 'admin', 'info@bylinelearning.com', 'Byline Admin', '$2a$12$rRcjHI1rA/rj0eaK0Y/4XOG07Nz66/UUqrDZL0WUF67AqoOOHP8K.', 'Admin', NULL, 'Active', '2025-09-24 12:47:40', '2025-09-24 09:38:14', '2025-09-24 12:47:40');
+(3, 'sarah.johnson1', 'sarah.johnson@abc.com', 'Sarah Johnson', '$2a$12$tYPNyK3XOeM7Ths0qhSAo.dnukrSVTcLeaKF7EwkHh6dryZfDrQE6', 'Team Lead', NULL, 'Active', '2025-09-25 07:57:41', '2025-09-24 10:04:29', '2025-09-25 07:57:41'),
+(1, 'admin', 'info@bylinelearning.com', 'Byline Admin', '$2a$12$rRcjHI1rA/rj0eaK0Y/4XOG07Nz66/UUqrDZL0WUF67AqoOOHP8K.', 'Admin', NULL, 'Active', '2025-09-25 07:50:39', '2025-09-24 09:38:14', '2025-09-25 07:50:39');
 
 -- --------------------------------------------------------
 

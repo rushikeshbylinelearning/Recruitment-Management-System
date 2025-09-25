@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, MoreVertical, Mail, Phone, CheckCircle, Clock, AlertCircle, X, Save, Edit } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Search, MoreVertical, Mail, CheckCircle, Clock, AlertCircle, X, Save, Edit } from 'lucide-react';
 import { TeamMember } from '../types';
 import { usersAPI, User } from '../services/api';
 
@@ -205,62 +205,8 @@ export default function Team() {
     }
   };
 
-  const getDefaultPermissions = (role: string) => {
-    switch (role) {
-      case 'Admin':
-        return [
-          { module: 'dashboard', actions: ['view'] },
-          { module: 'jobs', actions: ['view', 'create', 'edit', 'delete'] },
-          { module: 'candidates', actions: ['view', 'create', 'edit', 'delete'] },
-          { module: 'communications', actions: ['view', 'create', 'edit', 'delete'] },
-          { module: 'tasks', actions: ['view', 'create', 'edit', 'delete'] },
-          { module: 'team', actions: ['view', 'create', 'edit', 'delete'] },
-          { module: 'analytics', actions: ['view'] },
-          { module: 'settings', actions: ['view', 'edit'] },
-        ];
-      case 'HR Manager':
-        return [
-          { module: 'dashboard', actions: ['view'] },
-          { module: 'jobs', actions: ['view', 'create', 'edit'] },
-          { module: 'candidates', actions: ['view', 'create', 'edit'] },
-          { module: 'communications', actions: ['view', 'create', 'edit'] },
-          { module: 'tasks', actions: ['view', 'create', 'edit'] },
-          { module: 'team', actions: ['view'] },
-          { module: 'analytics', actions: ['view'] },
-        ];
-      case 'Team Lead':
-        return [
-          { module: 'dashboard', actions: ['view'] },
-          { module: 'jobs', actions: ['view', 'edit'] },
-          { module: 'candidates', actions: ['view', 'edit'] },
-          { module: 'communications', actions: ['view', 'create', 'edit'] },
-          { module: 'tasks', actions: ['view', 'create', 'edit'] },
-          { module: 'team', actions: ['view'] },
-          { module: 'analytics', actions: ['view'] },
-        ];
-      case 'Recruiter':
-        return [
-          { module: 'dashboard', actions: ['view'] },
-          { module: 'jobs', actions: ['view'] },
-          { module: 'candidates', actions: ['view', 'edit'] },
-          { module: 'communications', actions: ['view', 'create'] },
-          { module: 'tasks', actions: ['view', 'create', 'edit'] },
-          { module: 'analytics', actions: ['view'] },
-        ];
-      case 'Interviewer':
-        return [
-          { module: 'dashboard', actions: ['view'] },
-          { module: 'candidates', actions: ['view'] },
-          { module: 'interviews', actions: ['view', 'edit'] },
-        ];
-      default:
-        return [
-          { module: 'dashboard', actions: ['view'] },
-        ];
-    }
-  };
 
-  const hasPermission = (module: string, action: string) => {
+  const hasPermission = () => {
     // Mock permission check - replace with actual implementation
     return true;
   };
@@ -341,7 +287,7 @@ export default function Team() {
                 </div>
               </div>
               <div className="flex space-x-1">
-                {hasPermission('team', 'edit') && (
+                {hasPermission() && (
                   <button
                     onClick={() => handleEditMember(member)}
                     className="text-gray-400 hover:text-blue-600 p-1"
@@ -375,17 +321,13 @@ export default function Team() {
             <div className="border-t pt-4">
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
-                  <p className="text-2xl font-bold text-blue-600">{member.assignedJobs?.length || 0}</p>
+                  <p className="text-2xl font-bold text-blue-600">{member.statistics?.assigned_jobs || 0}</p>
                   <p className="text-xs text-gray-600">Jobs Assigned</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-green-600">{member.tasksCompleted || 0}</p>
+                  <p className="text-2xl font-bold text-green-600">{member.statistics?.tasks_completed || 0}</p>
                   <p className="text-xs text-gray-600">Tasks Done</p>
                 </div>
-              </div>
-              <div className="mt-3 text-center">
-                <p className="text-lg font-semibold text-purple-600">{member.candidatesProcessed || 0}</p>
-                <p className="text-xs text-gray-600">Candidates Processed</p>
               </div>
             </div>
           </div>
@@ -395,7 +337,7 @@ export default function Team() {
       {/* Team Performance Overview */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Team Performance Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="text-center">
             <p className="text-2xl font-bold text-blue-600">{team?.length || 0}</p>
             <p className="text-sm text-gray-600">Total Members</p>
@@ -408,15 +350,9 @@ export default function Team() {
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-purple-600">
-              {team?.reduce((sum, m) => sum + (m.tasksCompleted || 0), 0) || 0}
+              {team?.reduce((sum, m) => sum + (m.statistics?.tasks_completed || 0), 0) || 0}
             </p>
             <p className="text-sm text-gray-600">Tasks Completed</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-orange-600">
-              {team?.reduce((sum, m) => sum + (m.candidatesProcessed || 0), 0) || 0}
-            </p>
-            <p className="text-sm text-gray-600">Candidates Processed</p>
           </div>
         </div>
       </div>
@@ -665,18 +601,14 @@ export default function Team() {
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 mb-2">Current Statistics</h4>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-blue-700">Jobs Assigned</p>
-                    <p className="font-semibold text-blue-900">{editingMember.assignedJobs?.length || 0}</p>
+                    <p className="font-semibold text-blue-900">{editingMember.statistics?.assigned_jobs || 0}</p>
                   </div>
                   <div>
                     <p className="text-blue-700">Tasks Completed</p>
-                    <p className="font-semibold text-blue-900">{editingMember.tasksCompleted || 0}</p>
-                  </div>
-                  <div>
-                    <p className="text-blue-700">Candidates Processed</p>
-                    <p className="font-semibold text-blue-900">{editingMember.candidatesProcessed || 0}</p>
+                    <p className="font-semibold text-blue-900">{editingMember.statistics?.tasks_completed || 0}</p>
                   </div>
                 </div>
               </div>
