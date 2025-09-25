@@ -118,8 +118,85 @@ export default function Candidates() {
 
 
   const handleShowResumeParser = () => {
-    // TODO: Implement resume parser functionality
-    console.log('Resume parser clicked');
+    // Create a hidden file input for resume parsing
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.txt';
+    input.style.display = 'none';
+    
+    input.onchange = async (event) => {
+      const file = (event.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setLoading(true);
+        
+        // Import the resume parser
+        const { parseResume } = await import('../utils/resumeParser');
+        
+        // Parse the resume
+        const parsedData = await parseResume(file);
+        
+        // Set the parsed data and open the modal
+        setEditingCandidate({
+          id: 0, // Temporary ID for new candidate
+          name: parsedData.name || '',
+          email: parsedData.email || '',
+          phone: parsedData.phone || '',
+          position: parsedData.expertise || '',
+          stage: 'Applied',
+          source: 'Resume Parser',
+          appliedDate: new Date().toISOString(),
+          notes: parsedData.notes || '',
+          score: 0,
+          skills: parsedData.skills || [],
+          experience: parsedData.experience || '',
+          salary: {
+            expected: parsedData.expectedSalary || '',
+            offered: '',
+            negotiable: true
+          },
+          availability: {
+            joiningTime: '',
+            noticePeriod: parsedData.noticePeriod || '',
+            immediateJoiner: parsedData.immediateJoiner || false
+          },
+          location: parsedData.location || '',
+          expertise: parsedData.expertise || '',
+          willingAlternateSaturday: parsedData.willingAlternateSaturday,
+          workPreference: parsedData.workPreference || '',
+          currentCtc: parsedData.currentCtc || '',
+          ctcFrequency: 'Annual',
+          inHouseAssignmentStatus: 'Pending',
+          interviewDate: '',
+          interviewerId: null,
+          inOfficeAssignment: '',
+          assignmentLocation: '',
+          resumeLocation: '',
+          communications: [],
+          interviews: [],
+          communicationsCount: 0,
+          interviewsCount: 0,
+          assignedTo: 'Unassigned',
+          jobId: jobs.length > 0 ? jobs[0].id : null,
+          resumeFileId: null,
+          resume: file.name
+        } as any);
+        
+        setShowAddModal(true);
+        setError('');
+        
+      } catch (error) {
+        console.error('Resume parsing error:', error);
+        setError(error instanceof Error ? error.message : 'Failed to parse resume');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
   };
 
   // CRUD Operations
@@ -186,7 +263,7 @@ export default function Candidates() {
     try {
       setLoading(true);
       
-      if (editingCandidate) {
+      if (editingCandidate && editingCandidate.id > 0) {
         // Update existing candidate
         const response = await candidatesAPI.updateCandidate(editingCandidate.id, candidateData);
         if (response.success) {

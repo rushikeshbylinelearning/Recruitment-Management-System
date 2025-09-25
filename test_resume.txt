@@ -1,0 +1,35 @@
+John Smith
+Software Engineer
+john.smith@email.com
++1-555-123-4567
+New York, NY
+
+EXPERIENCE
+5 years of experience in software development
+
+OBJECTIVE
+Looking for a challenging position as a Senior Software Engineer with a salary expectation of 8-10 LPA.
+
+SKILLS
+JavaScript, TypeScript, React, Node.js, Python, Java, HTML, CSS, MySQL, MongoDB, AWS, Docker
+
+TECHNICAL EXPERTISE
+Full Stack Developer with expertise in web development and cloud technologies.
+
+CURRENT CTC
+Currently drawing 7 LPA
+
+NOTICE PERIOD
+Available in 30 days
+
+WORK PREFERENCES
+Willing to work from home or hybrid model. Can work on alternate Saturdays.
+
+ACHIEVEMENTS
+- Led a team of 5 developers
+- Improved application performance by 40%
+- Successfully delivered 10+ projects on time
+
+EDUCATION
+Bachelor of Technology in Computer Science
+University of Technology, 2019
