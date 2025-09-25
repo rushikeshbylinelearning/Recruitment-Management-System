@@ -21,6 +21,7 @@ import communicationRoutes from './routes/communications.js';
 import analyticsRoutes from './routes/analytics.js';
 import settingsRoutes from './routes/settings.js';
 import fileRoutes from './routes/files.js';
+import dashboardRoutes from './routes/dashboard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -96,6 +97,7 @@ app.use('/api/communications', communicationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {

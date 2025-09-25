@@ -391,22 +391,7 @@ export interface Analytics {
   monthlyHires: { month: string; hires: number; applications: number }[];
 }
 
-export const analyticsAPI = {
-  getDashboard: async (): Promise<ApiResponse<Analytics>> => {
-    const response = await api.get('/analytics/dashboard');
-    return response.data;
-  },
 
-  getHiringFunnel: async (): Promise<ApiResponse<any>> => {
-    const response = await api.get('/analytics/hiring-funnel');
-    return response.data;
-  },
-
-  getTimeToHire: async (): Promise<ApiResponse<any>> => {
-    const response = await api.get('/analytics/time-to-hire');
-    return response.data;
-  },
-};
 
 // Files API
 export const filesAPI = {
@@ -555,6 +540,178 @@ export const tasksAPI = {
 
   getTaskStats: async (): Promise<ApiResponse<{ statistics: any }>> => {
     const response = await api.get('/tasks/stats/overview');
+    return response.data;
+  },
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getOverview: async (): Promise<ApiResponse<{
+    metrics: {
+      totalJobs: { value: number; change: number; trend: string };
+      activeCandidates: { value: number; change: number; trend: string };
+      interviewsScheduled: { value: number; change: number; trend: string };
+      timeToHire: { value: number; change: number; trend: string };
+    };
+    pipeline: Record<string, number>;
+    activities: Array<{
+      id: number;
+      type: string;
+      description: string;
+      timestamp: string;
+      user: string | null;
+      candidate_name: string | null;
+      position: string | null;
+    }>;
+  }>> => {
+    const response = await api.get('/dashboard/overview');
+    return response.data;
+  },
+
+  getMetrics: async (): Promise<ApiResponse<{
+    totalJobs: { value: number; change: number; trend: string };
+    activeCandidates: { value: number; change: number; trend: string };
+    interviewsScheduled: { value: number; change: number; trend: string };
+    timeToHire: { value: number; change: number; trend: string };
+  }>> => {
+    const response = await api.get('/dashboard/metrics');
+    return response.data;
+  },
+
+  getPipeline: async (): Promise<ApiResponse<Record<string, number>>> => {
+    const response = await api.get('/dashboard/pipeline');
+    return response.data;
+  },
+
+  getActivities: async (): Promise<ApiResponse<Array<{
+    id: number;
+    type: string;
+    description: string;
+    timestamp: string;
+    user: string | null;
+    candidate_name: string | null;
+    position: string | null;
+  }>>> => {
+    const response = await api.get('/dashboard/activities');
+    return response.data;
+  },
+};
+
+// Analytics API
+export const analyticsAPI = {
+  getDashboard: async (): Promise<ApiResponse<{
+    overview: {
+      total_jobs: number;
+      active_jobs: number;
+      total_candidates: number;
+      hired: number;
+      interviews_completed: number;
+      avg_time_to_hire: number;
+    };
+    sourceEffectiveness: Array<{ source: string; count: number }>;
+    monthlyHires: Array<{ month: string; hires: number; applications: number }>;
+    stageDistribution: Array<{ stage: string; count: number }>;
+    departmentStats: Array<{ department: string; job_count: number; candidate_count: number }>;
+  }>> => {
+    const response = await api.get('/analytics/dashboard');
+    return response.data;
+  },
+
+  getHiringFunnel: async (): Promise<ApiResponse<{
+    funnelData: Array<{ stage: string; count: number; percentage: number }>;
+    conversionRates: Array<{ stage: string; rate: number }>;
+  }>> => {
+    const response = await api.get('/analytics/hiring-funnel');
+    return response.data;
+  },
+
+  getTimeToHire: async (): Promise<ApiResponse<{
+    overallStats: {
+      avg_time_to_hire: number;
+      min_time_to_hire: number;
+      max_time_to_hire: number;
+      std_dev_time_to_hire: number;
+    };
+    byDepartment: Array<{ department: string; avg_time_to_hire: number; hires_count: number }>;
+    bySource: Array<{ source: string; avg_time_to_hire: number; hires_count: number }>;
+  }>> => {
+    const response = await api.get('/analytics/time-to-hire');
+    return response.data;
+  },
+
+  getInterviewerPerformance: async (): Promise<ApiResponse<{
+    interviewerStats: Array<{
+      id: number;
+      name: string;
+      role: string;
+      total_interviews: number;
+      completed_interviews: number;
+      avg_rating: number;
+      selections: number;
+      rejections: number;
+      selection_rate: number;
+    }>;
+  }>> => {
+    const response = await api.get('/analytics/interviewer-performance');
+    return response.data;
+  },
+
+  getRecruiterPerformance: async (): Promise<ApiResponse<{
+    recruiterStats: Array<{
+      id: number;
+      name: string;
+      role: string;
+      candidates_assigned: number;
+      hires: number;
+      rejections: number;
+      avg_candidate_score: number;
+      hire_rate: number;
+    }>;
+  }>> => {
+    const response = await api.get('/analytics/recruiter-performance');
+    return response.data;
+  },
+
+  getJobPerformance: async (): Promise<ApiResponse<{
+    jobStats: Array<{
+      id: number;
+      title: string;
+      department: string;
+      status: string;
+      posted_date: string;
+      deadline: string;
+      total_applications: number;
+      hires: number;
+      avg_candidate_score: number;
+      hire_rate: number;
+      days_to_fill: number;
+    }>;
+  }>> => {
+    const response = await api.get('/analytics/job-performance');
+    return response.data;
+  },
+
+  getMonthlyTrends: async (months: number = 12): Promise<ApiResponse<{
+    trends: Array<{
+      month: string;
+      applications: number;
+      hires: number;
+      rejections: number;
+      avg_score: number;
+    }>;
+  }>> => {
+    const response = await api.get(`/analytics/monthly-trends?months=${months}`);
+    return response.data;
+  },
+
+  getCandidateQuality: async (): Promise<ApiResponse<{
+    qualityStats: Array<{
+      quality_range: string;
+      count: number;
+      percentage: number;
+    }>;
+  }>> => {
+    const response = await api.get('/analytics/candidate-quality');
     return response.data;
   },
 };
