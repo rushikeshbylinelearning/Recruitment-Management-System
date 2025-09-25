@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download } from 'lucide-react';
+import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download, FileText, Users, DollarSign, CheckCircle, XCircle, Briefcase } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import AddCandidateModal from './AddCandidateModal';
@@ -72,6 +72,18 @@ export default function Candidates() {
     }
   };
 
+  const getStageIcon = (stage: string) => {
+    switch (stage) {
+      case 'Applied': return <FileText size={20} className="text-blue-600" />;
+      case 'Screening': return <Search size={20} className="text-yellow-600" />;
+      case 'Interview': return <Users size={20} className="text-orange-600" />;
+      case 'Offer': return <DollarSign size={20} className="text-purple-600" />;
+      case 'Hired': return <CheckCircle size={20} className="text-green-600" />;
+      case 'Rejected': return <XCircle size={20} className="text-red-600" />;
+      default: return <Briefcase size={20} className="text-gray-600" />;
+    }
+  };
+
   const candidatesByStage = stages.reduce((acc, stage) => {
     acc[stage] = filteredCandidates.filter(candidate => candidate.stage === stage);
     return acc;
@@ -101,10 +113,6 @@ export default function Candidates() {
     }
   };
 
-  const handleShowAdvancedSearch = () => {
-    // TODO: Implement advanced search functionality
-    console.log('Advanced search clicked');
-  };
 
   const handleShowResumeParser = () => {
     // TODO: Implement resume parser functionality
@@ -221,20 +229,14 @@ export default function Candidates() {
 
   const CandidateCard = ({ candidate }: { candidate: ApiCandidate }) => (
     <div 
-      className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+      className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all"
     >
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h4 className="font-medium text-gray-900">{candidate.name}</h4>
-          <p className="text-sm text-gray-600">{candidate.position}</p>
-          {candidate.salary?.expected && (
-            <p className="text-xs text-green-600 font-medium">₹{candidate.salary.expected}</p>
-          )}
-        </div>
-        <div className="flex items-center space-x-1">
-          <Star size={14} className="text-yellow-500" />
-          <span className="text-sm text-gray-600">{candidate.score}/5</span>
-        </div>
+      <div className="mb-3">
+        <h4 className="font-medium text-gray-900">{candidate.name}</h4>
+        <p className="text-sm text-gray-600">{candidate.position}</p>
+        {candidate.salary?.expected && (
+          <p className="text-xs text-green-600 font-medium">₹{candidate.salary.expected}</p>
+        )}
       </div>
       
       <div className="space-y-2 mb-3">
@@ -427,16 +429,23 @@ export default function Candidates() {
 
       {/* Kanban View */}
       {viewMode === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 overflow-x-auto">
+        <div className="flex gap-8 overflow-x-auto pb-4">
           {stages.map((stage) => (
-            <div key={stage} className="min-w-72">
-              <div className={`p-3 rounded-t-lg border ${getStageColor(stage)}`}>
-                <h3 className="font-medium flex items-center justify-between">
-                  {stage}
-                  <span className="text-sm">{candidatesByStage[stage]?.length || 0}</span>
-                </h3>
+            <div key={stage} className="min-w-80 flex-shrink-0">
+              <div className={`p-4 rounded-t-lg border-t border-l border-r shadow-sm ${getStageColor(stage)}`}>
+                <div className="flex items-center justify-center space-x-2">
+                  {getStageIcon(stage)}
+                  <h3 className="font-semibold text-lg">
+                    {stage}
+                  </h3>
+                </div>
+                <div className="text-center mt-2">
+                  <span className="text-sm font-medium opacity-75">
+                    {candidatesByStage[stage]?.length || 0} candidates
+                  </span>
+                </div>
               </div>
-              <div className="bg-gray-50 p-3 rounded-b-lg space-y-3 min-h-96">
+              <div className="bg-gray-50 p-4 rounded-b-lg border-l border-r border-b space-y-4 min-h-96">
                 {(candidatesByStage[stage] || []).map((candidate) => (
                   <CandidateCard key={candidate.id} candidate={candidate} />
                 ))}
