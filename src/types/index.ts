@@ -181,7 +181,7 @@ export interface Task {
   description: string;
   assignedTo: number;
   assignedToName?: string;
-  jobId: number;
+  jobId?: number;
   jobTitle?: string;
   candidateId?: number;
   candidateName?: string;

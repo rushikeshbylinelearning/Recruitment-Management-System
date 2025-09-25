@@ -42,21 +42,43 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
 
   // Get tasks
   const tasks = await query(
-    `SELECT t.*, u.name as assigned_to_name, c.name as candidate_name, j.title as job_title 
+    `SELECT t.*, u.name as assigned_to_name, c.name as candidate_name, j.title as job_title,
+            creator.name as created_by_name
      FROM tasks t
      LEFT JOIN users u ON t.assigned_to = u.id
      LEFT JOIN candidates c ON t.candidate_id = c.id
      LEFT JOIN job_postings j ON t.job_id = j.id
+     LEFT JOIN users creator ON t.created_by = creator.id
      ${whereClause}
      ORDER BY t.due_date ASC 
      LIMIT ${limit} OFFSET ${offset}`,
     params
   );
 
+  // Map the data to frontend format
+  const mappedTasks = tasks.map(task => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assigned_to,
+    assignedToName: task.assigned_to_name || 'Unassigned',
+    jobId: task.job_id,
+    jobTitle: task.job_title || null,
+    candidateId: task.candidate_id,
+    candidateName: task.candidate_name || null,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.due_date,
+    createdBy: task.created_by,
+    createdByName: task.created_by_name || 'Unknown',
+    createdDate: task.created_at,
+    updatedDate: task.updated_at
+  }));
+
   res.json({
     success: true,
     data: {
-      tasks,
+      tasks: mappedTasks,
       pagination: {
         page,
         limit,
@@ -86,9 +108,29 @@ router.get('/:id', authenticateToken, checkPermission('tasks', 'view'), validate
     throw new NotFoundError('Task not found');
   }
 
+  const task = tasks[0];
+  const mappedTask = {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assigned_to,
+    assignedToName: task.assigned_to_name || 'Unassigned',
+    jobId: task.job_id,
+    jobTitle: task.job_title || null,
+    candidateId: task.candidate_id,
+    candidateName: task.candidate_name || null,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.due_date,
+    createdBy: task.created_by,
+    createdByName: task.created_by_name || 'Unknown',
+    createdDate: task.created_at,
+    updatedDate: task.updated_at
+  };
+
   res.json({
     success: true,
-    data: { task: tasks[0] }
+    data: { task: mappedTask }
   });
 }));
 
@@ -267,56 +309,119 @@ router.get('/user/:userId', authenticateToken, validateId('userId'), handleValid
   }
 
   const tasks = await query(
-    `SELECT t.*, c.name as candidate_name, j.title as job_title 
+    `SELECT t.*, c.name as candidate_name, j.title as job_title, creator.name as created_by_name
      FROM tasks t
      LEFT JOIN candidates c ON t.candidate_id = c.id
      LEFT JOIN job_postings j ON t.job_id = j.id
+     LEFT JOIN users creator ON t.created_by = creator.id
      WHERE t.assigned_to = ?
      ORDER BY t.due_date ASC`,
     [userId]
   );
 
+  // Map the data to frontend format
+  const mappedTasks = tasks.map(task => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assigned_to,
+    assignedToName: 'Current User', // Since this is for a specific user
+    jobId: task.job_id,
+    jobTitle: task.job_title || null,
+    candidateId: task.candidate_id,
+    candidateName: task.candidate_name || null,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.due_date,
+    createdBy: task.created_by,
+    createdByName: task.created_by_name || 'Unknown',
+    createdDate: task.created_at,
+    updatedDate: task.updated_at
+  }));
+
   res.json({
     success: true,
-    data: { tasks }
+    data: { tasks: mappedTasks }
   });
 }));
 
 // Get overdue tasks
 router.get('/overdue/list', authenticateToken, checkPermission('tasks', 'view'), handleValidationErrors, asyncHandler(async (req, res) => {
   const tasks = await query(
-    `SELECT t.*, u.name as assigned_to_name, c.name as candidate_name, j.title as job_title 
+    `SELECT t.*, u.name as assigned_to_name, c.name as candidate_name, j.title as job_title, creator.name as created_by_name
      FROM tasks t
      LEFT JOIN users u ON t.assigned_to = u.id
      LEFT JOIN candidates c ON t.candidate_id = c.id
      LEFT JOIN job_postings j ON t.job_id = j.id
+     LEFT JOIN users creator ON t.created_by = creator.id
      WHERE t.due_date < CURDATE() AND t.status != 'Completed'
      ORDER BY t.due_date ASC`,
     []
   );
 
+  // Map the data to frontend format
+  const mappedTasks = tasks.map(task => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assigned_to,
+    assignedToName: task.assigned_to_name || 'Unassigned',
+    jobId: task.job_id,
+    jobTitle: task.job_title || null,
+    candidateId: task.candidate_id,
+    candidateName: task.candidate_name || null,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.due_date,
+    createdBy: task.created_by,
+    createdByName: task.created_by_name || 'Unknown',
+    createdDate: task.created_at,
+    updatedDate: task.updated_at
+  }));
+
   res.json({
     success: true,
-    data: { tasks }
+    data: { tasks: mappedTasks }
   });
 }));
 
 // Get tasks due today
 router.get('/due-today/list', authenticateToken, checkPermission('tasks', 'view'), handleValidationErrors, asyncHandler(async (req, res) => {
   const tasks = await query(
-    `SELECT t.*, u.name as assigned_to_name, c.name as candidate_name, j.title as job_title 
+    `SELECT t.*, u.name as assigned_to_name, c.name as candidate_name, j.title as job_title, creator.name as created_by_name
      FROM tasks t
      LEFT JOIN users u ON t.assigned_to = u.id
      LEFT JOIN candidates c ON t.candidate_id = c.id
      LEFT JOIN job_postings j ON t.job_id = j.id
+     LEFT JOIN users creator ON t.created_by = creator.id
      WHERE t.due_date = CURDATE() AND t.status != 'Completed'
      ORDER BY t.due_date ASC`,
     []
   );
 
+  // Map the data to frontend format
+  const mappedTasks = tasks.map(task => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assigned_to,
+    assignedToName: task.assigned_to_name || 'Unassigned',
+    jobId: task.job_id,
+    jobTitle: task.job_title || null,
+    candidateId: task.candidate_id,
+    candidateName: task.candidate_name || null,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.due_date,
+    createdBy: task.created_by,
+    createdByName: task.created_by_name || 'Unknown',
+    createdDate: task.created_at,
+    updatedDate: task.updated_at
+  }));
+
   res.json({
     success: true,
-    data: { tasks }
+    data: { tasks: mappedTasks }
   });
 }));
 

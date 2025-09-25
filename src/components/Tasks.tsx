@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Calendar, User, AlertCircle, CheckCircle, Clock, X, Save, Edit, Trash2 } from 'lucide-react';
 import { Task } from '../types';
-import { tasksAPI, usersAPI } from '../services/api';
+import { tasksAPI, usersAPI, jobsAPI, candidatesAPI } from '../services/api';
 
 interface TasksProps {
   tasks?: Task[]; // Made optional since we'll fetch from backend
@@ -15,6 +15,8 @@ interface TasksProps {
 export default function Tasks({}: TasksProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,8 +29,8 @@ export default function Tasks({}: TasksProps) {
     title: '',
     description: '',
     assignedTo: 0,
-    jobId: 0,
-    candidateId: 0,
+    jobId: null as number | null,
+    candidateId: null as number | null,
     priority: 'Medium',
     status: 'Pending',
     dueDate: ''
@@ -40,9 +42,11 @@ export default function Tasks({}: TasksProps) {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [tasksResponse, usersResponse] = await Promise.all([
+        const [tasksResponse, usersResponse, jobsResponse, candidatesResponse] = await Promise.all([
           tasksAPI.getTasks(),
-          usersAPI.getUsers()
+          usersAPI.getUsers(),
+          jobsAPI.getJobs(),
+          candidatesAPI.getCandidates()
         ]);
 
         if (tasksResponse.success && tasksResponse.data) {
@@ -51,6 +55,14 @@ export default function Tasks({}: TasksProps) {
 
         if (usersResponse.success && usersResponse.data) {
           setUsers(usersResponse.data.users || []);
+        }
+
+        if (jobsResponse.success && jobsResponse.data) {
+          setJobs(jobsResponse.data.jobs || []);
+        }
+
+        if (candidatesResponse.success && candidatesResponse.data) {
+          setCandidates(candidatesResponse.data.candidates || []);
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -69,8 +81,8 @@ export default function Tasks({}: TasksProps) {
       title: '',
       description: '',
       assignedTo: 0,
-      jobId: 0,
-      candidateId: 0,
+      jobId: null,
+      candidateId: null,
       priority: 'Medium',
       status: 'Pending',
       dueDate: ''
@@ -85,8 +97,8 @@ export default function Tasks({}: TasksProps) {
       title: task.title,
       description: task.description,
       assignedTo: task.assignedTo,
-      jobId: task.jobId,
-      candidateId: task.candidateId || 0,
+      jobId: task.jobId || null,
+      candidateId: task.candidateId || null,
       priority: task.priority,
       status: task.status,
       dueDate: task.dueDate
@@ -151,9 +163,6 @@ export default function Tasks({}: TasksProps) {
     if (!taskFormData.assignedTo || taskFormData.assignedTo === 0) {
       newErrors.assignedTo = 'Assigned person is required';
     }
-    if (!taskFormData.jobId || taskFormData.jobId === 0) {
-      newErrors.jobId = 'Job ID is required';
-    }
     if (!taskFormData.dueDate) {
       newErrors.dueDate = 'Due date is required';
     }
@@ -174,7 +183,7 @@ export default function Tasks({}: TasksProps) {
         title: taskFormData.title,
         description: taskFormData.description,
         assignedTo: taskFormData.assignedTo,
-        jobId: taskFormData.jobId,
+        jobId: taskFormData.jobId || undefined,
         candidateId: taskFormData.candidateId || undefined,
         priority: taskFormData.priority as 'High' | 'Medium' | 'Low',
         status: taskFormData.status as 'Pending' | 'In Progress' | 'Completed',
@@ -202,8 +211,8 @@ export default function Tasks({}: TasksProps) {
           title: '',
           description: '',
           assignedTo: 0,
-          jobId: 0,
-          candidateId: 0,
+          jobId: null,
+          candidateId: null,
           priority: 'Medium',
           status: 'Pending',
           dueDate: ''
@@ -621,31 +630,38 @@ export default function Tasks({}: TasksProps) {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Job ID *
+                    Job (Optional)
                   </label>
-                  <input
-                    type="text"
-                    value={taskFormData.jobId}
-                    onChange={(e) => setTaskFormData(prev => ({ ...prev, jobId: Number(e.target.value) }))}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.jobId ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Related job ID"
-                  />
-                  {errors.jobId && <p className="text-red-500 text-sm mt-1">{errors.jobId}</p>}
+                  <select
+                    value={taskFormData.jobId || ''}
+                    onChange={(e) => setTaskFormData(prev => ({ ...prev, jobId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select a job (optional)</option>
+                    {jobs.map(job => (
+                      <option key={job.id} value={job.id}>
+                        {job.title} - {job.department}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Candidate ID (Optional)
+                    Candidate (Optional)
                   </label>
-                  <input
-                    type="text"
-                    value={taskFormData.candidateId}
-                    onChange={(e) => setTaskFormData(prev => ({ ...prev, candidateId: Number(e.target.value) }))}
+                  <select
+                    value={taskFormData.candidateId || ''}
+                    onChange={(e) => setTaskFormData(prev => ({ ...prev, candidateId: e.target.value ? Number(e.target.value) : null }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Related candidate ID"
-                  />
+                  >
+                    <option value="">Select a candidate (optional)</option>
+                    {candidates.map(candidate => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name} - {candidate.position}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -785,31 +801,38 @@ export default function Tasks({}: TasksProps) {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Job ID *
+                    Job (Optional)
                   </label>
-                  <input
-                    type="text"
-                    value={taskFormData.jobId}
-                    onChange={(e) => setTaskFormData(prev => ({ ...prev, jobId: Number(e.target.value) }))}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.jobId ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Related job ID"
-                  />
-                  {errors.jobId && <p className="text-red-500 text-sm mt-1">{errors.jobId}</p>}
+                  <select
+                    value={taskFormData.jobId || ''}
+                    onChange={(e) => setTaskFormData(prev => ({ ...prev, jobId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select a job (optional)</option>
+                    {jobs.map(job => (
+                      <option key={job.id} value={job.id}>
+                        {job.title} - {job.department}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Candidate ID (Optional)
+                    Candidate (Optional)
                   </label>
-                  <input
-                    type="text"
-                    value={taskFormData.candidateId}
-                    onChange={(e) => setTaskFormData(prev => ({ ...prev, candidateId: Number(e.target.value) }))}
+                  <select
+                    value={taskFormData.candidateId || ''}
+                    onChange={(e) => setTaskFormData(prev => ({ ...prev, candidateId: e.target.value ? Number(e.target.value) : null }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Related candidate ID"
-                  />
+                  >
+                    <option value="">Select a candidate (optional)</option>
+                    {candidates.map(candidate => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name} - {candidate.position}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

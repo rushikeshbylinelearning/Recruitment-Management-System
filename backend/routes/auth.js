@@ -1,6 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 import { query, transaction } from '../config/database.js';
 import config from '../config/config.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -9,8 +10,20 @@ import { asyncHandler, ValidationError, UnauthorizedError, ConflictError } from 
 
 const router = express.Router();
 
-// Login endpoint
-router.post('/login', asyncHandler(async (req, res) => {
+// Rate limiting for login attempts only
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login requests per windowMs
+  message: {
+    success: false,
+    message: 'Too many login attempts from this IP, please try again after 15 minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Login endpoint with rate limiting
+router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {

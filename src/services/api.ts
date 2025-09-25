@@ -50,14 +50,16 @@ export interface ApiResponse<T = any> {
   errors?: any[];
 }
 
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
 export interface PaginatedResponse<T> {
   jobs: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
+  pagination: PaginationInfo;
 }
 
 export interface UsersResponse {
@@ -438,7 +440,7 @@ export interface Task {
   description: string;
   assignedTo: number;
   assignedToName?: string;
-  jobId: number;
+  jobId?: number;
   jobTitle?: string;
   candidateId?: number;
   candidateName?: string;
@@ -468,7 +470,17 @@ export const tasksAPI = {
     return response.data;
   },
 
-  createTask: async (taskData: Omit<Task, 'id' | 'createdDate' | 'updatedDate' | 'assignedToName' | 'jobTitle' | 'candidateName' | 'createdByName'>): Promise<ApiResponse<{ taskId: number }>> => {
+  createTask: async (taskData: {
+    title: string;
+    description: string;
+    assignedTo: number;
+    jobId?: number;
+    candidateId?: number;
+    priority: 'High' | 'Medium' | 'Low';
+    status: 'Pending' | 'In Progress' | 'Completed';
+    dueDate: string;
+    createdBy: number;
+  }): Promise<ApiResponse<{ taskId: number }>> => {
     const response = await api.post('/tasks', taskData);
     return response.data;
   },

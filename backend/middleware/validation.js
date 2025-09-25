@@ -170,13 +170,9 @@ export const validateInterview = [
 // Task validation rules
 export const validateTask = [
   body('title')
-    .isLength({ min: 5, max: 200 })
-    .withMessage('Task title must be between 5 and 200 characters')
     .trim(),
   
   body('description')
-    .isLength({ min: 10 })
-    .withMessage('Description must be at least 10 characters long')
     .trim(),
   
   body('assignedTo')
