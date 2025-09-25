@@ -732,7 +732,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notes (HR Remarks)
+              Notes
             </label>
             <textarea
               value={formData.notes}

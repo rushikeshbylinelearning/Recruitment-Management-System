@@ -295,7 +295,7 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
 
               {candidate.notes && (
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">HR Remarks</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
                   <p className="text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
                 </div>
               )}
