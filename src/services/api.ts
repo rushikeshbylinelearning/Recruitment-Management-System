@@ -177,6 +177,19 @@ export const usersAPI = {
     const response = await api.delete(`/users/${id}`);
     return response.data;
   },
+
+  createUser: async (userData: {
+    username: string;
+    email: string;
+    name: string;
+    password: string;
+    role: string;
+    avatar?: string;
+    status?: string;
+  }): Promise<ApiResponse<{ userId: number }>> => {
+    const response = await api.post('/users', userData);
+    return response.data;
+  },
 };
 
 // Jobs API
