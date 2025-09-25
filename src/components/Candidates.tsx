@@ -94,18 +94,21 @@ export default function Candidates() {
   const handleBulkImport = async (candidatesData: any[]) => {
     try {
       setLoading(true);
-      // For now, create candidates one by one
-      // In the future, we could create a bulk import endpoint
-      for (const candidateData of candidatesData) {
-        await candidatesAPI.createCandidate(candidateData);
+      
+      // Use the bulk import endpoint
+      const response = await candidatesAPI.bulkImportCandidates(candidatesData);
+      
+      if (response.success) {
+        setError('');
+        // Reload candidates
+        const candidatesResponse = await candidatesAPI.getCandidates();
+        if (candidatesResponse.success && candidatesResponse.data) {
+          setCandidates(candidatesResponse.data.candidates || []);
+        }
+        setShowBulkImportModal(false);
+      } else {
+        setError('Failed to import candidates');
       }
-      setError('');
-      // Reload candidates
-      const candidatesResponse = await candidatesAPI.getCandidates();
-      if (candidatesResponse.success && candidatesResponse.data) {
-        setCandidates(candidatesResponse.data.candidates || []);
-      }
-      setShowBulkImportModal(false);
     } catch (err) {
       setError('Failed to import candidates');
     } finally {

@@ -356,6 +356,11 @@ export const candidatesAPI = {
     return response.data;
   },
 
+  bulkImportCandidates: async (candidates: Omit<Candidate, 'id' | 'communications' | 'interviews'>[]): Promise<ApiResponse<{ results: any[], errors: any[] }>> => {
+    const response = await api.post('/candidates/bulk-import', { candidates });
+    return response.data;
+  },
+
   updateCandidateStage: async (id: number, stage: string, notes?: string): Promise<ApiResponse> => {
     const response = await api.patch(`/candidates/${id}/stage`, { stage, notes });
     return response.data;

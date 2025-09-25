@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Sep 25, 2025 at 08:02 AM
+-- Generation Time: Sep 25, 2025 at 11:18 AM
 -- Server version: 9.1.0
 -- PHP Version: 8.1.31
 
@@ -114,20 +114,32 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `source` varchar(100) COLLATE utf8mb4_general_ci NOT NULL,
   `applied_date` date NOT NULL,
   `resume_path` text COLLATE utf8mb4_general_ci,
-  `notes` text COLLATE utf8mb4_general_ci,
+  `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT 'HR remarks and notes about the candidate',
   `score` decimal(3,2) DEFAULT '0.00',
   `assigned_to` int DEFAULT NULL,
   `skills` json DEFAULT NULL,
-  `experience` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `salary_expected` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `experience` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Years of experience',
+  `salary_expected` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Expected CTC/package',
   `salary_offered` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `salary_negotiable` tinyint(1) DEFAULT '1',
   `joining_time` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `notice_period` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `notice_period` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Notice period duration',
   `immediate_joiner` tinyint(1) DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `resume_file_id` int DEFAULT NULL,
+  `location` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Candidate current location',
+  `expertise` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Primary expertise/domain knowledge',
+  `willing_alternate_saturday` tinyint(1) DEFAULT NULL COMMENT 'Willing to work on alternate Saturdays',
+  `work_preference` enum('Onsite','WFH','Hybrid') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Work preference: Onsite, WFH, or Hybrid',
+  `current_ctc` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Current CTC (monthly or annual)',
+  `ctc_frequency` enum('Monthly','Annual') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'Annual' COMMENT 'Whether CTC is monthly or annual',
+  `in_house_assignment_status` enum('Pending','Shortlisted','Rejected') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'Pending' COMMENT 'In-house assignment evaluation status',
+  `interview_date` date DEFAULT NULL COMMENT 'Scheduled interview date',
+  `interviewer_id` int DEFAULT NULL COMMENT 'Assigned interviewer user ID',
+  `in_office_assignment` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT 'Details/description about in-office assignment',
+  `assignment_location` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'File path or URL to the assignment file',
+  `resume_location` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'File path or URL to the resume file',
   PRIMARY KEY (`id`),
   KEY `idx_stage` (`stage`),
   KEY `idx_source` (`source`),
@@ -137,16 +149,24 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   KEY `idx_score` (`score`),
   KEY `idx_candidates_stage_assigned` (`stage`,`assigned_to`),
   KEY `idx_resume_file_id` (`resume_file_id`),
-  KEY `idx_job_id` (`job_id`)
-) ENGINE=MyISAM AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
+  KEY `idx_job_id` (`job_id`),
+  KEY `idx_location` (`location`),
+  KEY `idx_work_preference` (`work_preference`),
+  KEY `idx_in_house_assignment_status` (`in_house_assignment_status`),
+  KEY `idx_interview_date` (`interview_date`),
+  KEY `idx_interviewer_id` (`interviewer_id`),
+  KEY `idx_assignment_location` (`assignment_location`(250)),
+  KEY `idx_resume_location` (`resume_location`(250))
+) ENGINE=MyISAM AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
 
 --
 -- Dumping data for table `candidates`
 --
 
-INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, `stage`, `source`, `applied_date`, `resume_path`, `notes`, `score`, `assigned_to`, `skills`, `experience`, `salary_expected`, `salary_offered`, `salary_negotiable`, `joining_time`, `notice_period`, `immediate_joiner`, `created_at`, `updated_at`, `resume_file_id`) VALUES
-(4, 1, 'New Candidate', 'new@candidate.com', '678789543', 'Senior Full Stack Developer', 'Offer', 'AngelList', '2025-09-24', NULL, 'New Notes', 0.00, NULL, '[\"React\", \"Tailwind CSS\", \"JS\"]', '5', '12LPA', '9LPA', 1, '3 Weeks', '1 Month', 1, '2025-09-24 14:35:13', '2025-09-24 14:35:13', 7),
-(2, 1, 'Basic Candidate', 'candidate@gmail.com', '97676897762', 'Senior Full Stack Developer', 'Screening', 'Indeed', '2025-09-22', NULL, 'fdsdgf', 0.00, NULL, '[\"skill1\", \"skill2\", \"skill3\"]', '3', '5LPA', '4LPA', 1, '2 Weeks', '1 Week', 1, '2025-09-24 13:08:31', '2025-09-24 14:20:23', 3164);
+INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, `stage`, `source`, `applied_date`, `resume_path`, `notes`, `score`, `assigned_to`, `skills`, `experience`, `salary_expected`, `salary_offered`, `salary_negotiable`, `joining_time`, `notice_period`, `immediate_joiner`, `created_at`, `updated_at`, `resume_file_id`, `location`, `expertise`, `willing_alternate_saturday`, `work_preference`, `current_ctc`, `ctc_frequency`, `in_house_assignment_status`, `interview_date`, `interviewer_id`, `in_office_assignment`, `assignment_location`, `resume_location`) VALUES
+(4, 1, 'New Candidate', 'new@candidate.com', '678789543', 'Senior Full Stack Developer', 'Offer', 'AngelList', '2025-09-24', NULL, 'New Notes', 0.00, NULL, '[\"React\", \"Tailwind CSS\", \"JS\"]', '5', '12LPA', '9LPA', 1, '3 Weeks', '1 Month', 1, '2025-09-24 14:35:13', '2025-09-24 14:35:13', 7, NULL, NULL, NULL, NULL, NULL, 'Annual', 'Pending', NULL, NULL, NULL, NULL, NULL),
+(2, 1, 'Basic Candidate', 'candidate@gmail.com', '97676897762', 'Senior Full Stack Developer', 'Screening', 'Indeed', '2025-09-18', NULL, 'Good in Frontend Lacks the Backend', 0.00, NULL, '[]', '3', '5LPA', '4LPA', 1, '2 Weeks', '1 Week', 1, '2025-09-24 13:08:31', '2025-09-25 09:23:28', 3164, 'Pune', 'JavaScript', 1, 'Onsite', '3.50LPA', 'Annual', 'Shortlisted', '2025-09-21', NULL, 'Some Details About the in Office assignment', NULL, NULL),
+(5, 1, 'Test Candidate', 'test@candidate.com', '896703281', 'Senior Full Stack Developer', 'Interview', 'Company Website', '2025-09-25', NULL, 'Notes about the assignment did this well and that welll', 0.00, NULL, '[\"React\", \"Tailwind\"]', '3 Years', '6LPA', NULL, 0, '1 Week', '1 Month', 1, '2025-09-25 09:30:52', '2025-09-25 09:30:52', NULL, 'Baner, Pune', 'Full Stack Developer', NULL, 'Onsite', '4.8LPA', 'Annual', 'Shortlisted', '2025-09-27', NULL, 'Details about the interview the interview;s details', 'C:\\wamp64\\www\\Kodeit-Iomad-local\\iomad-test\\', 'C:\\wamp64\\www\\Kodeit-Iomad-local\\resume.pdf');
 
 -- --------------------------------------------------------
 
@@ -253,7 +273,7 @@ CREATE TABLE IF NOT EXISTS `file_uploads` (
   KEY `idx_mime_type` (`mime_type`),
   KEY `idx_file_uploads_candidate_uploaded` (`candidate_id`,`uploaded_at`),
   KEY `idx_file_uploads_type_size` (`mime_type`,`file_size`)
-) ENGINE=MyISAM AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Stores metadata for uploaded files, primarily resumes';
+) ENGINE=MyISAM AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Stores metadata for uploaded files, primarily resumes';
 
 --
 -- Dumping data for table `file_uploads`
@@ -266,7 +286,8 @@ INSERT INTO `file_uploads` (`id`, `filename`, `original_name`, `file_path`, `fil
 (4, '0c96756e-60f2-45e9-8f5b-c739e291919a.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\0c96756e-60f2-45e9-8f5b-c739e291919a.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 12:39:23'),
 (5, '3164ebba-d4eb-4173-b28b-6d251a53eb51.pdf', 'generate now.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\3164ebba-d4eb-4173-b28b-6d251a53eb51.pdf', 191712, 'application/pdf', NULL, 1, '2025-09-24 13:08:11'),
 (6, '6f5d60cd-c7a4-4e52-9730-5059bea44d5d.pdf', '1749548393473-1749473685201-XYZ.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\6f5d60cd-c7a4-4e52-9730-5059bea44d5d.pdf', 68, 'application/pdf', NULL, 1, '2025-09-24 14:24:26'),
-(7, '3ca5c681-dc17-4fa8-a400-04303db40e33.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\3ca5c681-dc17-4fa8-a400-04303db40e33.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 14:32:01');
+(7, '3ca5c681-dc17-4fa8-a400-04303db40e33.pdf', 'Outlook QS.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\3ca5c681-dc17-4fa8-a400-04303db40e33.pdf', 681808, 'application/pdf', NULL, 1, '2025-09-24 14:32:01'),
+(8, 'ab76848c-8be9-4d23-8b17-663a6bff581d.pdf', 'order_548957011389.pdf', 'C:\\Users\\ADMIN\\test\\hr-workflow-management\\uploads\\resumes\\ab76848c-8be9-4d23-8b17-663a6bff581d.pdf', 230305, 'application/pdf', NULL, 1, '2025-09-25 08:56:40');
 
 --
 -- Triggers `file_uploads`
@@ -614,16 +635,14 @@ CREATE TABLE IF NOT EXISTS `tasks` (
   KEY `idx_due_date` (`due_date`),
   KEY `idx_created_by` (`created_by`),
   KEY `idx_tasks_assigned_status` (`assigned_to`,`status`)
-) ENGINE=MyISAM AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `tasks`
 --
 
 INSERT INTO `tasks` (`id`, `title`, `description`, `assigned_to`, `job_id`, `candidate_id`, `priority`, `status`, `due_date`, `created_by`, `created_at`, `updated_at`) VALUES
-(2, 'Test Task', 'This is a test task to verify the data mapping works correctly', 1, '1', 2, 'High', 'In Progress', '2025-09-30', 1, '2025-09-25 07:24:29', '2025-09-25 07:24:29'),
-(4, 'Short Task', 'Test', 1, '1', 2, 'Medium', 'Pending', '2025-10-01', 1, '2025-09-25 07:26:51', '2025-09-25 07:26:51'),
-(5, 'dsfdsf', 'fbfdbcv', 1, NULL, NULL, 'Medium', 'Completed', '2025-09-26', 1, '2025-09-25 07:27:00', '2025-09-25 07:54:33');
+(6, 'New Task Check', 'Description', 3, '1', 2, 'High', 'In Progress', '2025-09-26', 1, '2025-09-25 09:14:04', '2025-09-25 09:14:04');
 
 -- --------------------------------------------------------
 

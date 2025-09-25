@@ -647,29 +647,60 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
       const candidate = candidates[i];
       
       // Validate required fields
-      if (!candidate.name || !candidate.email || !candidate.position || !candidate.assignedTo) {
+      if (!candidate.name || !candidate.email || !candidate.position) {
         errors.push({ row: i + 1, error: 'Missing required fields' });
         continue;
       }
 
+      // Set default assignedTo if not provided
+      let assignedTo = candidate.assignedTo || 1; // Default to admin user ID 1
+
       // Validate assigned user exists
-      const users = await query('SELECT id FROM users WHERE id = ?', [candidate.assignedTo]);
+      const users = await query('SELECT id FROM users WHERE id = ?', [assignedTo]);
       if (users.length === 0) {
         errors.push({ row: i + 1, error: 'Assigned user not found' });
         continue;
       }
 
-      // Create candidate
+      // Resolve interviewer name to ID
+      let interviewerId = null;
+      if (candidate.interviewerName && candidate.interviewerName.trim()) {
+        // Try exact match first
+        let interviewerQuery = await query('SELECT id FROM users WHERE name = ?', [candidate.interviewerName.trim()]);
+        
+        // If not found, try case-insensitive search
+        if (interviewerQuery.length === 0) {
+          interviewerQuery = await query('SELECT id FROM users WHERE LOWER(name) = LOWER(?)', [candidate.interviewerName.trim()]);
+        }
+        
+        // If still not found, try partial match
+        if (interviewerQuery.length === 0) {
+          interviewerQuery = await query('SELECT id FROM users WHERE LOWER(name) LIKE LOWER(?)', [`%${candidate.interviewerName.trim()}%`]);
+        }
+        
+        if (interviewerQuery.length > 0) {
+          interviewerId = interviewerQuery[0].id;
+        }
+      }
+
+      // Create candidate with all new fields
       const result = await query(
-        `INSERT INTO candidates (name, email, phone, position, stage, source, applied_date, resume_path, notes, score, 
-         assigned_to, skills, experience, salary_expected, salary_negotiable, joining_time, notice_period, immediate_joiner) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
+        `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, notes, score, 
+         assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
+         location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
+         interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
          candidate.source || 'Bulk Import', candidate.appliedDate || new Date().toISOString().split('T')[0],
-         candidate.resumePath || null, candidate.notes || '', candidate.score || 0, candidate.assignedTo,
-         JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.salaryExpected || '',
-         candidate.salaryNegotiable !== undefined ? candidate.salaryNegotiable : true,
-         candidate.joiningTime || '', candidate.noticePeriod || '', candidate.immediateJoiner || false]
+         candidate.resumePath || null, candidate.notes || '', candidate.score || 0, assignedTo,
+         JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.expectedSalary || '', 
+         candidate.salaryOffered || '', candidate.salaryNegotiable !== undefined ? candidate.salaryNegotiable : true,
+         candidate.joiningTime || '', candidate.noticePeriod || '', candidate.immediateJoiner || false,
+         // New fields
+         candidate.location || null, candidate.expertise || null, candidate.willingAlternateSaturday || null,
+         candidate.workPreference || null, candidate.currentCtc || null, candidate.ctcFrequency || 'Annual',
+         candidate.inHouseAssignmentStatus || 'Pending', candidate.interviewDate || null, interviewerId,
+         candidate.inOfficeAssignment || null, candidate.assignmentLocation || null, candidate.resumeLocation || null]
       );
 
       results.push({ row: i + 1, candidateId: result.insertId });
