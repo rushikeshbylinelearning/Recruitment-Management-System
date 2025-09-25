@@ -83,7 +83,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     // Structure work preferences
     candidate.workPreferences = {
       workPreference: candidate.work_preference || null,
-      willingAlternateSaturday: candidate.willing_alternate_saturday || null,
+      willingAlternateSaturday: candidate.willing_alternate_saturday === null ? null : Boolean(candidate.willing_alternate_saturday),
       currentCtc: candidate.current_ctc || null,
       ctcFrequency: candidate.ctc_frequency || 'Annual'
     };
@@ -95,6 +95,10 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
       interviewerId: candidate.interviewer_id || null,
       inOfficeAssignment: candidate.in_office_assignment || null
     };
+
+    // Add location fields
+    candidate.assignmentLocation = candidate.assignment_location || null;
+    candidate.resumeLocation = candidate.resume_location || null;
 
     // Initialize empty arrays for frontend compatibility
     candidate.communications = [];
@@ -119,6 +123,9 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     delete candidate.interview_date;
     delete candidate.interviewer_id;
     delete candidate.in_office_assignment;
+    // Remove new location snake_case fields
+    delete candidate.assignment_location;
+    delete candidate.resume_location;
 
     // Get communications count
     const commCount = await query(
@@ -196,7 +203,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   // Structure work preferences
   candidate.workPreferences = {
     workPreference: candidate.work_preference || null,
-    willingAlternateSaturday: candidate.willing_alternate_saturday || null,
+    willingAlternateSaturday: candidate.willing_alternate_saturday === null ? null : Boolean(candidate.willing_alternate_saturday),
     currentCtc: candidate.current_ctc || null,
     ctcFrequency: candidate.ctc_frequency || 'Annual'
   };
@@ -208,6 +215,10 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
     interviewerId: candidate.interviewer_id || null,
     inOfficeAssignment: candidate.in_office_assignment || null
   };
+
+  // Add location fields
+  candidate.assignmentLocation = candidate.assignment_location || null;
+  candidate.resumeLocation = candidate.resume_location || null;
   
   // Remove snake_case fields
   delete candidate.resume_file_id;
@@ -228,6 +239,9 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   delete candidate.interview_date;
   delete candidate.interviewer_id;
   delete candidate.in_office_assignment;
+  // Remove new location snake_case fields
+  delete candidate.assignment_location;
+  delete candidate.resume_location;
 
   // Get communications
   const communications = await query(
@@ -334,7 +348,10 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     inHouseAssignmentStatus,
     interviewDate,
     interviewerId,
-    inOfficeAssignment
+    inOfficeAssignment,
+    // New location fields
+    assignmentLocation,
+    resumeLocation
   } = req.body;
 
   // Validate assigned user exists (only if assignedTo is a valid user ID)
@@ -362,8 +379,8 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, notes, score, 
      assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
      location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
-     interview_date, interviewer_id, in_office_assignment) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       jobId || null,
       name, 
@@ -396,7 +413,10 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
       inHouseAssignmentStatus || 'Pending',
       interviewDate || null,
       interviewerId || null,
-      inOfficeAssignment || null
+      inOfficeAssignment || null,
+      // New location fields
+      assignmentLocation || null,
+      resumeLocation || null
     ]
   );
 
@@ -442,7 +462,10 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
     inHouseAssignmentStatus,
     interviewDate,
     interviewerId,
-    inOfficeAssignment
+    inOfficeAssignment,
+    // New location fields
+    assignmentLocation,
+    resumeLocation
   } = req.body;
 
   // Check if candidate exists
@@ -483,6 +506,9 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   const safeInterviewDate = interviewDate === undefined ? null : interviewDate;
   const safeInterviewerId = interviewerId === undefined ? null : interviewerId;
   const safeInOfficeAssignment = inOfficeAssignment === undefined ? null : inOfficeAssignment;
+  // New location fields safe values
+  const safeAssignmentLocation = assignmentLocation === undefined ? null : assignmentLocation;
+  const safeResumeLocation = resumeLocation === undefined ? null : resumeLocation;
 
   // Update candidate
   await query(
@@ -491,12 +517,13 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
      salary_offered = ?, salary_negotiable = ?, joining_time = ?, notice_period = ?, immediate_joiner = ?,
      location = ?, expertise = ?, willing_alternate_saturday = ?, work_preference = ?, current_ctc = ?, 
      ctc_frequency = ?, in_house_assignment_status = ?, interview_date = ?, interviewer_id = ?, 
-     in_office_assignment = ?, updated_at = NOW() 
+     in_office_assignment = ?, assignment_location = ?, resume_location = ?, updated_at = NOW() 
      WHERE id = ?`,
     [name, email, phone, position, stage, source, appliedDate, safeResumePath, safeNotes, safeScore, assignedUserId,
      JSON.stringify(skills), safeExperience, safeSalaryExpected, safeSalaryOffered, safeSalaryNegotiable, safeJoiningTime, safeNoticePeriod, safeImmediateJoiner,
      safeLocation, safeExpertise, safeWillingAlternateSaturday, safeWorkPreference, safeCurrentCtc, safeCtcFrequency, 
-     safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, candidateId]
+     safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, 
+     safeAssignmentLocation, safeResumeLocation, candidateId]
   );
 
   res.json({

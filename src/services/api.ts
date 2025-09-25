@@ -293,6 +293,8 @@ export interface Candidate {
     interviewerId?: number;
     inOfficeAssignment?: string;
   };
+  assignmentLocation?: string;
+  resumeLocation?: string;
   interviews: Interview[];
   preInterviewFeedback?: any;
   postInterviewFeedback?: any[];

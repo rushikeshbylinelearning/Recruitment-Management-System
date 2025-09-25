@@ -41,7 +41,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     inHouseAssignmentStatus: 'Pending',
     interviewDate: '',
     interviewerId: null as number | null,
-    inOfficeAssignment: ''
+    inOfficeAssignment: '',
+    // New location fields
+    assignmentLocation: '',
+    resumeLocation: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -76,17 +79,32 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         noticePeriod: editingCandidate.availability?.noticePeriod || '',
         immediateJoiner: editingCandidate.availability?.immediateJoiner || false,
         resume: editingCandidate.resume || '',
-        // New fields
+        // New fields - handle both structured and flat data
         location: editingCandidate.location || '',
         expertise: editingCandidate.expertise || '',
-        willingAlternateSaturday: editingCandidate.workPreferences?.willingAlternateSaturday || null,
-        workPreference: editingCandidate.workPreferences?.workPreference || '',
-        currentCtc: editingCandidate.workPreferences?.currentCtc || '',
-        ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 'Annual',
-        inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 'Pending',
-        interviewDate: editingCandidate.assignmentDetails?.interviewDate || '',
-        interviewerId: editingCandidate.assignmentDetails?.interviewerId || null,
-        inOfficeAssignment: editingCandidate.assignmentDetails?.inOfficeAssignment || ''
+        willingAlternateSaturday: editingCandidate.workPreferences?.willingAlternateSaturday !== undefined ? 
+                                 editingCandidate.workPreferences.willingAlternateSaturday :
+                                 editingCandidate.willingAlternateSaturday !== undefined ? 
+                                 editingCandidate.willingAlternateSaturday : null,
+        workPreference: editingCandidate.workPreferences?.workPreference || 
+                       editingCandidate.workPreference || '',
+        currentCtc: editingCandidate.workPreferences?.currentCtc || 
+                   editingCandidate.currentCtc || '',
+        ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 
+                     editingCandidate.ctcFrequency || 'Annual',
+        inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 
+                               editingCandidate.inHouseAssignmentStatus || 'Pending',
+        interviewDate: editingCandidate.assignmentDetails?.interviewDate ? 
+                      new Date(editingCandidate.assignmentDetails.interviewDate).toISOString().split('T')[0] :
+                      editingCandidate.interviewDate ? 
+                      new Date(editingCandidate.interviewDate).toISOString().split('T')[0] : '',
+        interviewerId: editingCandidate.assignmentDetails?.interviewerId || 
+                      editingCandidate.interviewerId || null,
+        inOfficeAssignment: editingCandidate.assignmentDetails?.inOfficeAssignment || 
+                           editingCandidate.inOfficeAssignment || '',
+        // New location fields
+        assignmentLocation: editingCandidate.assignmentLocation || '',
+        resumeLocation: editingCandidate.resumeLocation || ''
       });
 
       // Set uploaded file if exists
@@ -128,7 +146,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         inHouseAssignmentStatus: 'Pending',
         interviewDate: '',
         interviewerId: null as number | null,
-        inOfficeAssignment: ''
+        inOfficeAssignment: '',
+        // New location fields
+        assignmentLocation: '',
+        resumeLocation: ''
       });
       setUploadedFile(null);
     }
@@ -212,6 +233,9 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       interviewDate: formData.interviewDate,
       interviewerId: formData.interviewerId,
       inOfficeAssignment: formData.inOfficeAssignment,
+      // New location fields
+      assignmentLocation: formData.assignmentLocation,
+      resumeLocation: formData.resumeLocation,
       interviews: []
     };
 
@@ -247,7 +271,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       inHouseAssignmentStatus: 'Pending',
       interviewDate: '',
       interviewerId: null as number | null,
-      inOfficeAssignment: ''
+      inOfficeAssignment: '',
+      // New location fields
+      assignmentLocation: '',
+      resumeLocation: ''
     });
     setErrors({});
     setUploadedFile(null);
@@ -727,6 +754,32 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Details about in-office assignment..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Assignment Location/Link
+            </label>
+            <input
+              type="text"
+              value={formData.assignmentLocation}
+              onChange={(e) => setFormData(prev => ({ ...prev, assignmentLocation: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="File path or URL to assignment file"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Resume Location/Link
+            </label>
+            <input
+              type="text"
+              value={formData.resumeLocation}
+              onChange={(e) => setFormData(prev => ({ ...prev, resumeLocation: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="File path or URL to resume file"
             />
           </div>
 

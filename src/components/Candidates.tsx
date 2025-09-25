@@ -375,13 +375,13 @@ export default function Candidates() {
             <Upload size={20} />
             <span>Bulk Import</span>
           </button>
-          <button
+          {/* <button
             onClick={handleShowAdvancedSearch}
             className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
           >
             <Search size={20} />
             <span>Advanced Search</span>
-          </button>
+          </button> */}
           <button
             onClick={() => setViewMode('kanban')}
             className={`px-4 py-2 rounded-lg transition-colors ${
