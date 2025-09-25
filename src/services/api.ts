@@ -110,7 +110,11 @@ export interface User {
     actions: string[];
   }>;
   interviewerProfile?: any;
-  // Optional properties for team statistics
+  statistics?: {
+    tasks_completed: number;
+    assigned_jobs: number;
+  };
+  // Legacy properties for backward compatibility
   tasksCompleted?: number;
   candidatesProcessed?: number;
   assignedJobs?: any[];
@@ -265,6 +269,8 @@ export interface Candidate {
   communications: Communication[];
   skills: string[];
   experience: string;
+  location?: string;
+  expertise?: string;
   salary: {
     expected: string;
     offered?: string;
@@ -274,6 +280,18 @@ export interface Candidate {
     joiningTime: string;
     noticePeriod: string;
     immediateJoiner: boolean;
+  };
+  workPreferences: {
+    workPreference?: 'Onsite' | 'WFH' | 'Hybrid';
+    willingAlternateSaturday?: boolean;
+    currentCtc?: string;
+    ctcFrequency?: 'Monthly' | 'Annual';
+  };
+  assignmentDetails: {
+    inHouseAssignmentStatus?: 'Pending' | 'Shortlisted' | 'Rejected';
+    interviewDate?: string;
+    interviewerId?: number;
+    inOfficeAssignment?: string;
   };
   interviews: Interview[];
   preInterviewFeedback?: any;

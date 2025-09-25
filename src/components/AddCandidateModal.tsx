@@ -24,11 +24,24 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     skills: '',
     notes: '',
     stage: 'Applied',
+    score: 0,
     expectedSalary: '',
+    offeredSalary: '',
     salaryNegotiable: true,
     joiningTime: '',
     noticePeriod: '',
-    immediateJoiner: false
+    immediateJoiner: false,
+    // New fields
+    location: '',
+    expertise: '',
+    willingAlternateSaturday: null as boolean | null,
+    workPreference: '',
+    currentCtc: '',
+    ctcFrequency: 'Annual',
+    inHouseAssignmentStatus: 'Pending',
+    interviewDate: '',
+    interviewerId: null as number | null,
+    inOfficeAssignment: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -62,7 +75,18 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         joiningTime: editingCandidate.availability?.joiningTime || '',
         noticePeriod: editingCandidate.availability?.noticePeriod || '',
         immediateJoiner: editingCandidate.availability?.immediateJoiner || false,
-        resume: editingCandidate.resume || ''
+        resume: editingCandidate.resume || '',
+        // New fields
+        location: editingCandidate.location || '',
+        expertise: editingCandidate.expertise || '',
+        willingAlternateSaturday: editingCandidate.workPreferences?.willingAlternateSaturday || null,
+        workPreference: editingCandidate.workPreferences?.workPreference || '',
+        currentCtc: editingCandidate.workPreferences?.currentCtc || '',
+        ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 'Annual',
+        inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 'Pending',
+        interviewDate: editingCandidate.assignmentDetails?.interviewDate || '',
+        interviewerId: editingCandidate.assignmentDetails?.interviewerId || null,
+        inOfficeAssignment: editingCandidate.assignmentDetails?.inOfficeAssignment || ''
       });
 
       // Set uploaded file if exists
@@ -93,7 +117,18 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         joiningTime: '',
         noticePeriod: '',
         immediateJoiner: false,
-        resume: ''
+        resume: '',
+        // New fields
+        location: '',
+        expertise: '',
+        willingAlternateSaturday: null as boolean | null,
+        workPreference: '',
+        currentCtc: '',
+        ctcFrequency: 'Annual',
+        inHouseAssignmentStatus: 'Pending',
+        interviewDate: '',
+        interviewerId: null as number | null,
+        inOfficeAssignment: ''
       });
       setUploadedFile(null);
     }
@@ -166,6 +201,17 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       joiningTime: formData.joiningTime,
       noticePeriod: formData.noticePeriod,
       immediateJoiner: formData.immediateJoiner,
+      // Send new fields as flat fields for backend compatibility
+      location: formData.location,
+      expertise: formData.expertise,
+      willingAlternateSaturday: formData.willingAlternateSaturday,
+      workPreference: formData.workPreference,
+      currentCtc: formData.currentCtc,
+      ctcFrequency: formData.ctcFrequency,
+      inHouseAssignmentStatus: formData.inHouseAssignmentStatus,
+      interviewDate: formData.interviewDate,
+      interviewerId: formData.interviewerId,
+      inOfficeAssignment: formData.inOfficeAssignment,
       interviews: []
     };
 
@@ -184,11 +230,24 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       skills: '',
       notes: '',
       stage: 'Applied',
+      score: 0,
       expectedSalary: '',
+      offeredSalary: '',
       salaryNegotiable: true,
       joiningTime: '',
       noticePeriod: '',
-      immediateJoiner: false
+      immediateJoiner: false,
+      // New fields
+      location: '',
+      expertise: '',
+      willingAlternateSaturday: null as boolean | null,
+      workPreference: '',
+      currentCtc: '',
+      ctcFrequency: 'Annual',
+      inHouseAssignmentStatus: 'Pending',
+      interviewDate: '',
+      interviewerId: null as number | null,
+      inOfficeAssignment: ''
     });
     setErrors({});
     setUploadedFile(null);
@@ -539,9 +598,141 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
             />
           </div>
 
+          {/* New Fields Section */}
+          <div className="col-span-2">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Additional Information</h3>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notes
+              Location
+            </label>
+            <input
+              type="text"
+              value={formData.location}
+              onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Current location"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Expertise
+            </label>
+            <input
+              type="text"
+              value={formData.expertise}
+              onChange={(e) => setFormData(prev => ({ ...prev, expertise: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Primary expertise/domain"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Work Preference
+            </label>
+            <select
+              value={formData.workPreference}
+              onChange={(e) => setFormData(prev => ({ ...prev, workPreference: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select work preference</option>
+              <option value="Onsite">Onsite</option>
+              <option value="WFH">Work From Home</option>
+              <option value="Hybrid">Hybrid</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Willing to work on Alternate Saturday
+            </label>
+            <select
+              value={formData.willingAlternateSaturday === null ? '' : formData.willingAlternateSaturday.toString()}
+              onChange={(e) => setFormData(prev => ({ 
+                ...prev, 
+                willingAlternateSaturday: e.target.value === '' ? null : e.target.value === 'true' 
+              }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Current CTC
+            </label>
+            <input
+              type="text"
+              value={formData.currentCtc}
+              onChange={(e) => setFormData(prev => ({ ...prev, currentCtc: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Current salary package"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              CTC Frequency
+            </label>
+            <select
+              value={formData.ctcFrequency}
+              onChange={(e) => setFormData(prev => ({ ...prev, ctcFrequency: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="Annual">Annual</option>
+              <option value="Monthly">Monthly</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              In House Assignment Status
+            </label>
+            <select
+              value={formData.inHouseAssignmentStatus}
+              onChange={(e) => setFormData(prev => ({ ...prev, inHouseAssignmentStatus: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="Pending">Pending</option>
+              <option value="Shortlisted">Shortlisted</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Interview Date
+            </label>
+            <input
+              type="date"
+              value={formData.interviewDate}
+              onChange={(e) => setFormData(prev => ({ ...prev, interviewDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              In Office Assignment
+            </label>
+            <textarea
+              value={formData.inOfficeAssignment}
+              onChange={(e) => setFormData(prev => ({ ...prev, inOfficeAssignment: e.target.value }))}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Details about in-office assignment..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Notes (HR Remarks)
             </label>
             <textarea
               value={formData.notes}

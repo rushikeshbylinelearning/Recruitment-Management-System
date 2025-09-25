@@ -80,6 +80,12 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                       <span className="text-gray-700">Source: {candidate.source}</span>
                     </div>
                   )}
+                  {candidate.location && (
+                    <div className="flex items-center space-x-3">
+                      <MapPin size={16} className="text-gray-400" />
+                      <span className="text-gray-700">Location: {candidate.location}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -106,19 +112,30 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                 </div>
               </div>
 
-              {candidate.skills && candidate.skills.length > 0 && (
+              {(candidate.skills && candidate.skills.length > 0) || candidate.expertise && (
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Skills</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {candidate.skills.map((skill, index) => (
-                      <span
-                        key={index}
-                        className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Skills & Expertise</h3>
+                  {candidate.expertise && (
+                    <div className="mb-3">
+                      <span className="text-sm text-gray-600">Primary Expertise:</span>
+                      <p className="text-gray-900 font-medium">{candidate.expertise}</p>
+                    </div>
+                  )}
+                  {candidate.skills && candidate.skills.length > 0 && (
+                    <div>
+                      <span className="text-sm text-gray-600 mb-2 block">Technical Skills:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {candidate.skills.map((skill, index) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -149,6 +166,41 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                           : 'bg-red-100 text-red-800'
                       }`}>
                         {candidate.salary.negotiable ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {candidate.workPreferences && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Work Preferences</h3>
+                  <div className="space-y-3">
+                    {candidate.workPreferences.workPreference && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Work Preference:</span>
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                          {candidate.workPreferences.workPreference}
+                        </span>
+                      </div>
+                    )}
+                    {candidate.workPreferences.currentCtc && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Current CTC:</span>
+                        <span className="text-gray-900">₹{candidate.workPreferences.currentCtc} ({candidate.workPreferences.ctcFrequency || 'Annual'})</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Alternate Saturday:</span>
+                      <span className={`px-2 py-1 rounded-full text-sm ${
+                        candidate.workPreferences.willingAlternateSaturday === true
+                          ? 'bg-green-100 text-green-800'
+                          : candidate.workPreferences.willingAlternateSaturday === false
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {candidate.workPreferences.willingAlternateSaturday === true ? 'Yes' : 
+                         candidate.workPreferences.willingAlternateSaturday === false ? 'No' : 'Not Specified'}
                       </span>
                     </div>
                   </div>
@@ -209,9 +261,41 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                 )}
               </div>
 
+              {candidate.assignmentDetails && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Assignment Details</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">In House Assignment:</span>
+                      <span className={`px-2 py-1 rounded-full text-sm ${
+                        candidate.assignmentDetails.inHouseAssignmentStatus === 'Shortlisted'
+                          ? 'bg-green-100 text-green-800'
+                          : candidate.assignmentDetails.inHouseAssignmentStatus === 'Rejected'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {candidate.assignmentDetails.inHouseAssignmentStatus || 'Pending'}
+                      </span>
+                    </div>
+                    {candidate.assignmentDetails.interviewDate && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Interview Date:</span>
+                        <span className="text-gray-900">{new Date(candidate.assignmentDetails.interviewDate).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {candidate.assignmentDetails.inOfficeAssignment && (
+                      <div>
+                        <span className="text-sm text-gray-600 block mb-2">In Office Assignment:</span>
+                        <p className="text-gray-700 text-sm bg-white p-3 rounded border">{candidate.assignmentDetails.inOfficeAssignment}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {candidate.notes && (
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">HR Remarks</h3>
                   <p className="text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
                 </div>
               )}

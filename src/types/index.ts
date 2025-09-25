@@ -38,6 +38,8 @@ export interface Candidate {
   communications: Communication[];
   skills: string[];
   experience: string;
+  location?: string;
+  expertise?: string;
   salary: {
     expected: string;
     offered?: string;
@@ -47,6 +49,18 @@ export interface Candidate {
     joiningTime: string;
     noticePeriod: string;
     immediateJoiner: boolean;
+  };
+  workPreferences: {
+    workPreference?: 'Onsite' | 'WFH' | 'Hybrid';
+    willingAlternateSaturday?: boolean;
+    currentCtc?: string;
+    ctcFrequency?: 'Monthly' | 'Annual';
+  };
+  assignmentDetails: {
+    inHouseAssignmentStatus?: 'Pending' | 'Shortlisted' | 'Rejected';
+    interviewDate?: string;
+    interviewerId?: number;
+    inOfficeAssignment?: string;
   };
   interviews: Interview[];
   preInterviewFeedback?: PreInterviewFeedback;
@@ -147,6 +161,10 @@ export interface TeamMember {
   candidatesProcessed: number;
   status: 'Active' | 'Away' | 'Busy';
   lastLogin: string;
+  statistics?: {
+    tasks_completed: number;
+    assigned_jobs: number;
+  };
   createdDate: string;
   interviewerProfile?: InterviewerProfile;
 }
@@ -173,6 +191,10 @@ export interface User {
   permissions: Permission[];
   avatar: string;
   interviewerProfile?: InterviewerProfile;
+  statistics?: {
+    tasks_completed: number;
+    assigned_jobs: number;
+  };
 }
 
 export interface Task {
