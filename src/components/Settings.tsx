@@ -41,9 +41,9 @@ export default function Settings() {
   const tabs = [
     { id: 'team', label: 'Team Management', icon: Users },
     { id: 'permissions', label: 'Role Permissions', icon: Shield },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'integrations', label: 'Integrations', icon: Globe },
-    { id: 'system', label: 'System', icon: Database },
+    // { id: 'notifications', label: 'Notifications', icon: Bell },
+    // { id: 'integrations', label: 'Integrations', icon: Globe },
+    // { id: 'system', label: 'System', icon: Database },
   ];
 
   // Load role permissions from API
