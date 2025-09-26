@@ -11,19 +11,21 @@ import { asyncHandler, ValidationError, UnauthorizedError, ConflictError } from 
 const router = express.Router();
 
 // Rate limiting for login attempts only
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login requests per windowMs
-  message: {
-    success: false,
-    message: 'Too many login attempts from this IP, please try again after 15 minutes.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// const loginLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 5, // Limit each IP to 5 login requests per windowMs
+//   message: {
+//     success: false,
+//     message: 'Too many login attempts from this IP, please try again after 15 minutes.'
+//   },
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
 // Login endpoint with rate limiting
-router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
+router.post('/login', 
+  // loginLimiter, 
+  asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -358,7 +360,10 @@ function getDefaultPermissions(role) {
     ],
     'Interviewer': [
       { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view'] },
+      { module: 'tasks', actions: ['view'] },
+      { module: 'team', actions: ['view'] },
       { module: 'interviews', actions: ['view', 'edit'] },
     ]
   };

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, Calendar, User, AlertCircle, CheckCircle, Clock, X, Save, Edit, Trash2 } from 'lucide-react';
 import { Task } from '../types';
 import { tasksAPI, usersAPI, jobsAPI, candidatesAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface TasksProps {
   tasks?: Task[]; // Made optional since we'll fetch from backend
@@ -13,6 +14,7 @@ interface TasksProps {
 }
 
 export default function Tasks({}: TasksProps) {
+  const { hasPermission } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -42,27 +44,43 @@ export default function Tasks({}: TasksProps) {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [tasksResponse, usersResponse, jobsResponse, candidatesResponse] = await Promise.all([
-          tasksAPI.getTasks(),
-          usersAPI.getUsers(),
-          jobsAPI.getJobs(),
-          candidatesAPI.getCandidates()
-        ]);
-
+        setError('');
+        
+        // Always try to load tasks first
+        const tasksResponse = await tasksAPI.getTasks();
         if (tasksResponse.success && tasksResponse.data) {
           setTasks(tasksResponse.data.tasks || []);
         }
 
-        if (usersResponse.success && usersResponse.data) {
-          setUsers(usersResponse.data.users || []);
+        // Try to load other data, but don't fail if permission denied
+        try {
+          const usersResponse = await usersAPI.getUsers();
+          if (usersResponse.success && usersResponse.data) {
+            setUsers(usersResponse.data.users || []);
+          }
+        } catch (err) {
+          console.warn('Users API permission denied:', err);
+          // Continue without users data
         }
 
-        if (jobsResponse.success && jobsResponse.data) {
-          setJobs(jobsResponse.data.jobs || []);
+        try {
+          const jobsResponse = await jobsAPI.getJobs();
+          if (jobsResponse.success && jobsResponse.data) {
+            setJobs(jobsResponse.data.jobs || []);
+          }
+        } catch (err) {
+          console.warn('Jobs API permission denied:', err);
+          // Continue without jobs data
         }
 
-        if (candidatesResponse.success && candidatesResponse.data) {
-          setCandidates(candidatesResponse.data.candidates || []);
+        try {
+          const candidatesResponse = await candidatesAPI.getCandidates();
+          if (candidatesResponse.success && candidatesResponse.data) {
+            setCandidates(candidatesResponse.data.candidates || []);
+          }
+        } catch (err) {
+          console.warn('Candidates API permission denied:', err);
+          // Continue without candidates data
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -295,13 +313,15 @@ export default function Tasks({}: TasksProps) {
           <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
           <p className="text-gray-600 mt-1">Manage daily tasks and activities for your hiring process</p>
         </div>
-        <button 
-          onClick={handleNewTask}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          <span>New Task</span>
-        </button>
+        {hasPermission('tasks', 'create') && (
+          <button 
+            onClick={handleNewTask}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            <span>New Task</span>
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -488,32 +508,38 @@ export default function Tasks({}: TasksProps) {
                 </div>
                 
                 <div className="mt-6 flex justify-end space-x-3">
-                  <button 
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors flex items-center space-x-2"
-                  >
-                    <Trash2 size={16} />
-                    <span>Delete</span>
-                  </button>
-                  <button 
-                    onClick={() => handleEditTask(task)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
-                  >
-                    <Edit size={16} />
-                    <span>Edit Task</span>
-                  </button>
-                  <button 
-                    onClick={() => handleMarkComplete(task.id)}
-                    disabled={task.status === 'Completed'}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                      task.status === 'Completed' 
-                        ? 'bg-gray-400 text-white cursor-not-allowed' 
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    <CheckCircle size={16} />
-                    <span>Mark Complete</span>
-                  </button>
+                  {hasPermission('tasks', 'delete') && (
+                    <button 
+                      onClick={() => handleDeleteTask(task.id)}
+                      className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors flex items-center space-x-2"
+                    >
+                      <Trash2 size={16} />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                  {hasPermission('tasks', 'edit') && (
+                    <button 
+                      onClick={() => handleEditTask(task)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
+                    >
+                      <Edit size={16} />
+                      <span>Edit Task</span>
+                    </button>
+                  )}
+                  {hasPermission('tasks', 'edit') && (
+                    <button 
+                      onClick={() => handleMarkComplete(task.id)}
+                      disabled={task.status === 'Completed'}
+                      className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                        task.status === 'Completed' 
+                          ? 'bg-gray-400 text-white cursor-not-allowed' 
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                    >
+                      <CheckCircle size={16} />
+                      <span>Mark Complete</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

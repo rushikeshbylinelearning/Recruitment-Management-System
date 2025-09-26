@@ -18,6 +18,12 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
   let whereClause = 'WHERE 1=1';
   let params = [];
 
+  // For non-admin users, only show tasks assigned to them
+  if (req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+    whereClause += ' AND t.assigned_to = ?';
+    params.push(req.user.id);
+  }
+
   if (status) {
     whereClause += ' AND t.status = ?';
     params.push(status);
@@ -28,7 +34,7 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
     params.push(priority);
   }
 
-  if (assignedTo) {
+  if (assignedTo && (req.user.role === 'Admin' || req.user.role === 'HR Manager')) {
     whereClause += ' AND t.assigned_to = ?';
     params.push(assignedTo);
   }

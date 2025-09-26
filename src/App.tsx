@@ -41,7 +41,7 @@ function RoleBasedJobs() {
 function RoleBasedCandidates() {
   const { user } = useAuth();
   
-  if (user?.role === 'Interviewer') {
+    if (user?.role === 'Interviewer') {
     return <InterviewerCandidates />;
   }
   
