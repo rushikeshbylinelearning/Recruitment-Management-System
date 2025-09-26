@@ -50,6 +50,64 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     originalName: string;
     size: number;
   } | null>(null);
+
+  // Helper function to handle numeric input
+  const handleNumericInput = (value: string, allowDecimals: boolean = false) => {
+    // Remove all non-numeric characters except decimal point if allowed
+    let cleaned = value.replace(/[^0-9.]/g, '');
+    
+    if (allowDecimals) {
+      // Ensure only one decimal point
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = parts[0] + '.' + parts.slice(1).join('');
+      }
+    } else {
+      // Remove decimal points if not allowed
+      cleaned = cleaned.replace(/\./g, '');
+    }
+    
+    return cleaned;
+  };
+
+  const handleLPAInput = (value: string) => {
+    // Allow numbers, decimal point, and LPA text (case insensitive)
+    let cleaned = value.replace(/[^0-9.LPA]/gi, '');
+    
+    // Convert to uppercase for consistency
+    cleaned = cleaned.toUpperCase();
+    
+    // If the value is empty or just whitespace, return empty string
+    if (!cleaned.trim()) {
+      return '';
+    }
+    
+    // If user is typing and it's just numbers (no LPA yet), don't auto-add LPA
+    // This allows users to edit the number part freely
+    if (/^[0-9]+\.?[0-9]*$/.test(cleaned)) {
+      return cleaned; // Return as-is, let user decide when to add LPA
+    }
+    
+    // If LPA is present, ensure it's at the end and only once
+    const lpaIndex = cleaned.indexOf('LPA');
+    if (lpaIndex !== -1) {
+      // Remove any LPA that's not at the end
+      const beforeLPA = cleaned.substring(0, lpaIndex);
+      const afterLPA = cleaned.substring(lpaIndex + 3);
+      
+      // Only keep the first LPA and put it at the end
+      cleaned = beforeLPA + afterLPA + 'LPA';
+    }
+    
+    // Ensure only one decimal point
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      cleaned = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
+    return cleaned;
+  };
+
   const [uploading, setUploading] = useState(false);
 
   // Populate form when editing
@@ -367,11 +425,14 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               <input
                 type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                onChange={(e) => {
+                  const numericValue = handleNumericInput(e.target.value);
+                  setFormData(prev => ({ ...prev, phone: numericValue }));
+                }}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.phone ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="+1-555-0123"
+                placeholder="e.g., 1234567890"
               />
               {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
             </div>
@@ -437,11 +498,14 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               <input
                 type="text"
                 value={formData.experience}
-                onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
+                onChange={(e) => {
+                  const numericValue = handleNumericInput(e.target.value, true);
+                  setFormData(prev => ({ ...prev, experience: numericValue }));
+                }}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.experience ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="e.g., 5 years"
+                placeholder="e.g., 5.5"
               />
               {errors.experience && <p className="text-red-500 text-sm mt-1">{errors.experience}</p>}
             </div>
@@ -508,27 +572,33 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Expected Salary
+                Expected Salary (LPA)
               </label>
               <input
                 type="text"
                 value={formData.expectedSalary}
-                onChange={(e) => setFormData(prev => ({ ...prev, expectedSalary: e.target.value }))}
+                onChange={(e) => {
+                  const lpaValue = handleLPAInput(e.target.value);
+                  setFormData(prev => ({ ...prev, expectedSalary: lpaValue }));
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 8-10 LPA"
+                placeholder="e.g., 8 or 8.5 or 8LPA"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Offered Salary
+                Offered Salary (LPA)
               </label>
               <input
                 type="text"
                 value={formData.offeredSalary}
-                onChange={(e) => setFormData(prev => ({ ...prev, offeredSalary: e.target.value }))}
+                onChange={(e) => {
+                  const lpaValue = handleLPAInput(e.target.value);
+                  setFormData(prev => ({ ...prev, offeredSalary: lpaValue }));
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 9 LPA"
+                placeholder="e.g., 9 or 9.5 or 9LPA"
               />
             </div>
 
@@ -552,9 +622,12 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               <input
                 type="text"
                 value={formData.noticePeriod}
-                onChange={(e) => setFormData(prev => ({ ...prev, noticePeriod: e.target.value }))}
+                onChange={(e) => {
+                  const numericValue = handleNumericInput(e.target.value, true);
+                  setFormData(prev => ({ ...prev, noticePeriod: numericValue }));
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 30 days, 2 months"
+                placeholder="e.g., 30"
               />
             </div>
 
@@ -665,14 +738,17 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Current CTC
+              Current CTC (LPA)
             </label>
             <input
               type="text"
               value={formData.currentCtc}
-              onChange={(e) => setFormData(prev => ({ ...prev, currentCtc: e.target.value }))}
+              onChange={(e) => {
+                const lpaValue = handleLPAInput(e.target.value);
+                setFormData(prev => ({ ...prev, currentCtc: lpaValue }));
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Current salary package"
+              placeholder="e.g., 7 or 7.5 or 7LPA"
             />
           </div>
 

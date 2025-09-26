@@ -40,8 +40,8 @@ const getDefaultPermissions = (role) => {
     ],
     'Recruiter': [
       { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view'] },
-      { module: 'candidates', actions: ['view', 'edit'] },
+      { module: 'jobs', actions: ['view', 'create', 'edit'] },
+      { module: 'candidates', actions: ['view', 'create', 'edit'] },
       { module: 'communications', actions: ['view', 'create'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },
       { module: 'analytics', actions: ['view'] },

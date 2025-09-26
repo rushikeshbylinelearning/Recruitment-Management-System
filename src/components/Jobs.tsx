@@ -2,11 +2,15 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase } from 'lucide-react';
 import { JobPosting } from '../types';
 import { jobsAPI, JobPosting as ApiJobPosting, candidatesAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
 import AddJobModal from './AddJobModal';
 import JobDetailsModal from './JobDetailsModal';
+import JobApplicantsModal from './JobApplicantsModal';
+import ApplicantDetailsModal from './ApplicantDetailsModal';
 
 export default function Jobs() {
+  const { hasPermission } = useAuth();
   const [jobs, setJobs] = useState<ApiJobPosting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -18,25 +22,30 @@ export default function Jobs() {
   const [showEditJobModal, setShowEditJobModal] = useState(false);
   const [selectedJobForCandidate, setSelectedJobForCandidate] = useState<JobPosting | null>(null);
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
+  const [showApplicantsModal, setShowApplicantsModal] = useState(false);
+  const [showApplicantDetails, setShowApplicantDetails] = useState(false);
+  const [selectedApplicant, setSelectedApplicant] = useState<any>(null);
+  const [editingCandidate, setEditingCandidate] = useState<any>(null);
 
   // Load jobs from backend
-  useEffect(() => {
-    const loadJobs = async () => {
-      try {
-        setLoading(true);
-        const response = await jobsAPI.getJobs();
-        if (response.success && response.data) {
-          setJobs(response.data.jobs || []);
-        } else {
-          setError('Failed to load jobs');
-        }
-      } catch (err) {
-        console.error('Error loading jobs:', err);
+  const loadJobs = async () => {
+    try {
+      setLoading(true);
+      const response = await jobsAPI.getJobs();
+      if (response.success && response.data) {
+        setJobs(response.data.jobs || []);
+      } else {
         setError('Failed to load jobs');
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err) {
+      console.error('Error loading jobs:', err);
+      setError('Failed to load jobs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadJobs();
   }, []);
 
@@ -61,6 +70,18 @@ export default function Jobs() {
     setShowAddCandidateModal(true);
   };
 
+  const handleViewApplicants = (job: JobPosting) => {
+    setSelectedJob(job);
+    setShowApplicantsModal(true);
+  };
+
+  const handleEditCandidate = (candidate: any) => {
+    setEditingCandidate(candidate);
+    setSelectedJobForCandidate(selectedJob);
+    setShowAddCandidateModal(true);
+    setShowApplicantsModal(false);
+  };
+
   const handleCandidateSubmit = async (candidateData: any) => {
     try {
       setLoading(true);
@@ -71,18 +92,36 @@ export default function Jobs() {
         candidateData.position = selectedJobForCandidate.title;
       }
       
-      // Create candidate via API
-      const response = await candidatesAPI.createCandidate(candidateData);
-      if (response.success) {
-        setError('');
-        setSelectedJobForCandidate(null);
-        setShowAddCandidateModal(false);
+      let response;
+      if (editingCandidate) {
+        // Update existing candidate
+        response = await candidatesAPI.updateCandidate(editingCandidate.id, candidateData);
+        if (response.success) {
+          setError('');
+          setEditingCandidate(null);
+          setSelectedJobForCandidate(null);
+          setShowAddCandidateModal(false);
+          // Reload jobs to refresh applicant counts
+          loadJobs();
+        } else {
+          setError('Failed to update candidate');
+        }
       } else {
-        setError('Failed to add candidate');
+        // Create new candidate
+        response = await candidatesAPI.createCandidate(candidateData);
+        if (response.success) {
+          setError('');
+          setSelectedJobForCandidate(null);
+          setShowAddCandidateModal(false);
+          // Reload jobs to refresh applicant counts
+          loadJobs();
+        } else {
+          setError('Failed to add candidate');
+        }
       }
     } catch (err) {
-      console.error('Error adding candidate:', err);
-      setError('Failed to add candidate');
+      console.error('Error saving candidate:', err);
+      setError(editingCandidate ? 'Failed to update candidate' : 'Failed to add candidate');
     } finally {
       setLoading(false);
     }
@@ -149,13 +188,15 @@ export default function Jobs() {
           <h1 className="text-3xl font-bold text-gray-900">Job Openings</h1>
           <p className="text-gray-600 mt-1">Manage all your job postings and requirements</p>
         </div>
-        <button
-          onClick={() => setShowAddJobModal(true)}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          <span>Post New Job</span>
-        </button>
+        {hasPermission('jobs', 'create') && (
+          <button
+            onClick={() => setShowAddJobModal(true)}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            <span>Post New Job</span>
+          </button>
+        )}
       </div>
 
       {/* Loading State */}
@@ -244,27 +285,43 @@ export default function Jobs() {
               </div>
             </div>
 
-            <div className="flex space-x-2">
-              <button
-                onClick={() => handleViewJobDetails(job)}
-                className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
-              >
-                <Eye size={16} />
-                <span>View Details</span>
-              </button>
-              <button 
-                onClick={() => handleEditJob(job)}
-                className="flex items-center justify-center px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <Edit size={16} className="text-gray-600" />
-              </button>
-              <button 
-                onClick={() => handleAddCandidateToJob(job)}
-                className="flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                title="Add candidate to this job"
-              >
-                <UserPlus size={16} />
-              </button>
+            <div className="space-y-2">
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleViewJobDetails(job)}
+                  className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  <Eye size={16} />
+                  <span>View Details</span>
+                </button>
+                {hasPermission('jobs', 'edit') && (
+                  <button 
+                    onClick={() => handleEditJob(job)}
+                    className="flex items-center justify-center px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    title="Edit job"
+                  >
+                    <Edit size={16} className="text-gray-600" />
+                  </button>
+                )}
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleViewApplicants(job)}
+                  className="flex-1 flex items-center justify-center space-x-2 bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                >
+                  <Users size={16} />
+                  <span>View Applicants</span>
+                </button>
+                {hasPermission('candidates', 'create') && (
+                  <button 
+                    onClick={() => handleAddCandidateToJob(job)}
+                    className="flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    title="Add candidate to this job"
+                  >
+                    <UserPlus size={16} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -320,9 +377,43 @@ export default function Jobs() {
         onClose={() => {
           setShowAddCandidateModal(false);
           setSelectedJobForCandidate(null);
+          setEditingCandidate(null);
         }}
         onSubmit={handleCandidateSubmit}
         jobs={selectedJobForCandidate ? [selectedJobForCandidate] : jobs}
+        editingCandidate={editingCandidate}
+      />
+
+      {/* Job Applicants Modal */}
+      {selectedJob && (
+        <JobApplicantsModal
+          isOpen={showApplicantsModal}
+          onClose={() => {
+            setShowApplicantsModal(false);
+            setSelectedJob(null);
+          }}
+          job={selectedJob}
+          onAddCandidate={() => {
+            setShowApplicantsModal(false);
+            setSelectedJobForCandidate(selectedJob);
+            setShowAddCandidateModal(true);
+          }}
+          onViewApplicantDetails={(applicant) => {
+            setSelectedApplicant(applicant);
+            setShowApplicantDetails(true);
+          }}
+          onEditApplicant={handleEditCandidate}
+        />
+      )}
+
+      {/* Applicant Details Modal */}
+      <ApplicantDetailsModal
+        isOpen={showApplicantDetails}
+        onClose={() => {
+          setShowApplicantDetails(false);
+          setSelectedApplicant(null);
+        }}
+        applicant={selectedApplicant}
       />
 
     </div>

@@ -63,6 +63,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
 
     // Convert snake_case to camelCase for frontend compatibility
     candidate.resumeFileId = candidate.resume_file_id;
+    candidate.resume = candidate.resume_path; // Add resume path for frontend
     candidate.appliedDate = candidate.applied_date;
     candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
     
@@ -102,6 +103,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     
     // Remove snake_case fields
     delete candidate.resume_file_id;
+    delete candidate.resume_path;
     delete candidate.applied_date;
     delete candidate.assigned_to_name;
     delete candidate.salary_expected;
@@ -176,6 +178,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
 
   // Convert snake_case to camelCase for frontend compatibility
   candidate.resumeFileId = candidate.resume_file_id;
+  candidate.resume = candidate.resume_path; // Add resume path for frontend
   candidate.appliedDate = candidate.applied_date;
   candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
   
@@ -211,6 +214,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   
   // Remove snake_case fields
   delete candidate.resume_file_id;
+  delete candidate.resume_path;
   delete candidate.applied_date;
   delete candidate.assigned_to_name;
   delete candidate.salary_expected;

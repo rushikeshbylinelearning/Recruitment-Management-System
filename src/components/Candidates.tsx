@@ -62,13 +62,41 @@ export default function Candidates() {
 
   const getStageColor = (stage: string) => {
     switch (stage) {
-      case 'Applied': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Screening': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Interview': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'Offer': return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'Hired': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'Applied': return {
+        header: 'bg-gradient-to-r from-blue-500 to-blue-600 text-white',
+        badge: 'bg-blue-100 text-blue-800 border-blue-200',
+        accent: 'border-blue-200'
+      };
+      case 'Screening': return {
+        header: 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-white',
+        badge: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        accent: 'border-yellow-200'
+      };
+      case 'Interview': return {
+        header: 'bg-gradient-to-r from-orange-500 to-orange-600 text-white',
+        badge: 'bg-orange-100 text-orange-800 border-orange-200',
+        accent: 'border-orange-200'
+      };
+      case 'Offer': return {
+        header: 'bg-gradient-to-r from-purple-500 to-purple-600 text-white',
+        badge: 'bg-purple-100 text-purple-800 border-purple-200',
+        accent: 'border-purple-200'
+      };
+      case 'Hired': return {
+        header: 'bg-gradient-to-r from-green-500 to-green-600 text-white',
+        badge: 'bg-green-100 text-green-800 border-green-200',
+        accent: 'border-green-200'
+      };
+      case 'Rejected': return {
+        header: 'bg-gradient-to-r from-red-500 to-red-600 text-white',
+        badge: 'bg-red-100 text-red-800 border-red-200',
+        accent: 'border-red-200'
+      };
+      default: return {
+        header: 'bg-gradient-to-r from-gray-500 to-gray-600 text-white',
+        badge: 'bg-gray-100 text-gray-800 border-gray-200',
+        accent: 'border-gray-200'
+      };
     }
   };
 
@@ -219,85 +247,107 @@ export default function Candidates() {
     setShowViewModal(true);
   };
 
-  const CandidateCard = ({ candidate }: { candidate: ApiCandidate }) => (
-    <div 
-      className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h4 className="font-medium text-gray-900">{candidate.name}</h4>
-          <p className="text-sm text-gray-600">{candidate.position}</p>
+  const CandidateCard = ({ candidate }: { candidate: ApiCandidate }) => {
+    return (
+      <div 
+        className="group relative bg-white rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all duration-200 transform hover:-translate-y-1"
+        onClick={() => onCandidateSelect(candidate)}
+      >
+        {/* Header with avatar and score */}
+        <div className="p-4 pb-3">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                {candidate.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900 text-sm">{candidate.name}</h4>
+                <p className="text-xs text-gray-600 truncate max-w-32">{candidate.position}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-1 bg-yellow-50 px-2 py-1 rounded-full">
+              <Star size={12} className="text-yellow-500 fill-current" />
+              <span className="text-xs font-medium text-yellow-700">{candidate.score}/5</span>
+            </div>
+          </div>
+          
+          {/* Salary info */}
           {candidate.salary?.expected && (
-            <p className="text-xs text-green-600 font-medium">₹{candidate.salary.expected}</p>
+            <div className="mb-3">
+              <div className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
+                Expected: {candidate.salary.expected}
+              </div>
+            </div>
           )}
         </div>
-        <div className="flex items-center space-x-1">
-          <Star size={14} className="text-yellow-500" />
-          <span className="text-sm text-gray-600">{candidate.score}/5</span>
+        
+        {/* Contact info */}
+        <div className="px-4 pb-3 space-y-2">
+          <div className="flex items-center space-x-2 text-xs text-gray-600">
+            <Mail size={12} className="text-gray-400" />
+            <span className="truncate">{candidate.email}</span>
+          </div>
+          <div className="flex items-center space-x-2 text-xs text-gray-600">
+            <Phone size={12} className="text-gray-400" />
+            <span>{candidate.phone}</span>
+          </div>
+          {candidate.availability?.joiningTime && (
+            <div className="flex items-center space-x-2 text-xs text-gray-600">
+              <Clock size={12} className="text-gray-400" />
+              <span>Can join in {candidate.availability.joiningTime}</span>
+            </div>
+          )}
         </div>
-      </div>
-      
-      <div className="space-y-2 mb-3">
-        <div className="flex items-center space-x-2 text-sm text-gray-600">
-          <Mail size={14} />
-          <span className="truncate">{candidate.email}</span>
-        </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-600">
-          <Phone size={14} />
-          <span>{candidate.phone}</span>
-        </div>
-        {candidate.availability?.joiningTime && (
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <Clock size={14} />
-            <span>Can join in {candidate.availability.joiningTime}</span>
+        
+        {/* Interview status */}
+        {candidate.interviews && (candidate.interviews?.length || 0) > 0 && (
+          <div className="px-4 pb-3">
+            <div className="bg-blue-50 rounded-lg p-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-blue-700 font-medium">
+                  {candidate.interviews?.filter(i => i.status === 'Completed')?.length || 0} interviews done
+                </span>
+                {candidate.interviews?.some(i => i.status === 'Scheduled') && (
+                  <span className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded-full text-xs font-medium">
+                    Scheduled
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         )}
-      </div>
-      
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-gray-500">{candidate.source}</span>
-        <span className="text-xs text-gray-500">{new Date(candidate.appliedDate).toLocaleDateString()}</span>
-      </div>
-      
-      {/* Interview status indicator */}
-      {candidate.interviews && (candidate.interviews?.length || 0) > 0 && (
-        <div className="mt-2 pt-2 border-t border-gray-100">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-gray-500">
-              {candidate.interviews?.filter(i => i.status === 'Completed')?.length || 0} interviews completed
-            </span>
-            {candidate.interviews?.some(i => i.status === 'Scheduled') && (
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                Interview scheduled
-              </span>
-            )}
+        
+        {/* Footer with source and date */}
+        <div className="px-4 py-3 bg-gray-50 rounded-b-xl border-t border-gray-100">
+          <div className="flex justify-between items-center text-xs text-gray-500">
+            <span className="font-medium">{candidate.source}</span>
+            <span>{new Date(candidate.appliedDate).toLocaleDateString()}</span>
           </div>
         </div>
-      )}
-
-      {/* Action buttons */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        
+        {/* Action buttons overlay */}
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex space-x-1">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleViewCandidate(candidate);
               }}
-              className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+              className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-blue-50 hover:border-blue-200 transition-colors"
               title="View Details"
             >
-              <Eye size={16} />
+              <Eye size={12} className="text-gray-600" />
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleEditCandidate(candidate);
               }}
-              className="p-1 text-gray-400 hover:text-green-600 transition-colors"
+              className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-green-50 hover:border-green-200 transition-colors"
               title="Edit Candidate"
             >
-              <Edit size={16} />
+              <Edit size={12} className="text-gray-600" />
             </button>
             {(candidate as any).resumeFileId && (
               <button
@@ -305,27 +355,27 @@ export default function Candidates() {
                   e.stopPropagation();
                   handleDownloadResume(candidate.id);
                 }}
-                className="p-1 text-gray-400 hover:text-purple-600 transition-colors"
+                className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-purple-50 hover:border-purple-200 transition-colors"
                 title="Download Resume"
               >
-                <Download size={16} />
+                <Download size={12} className="text-gray-600" />
               </button>
             )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteCandidate(candidate.id);
+              }}
+              className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
+              title="Delete Candidate"
+            >
+              <Trash2 size={12} className="text-gray-600" />
+            </button>
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDeleteCandidate(candidate.id);
-            }}
-            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-            title="Delete Candidate"
-          >
-            <Trash2 size={16} />
-          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -427,22 +477,76 @@ export default function Candidates() {
 
       {/* Kanban View */}
       {viewMode === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 overflow-x-auto">
-          {stages.map((stage) => (
-            <div key={stage} className="min-w-72">
-              <div className={`p-3 rounded-t-lg border ${getStageColor(stage)}`}>
-                <h3 className="font-medium flex items-center justify-between">
-                  {stage}
-                  <span className="text-sm">{candidatesByStage[stage]?.length || 0}</span>
-                </h3>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-b-lg space-y-3 min-h-96">
-                {(candidatesByStage[stage] || []).map((candidate) => (
-                  <CandidateCard key={candidate.id} candidate={candidate} />
-                ))}
-              </div>
+        <div className="space-y-6">
+          {/* Kanban Board */}
+          <div className="flex gap-6 overflow-x-auto pb-4">
+            {stages.map((stage) => {
+              const stageColors = getStageColor(stage);
+              const stageCandidates = candidatesByStage[stage] || [];
+              
+              return (
+                <div key={stage} className="flex-shrink-0 w-80">
+                  {/* Stage Header */}
+                  <div className={`${stageColors.header} p-4 rounded-t-xl shadow-sm`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <h3 className="font-semibold text-white text-sm">{stage}</h3>
+                        <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded-full font-medium">
+                          {stageCandidates.length}
+                        </span>
+                      </div>
+                      {stageCandidates.length > 0 && (
+                        <div className="text-white text-xs opacity-75">
+                          {stageCandidates.length} candidate{stageCandidates.length !== 1 ? 's' : ''}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Stage Content */}
+                  <div className="bg-gray-50 p-4 rounded-b-xl min-h-96 border-l-4 border-r border-b border-gray-200" style={{borderLeftColor: stageColors.header.includes('blue') ? '#3B82F6' : stageColors.header.includes('yellow') ? '#EAB308' : stageColors.header.includes('orange') ? '#F97316' : stageColors.header.includes('purple') ? '#8B5CF6' : stageColors.header.includes('green') ? '#10B981' : stageColors.header.includes('red') ? '#EF4444' : '#6B7280'}}>
+                    {stageCandidates.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-3">
+                          <User size={24} className="text-gray-400" />
+                        </div>
+                        <p className="text-sm font-medium">No candidates</p>
+                        <p className="text-xs text-center">Candidates will appear here when they reach this stage</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {stageCandidates.map((candidate) => (
+                          <CandidateCard key={candidate.id} candidate={candidate} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Kanban Stats */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Pipeline Overview</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {stages.map((stage) => {
+                const count = candidatesByStage[stage]?.length || 0;
+                const percentage = filteredCandidates.length > 0 ? Math.round((count / filteredCandidates.length) * 100) : 0;
+                const stageColors = getStageColor(stage);
+                
+                return (
+                  <div key={stage} className="text-center">
+                    <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full ${stageColors.badge} mb-2`}>
+                      <span className="text-lg font-bold">{count}</span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900">{stage}</p>
+                    <p className="text-xs text-gray-500">{percentage}% of total</p>
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          </div>
         </div>
       )}
 
@@ -489,7 +593,7 @@ export default function Candidates() {
                       {candidate.position}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageColor(candidate.stage)}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageColor(candidate.stage).badge}`}>
                         {candidate.stage}
                       </span>
                     </td>
