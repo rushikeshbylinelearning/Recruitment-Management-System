@@ -194,6 +194,32 @@ export const usersAPI = {
     const response = await api.post('/users', userData);
     return response.data;
   },
+
+  updateUserPermissions: async (userId: number, permissions: Array<{
+    module: string;
+    actions: string[];
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/users/${userId}/permissions`, { permissions });
+    return response.data;
+  },
+
+  getRolePermissions: async (): Promise<ApiResponse<{
+    rolePermissions: Record<string, Array<{
+      module: string;
+      actions: string[];
+    }>>;
+  }>> => {
+    const response = await api.get('/settings/role-permissions');
+    return response.data;
+  },
+
+  updateRolePermissions: async (rolePermissions: Record<string, Array<{
+    module: string;
+    actions: string[];
+  }>>): Promise<ApiResponse> => {
+    const response = await api.put('/settings/role-permissions', { rolePermissions });
+    return response.data;
+  },
 };
 
 // Jobs API

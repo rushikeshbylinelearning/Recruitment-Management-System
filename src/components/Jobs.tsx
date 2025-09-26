@@ -3,6 +3,7 @@ import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase } fro
 import { JobPosting } from '../types';
 import { jobsAPI, JobPosting as ApiJobPosting, candidatesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import ProtectedComponent from './ProtectedComponent';
 import AddCandidateModal from './AddCandidateModal';
 import AddJobModal from './AddJobModal';
 import JobDetailsModal from './JobDetailsModal';
@@ -181,7 +182,8 @@ export default function Jobs() {
   };
   
   return (
-    <div className="space-y-6">
+    <ProtectedComponent module="jobs" action="view">
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -416,6 +418,7 @@ export default function Jobs() {
         applicant={selectedApplicant}
       />
 
-    </div>
+      </div>
+    </ProtectedComponent>
   );
 }

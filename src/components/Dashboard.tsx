@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, Users, Briefcase, Clock, Target, Calendar, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dashboardAPI } from '../services/api';
+import ProtectedComponent from './ProtectedComponent';
 
 interface DashboardData {
   metrics: {
@@ -145,7 +146,8 @@ export default function Dashboard() {
   }));
 
   return (
-    <div className="space-y-6">
+    <ProtectedComponent module="dashboard" action="view">
+      <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
@@ -257,6 +259,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </ProtectedComponent>
   );
 }
