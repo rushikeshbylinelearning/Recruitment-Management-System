@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, Calendar, User, AlertCircle, CheckCircle, Clock, X, Save, Edit, Trash2 } from 'lucide-react';
 import { Task } from '../types';
 import { tasksAPI, usersAPI, jobsAPI, candidatesAPI } from '../services/api';
+import ProtectedComponent from './ProtectedComponent';
+import { useAuth } from '../contexts/AuthContext';
 
 interface TasksProps {
   tasks?: Task[]; // Made optional since we'll fetch from backend
@@ -13,6 +15,7 @@ interface TasksProps {
 }
 
 export default function Tasks({}: TasksProps) {
+  const { hasPermission, user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -42,31 +45,104 @@ export default function Tasks({}: TasksProps) {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [tasksResponse, usersResponse, jobsResponse, candidatesResponse] = await Promise.all([
+        setError(''); // Clear any previous errors
+        
+        console.log('Loading tasks data...');
+        
+        // Load users first to ensure we have user data for task assignment
+        const usersResponse = await usersAPI.getUsers();
+        if (usersResponse.success && usersResponse.data) {
+          setUsers(usersResponse.data.users || []);
+          console.log('Users loaded:', usersResponse.data.users?.length || 0);
+        } else {
+          console.error('Users API failed:', usersResponse);
+          setError('Failed to load users: ' + (usersResponse.message || 'Unknown error'));
+          return;
+        }
+        
+        // Load other data in parallel
+        const [tasksResponse, jobsResponse, candidatesResponse] = await Promise.all([
           tasksAPI.getTasks(),
-          usersAPI.getUsers(),
           jobsAPI.getJobs(),
           candidatesAPI.getCandidates()
         ]);
 
+        console.log('Tasks response:', tasksResponse);
+        console.log('Users response:', usersResponse);
+        console.log('Jobs response:', jobsResponse);
+        console.log('Candidates response:', candidatesResponse);
+
         if (tasksResponse.success && tasksResponse.data) {
-          setTasks(tasksResponse.data.tasks || []);
+          const tasks = tasksResponse.data.tasks || [];
+          setTasks(tasks);
+          console.log('Tasks loaded:', tasks.length);
+          
+          // If no tasks exist, create a sample task for the current user
+          if (tasks.length === 0 && users.length > 0) {
+            console.log('No tasks found, creating sample task...');
+            try {
+              const currentUserId = user?.id || users[0]?.id || 1;
+              const sampleTask = {
+                title: 'Welcome Task',
+                description: 'This is a sample task to get you started. You can edit or delete this task.',
+                assignedTo: currentUserId,
+                priority: 'Medium' as 'Medium',
+                status: 'Pending' as 'Pending',
+                dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
+                createdBy: currentUserId
+              };
+              
+              const createResponse = await tasksAPI.createTask(sampleTask);
+              if (createResponse.success) {
+                console.log('Sample task created successfully');
+                // Reload tasks
+                const reloadResponse = await tasksAPI.getTasks();
+                if (reloadResponse.success && reloadResponse.data) {
+                  setTasks(reloadResponse.data.tasks || []);
+                }
+              }
+            } catch (createError) {
+              console.error('Error creating sample task:', createError);
+            }
+          }
+        } else {
+          console.error('Tasks API failed:', tasksResponse);
+          // Try to retry once
+          try {
+            console.log('Retrying tasks API...');
+            const retryResponse = await tasksAPI.getTasks();
+            if (retryResponse.success && retryResponse.data) {
+              setTasks(retryResponse.data.tasks || []);
+              console.log('Tasks loaded on retry:', retryResponse.data.tasks?.length || 0);
+            } else {
+              setError('Failed to load tasks: ' + (tasksResponse.message || 'Unknown error'));
+            }
+          } catch (retryError) {
+            console.error('Retry failed:', retryError);
+            setError('Failed to load tasks: ' + (tasksResponse.message || 'Unknown error'));
+          }
         }
 
-        if (usersResponse.success && usersResponse.data) {
-          setUsers(usersResponse.data.users || []);
-        }
+        // Users already loaded above
 
         if (jobsResponse.success && jobsResponse.data) {
           setJobs(jobsResponse.data.jobs || []);
+          console.log('Jobs loaded:', jobsResponse.data.jobs?.length || 0);
+        } else {
+          console.error('Jobs API failed:', jobsResponse);
+          setError('Failed to load jobs: ' + (jobsResponse.message || 'Unknown error'));
         }
 
         if (candidatesResponse.success && candidatesResponse.data) {
           setCandidates(candidatesResponse.data.candidates || []);
+          console.log('Candidates loaded:', candidatesResponse.data.candidates?.length || 0);
+        } else {
+          console.error('Candidates API failed:', candidatesResponse);
+          setError('Failed to load candidates: ' + (candidatesResponse.message || 'Unknown error'));
         }
       } catch (err) {
         console.error('Error loading data:', err);
-        setError('Failed to load data');
+        setError('Failed to load data: ' + (err instanceof Error ? err.message : 'Unknown error'));
       } finally {
         setLoading(false);
       }
@@ -281,11 +357,23 @@ export default function Tasks({}: TasksProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <ProtectedComponent module="tasks" action="view">
+      <div className="space-y-6">
       {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium">Failed to load tasks</h3>
+              <p className="text-sm mt-1">{error}</p>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="ml-4 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 
@@ -295,13 +383,15 @@ export default function Tasks({}: TasksProps) {
           <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
           <p className="text-gray-600 mt-1">Manage daily tasks and activities for your hiring process</p>
         </div>
-        <button 
-          onClick={handleNewTask}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          <span>New Task</span>
-        </button>
+        {hasPermission('tasks', 'create') && (
+          <button 
+            onClick={handleNewTask}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            <span>New Task</span>
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -881,6 +971,7 @@ export default function Tasks({}: TasksProps) {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </ProtectedComponent>
   );
 }

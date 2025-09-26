@@ -5,8 +5,11 @@ import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/a
 import AddCandidateModal from './AddCandidateModal';
 import BulkImportModal from './BulkImportModal';
 import CandidateViewModal from './CandidateViewModal';
+import ProtectedComponent from './ProtectedComponent';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Candidates() {
+  const { hasPermission } = useAuth();
   const [candidates, setCandidates] = useState<ApiCandidate[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -427,17 +430,19 @@ export default function Candidates() {
             >
               <Eye size={12} className="text-gray-600" />
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEditCandidate(candidate);
-              }}
-              className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-green-50 hover:border-green-200 transition-colors"
-              title="Edit Candidate"
-            >
-              <Edit size={12} className="text-gray-600" />
-            </button>
-            {(candidate as any).resumeFileId && (
+            {hasPermission('candidates', 'edit') && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditCandidate(candidate);
+                }}
+                className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-green-50 hover:border-green-200 transition-colors"
+                title="Edit Candidate"
+              >
+                <Edit size={12} className="text-gray-600" />
+              </button>
+            )}
+            {(candidate as any).resumeFileId && hasPermission('candidates', 'view') && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -449,16 +454,18 @@ export default function Candidates() {
                 <Download size={12} className="text-gray-600" />
               </button>
             )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteCandidate(candidate.id);
-              }}
-              className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
-              title="Delete Candidate"
-            >
-              <Trash2 size={12} className="text-gray-600" />
-            </button>
+            {hasPermission('candidates', 'delete') && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteCandidate(candidate.id);
+                }}
+                className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
+                title="Delete Candidate"
+              >
+                <Trash2 size={12} className="text-gray-600" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -477,42 +484,49 @@ export default function Candidates() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+    <ProtectedComponent module="candidates" action="view">
+      <div className="space-y-6">
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        )}
 
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
-          <p className="text-gray-600 mt-1">Track and manage all your job applicants</p>
-        </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <UserPlus size={20} />
-            <span>Add Candidate</span>
-          </button>
-          <button
-            onClick={handleShowResumeParser}
-            className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            <Upload size={20} />
-            <span>Parse Resume</span>
-          </button>
-          <button
-            onClick={() => setShowBulkImportModal(true)}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Upload size={20} />
-            <span>Bulk Import</span>
-          </button>
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
+            <p className="text-gray-600 mt-1">Track and manage all your job applicants</p>
+          </div>
+          <div className="flex space-x-3">
+            {hasPermission('candidates', 'create') && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <UserPlus size={20} />
+                <span>Add Candidate</span>
+              </button>
+            )}
+            {hasPermission('candidates', 'create') && (
+              <button
+                onClick={handleShowResumeParser}
+                className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <Upload size={20} />
+                <span>Parse Resume</span>
+              </button>
+            )}
+            {hasPermission('candidates', 'create') && (
+              <button
+                onClick={() => setShowBulkImportModal(true)}
+                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Upload size={20} />
+                <span>Bulk Import</span>
+              </button>
+            )}
           {/* <button
             onClick={handleShowAdvancedSearch}
             className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
@@ -752,6 +766,7 @@ export default function Candidates() {
         candidate={selectedCandidate}
       />
 
-    </div>
+      </div>
+    </ProtectedComponent>
   );
 }
