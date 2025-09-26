@@ -1,62 +1,207 @@
-import React, { useState } from 'react';
-import { TrendingUp, Users, Briefcase, Clock, Target, Calendar, Download, Filter, BarChart3 } from 'lucide-react';
-import { Analytics as AnalyticsType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { TrendingUp, Users, Briefcase, Clock, Target, Calendar, Download, Filter, BarChart3, TrendingDown, Award, UserCheck } from 'lucide-react';
+import { analyticsAPI } from '../services/api';
 
-interface AnalyticsProps {
-  analytics: AnalyticsType;
-  onShowCandidateAnalytics?: () => void;
+interface AnalyticsData {
+  overview: {
+    total_jobs: number;
+    active_jobs: number;
+    total_candidates: number;
+    hired: number;
+    interviews_completed: number;
+    avg_time_to_hire: number;
+  };
+  sourceEffectiveness: Array<{ source: string; count: number }>;
+  monthlyHires: Array<{ month: string; hires: number; applications: number }>;
+  stageDistribution: Array<{ stage: string; count: number }>;
+  departmentStats: Array<{ department: string; job_count: number; candidate_count: number }>;
 }
 
-export default function Analytics({ analytics, onShowCandidateAnalytics }: AnalyticsProps) {
+interface HiringFunnelData {
+  funnelData: Array<{ stage: string; count: number; percentage: number }>;
+  conversionRates: Array<{ stage: string; rate: number }>;
+}
+
+interface TimeToHireData {
+  overallStats: {
+    avg_time_to_hire: number;
+    min_time_to_hire: number;
+    max_time_to_hire: number;
+    std_dev_time_to_hire: number;
+  };
+  byDepartment: Array<{ department: string; avg_time_to_hire: number; hires_count: number }>;
+  bySource: Array<{ source: string; avg_time_to_hire: number; hires_count: number }>;
+}
+
+interface JobPerformanceData {
+  jobStats: Array<{
+    id: number;
+    title: string;
+    department: string;
+    status: string;
+    posted_date: string;
+    deadline: string;
+    total_applications: number;
+    hires: number;
+    avg_candidate_score: number;
+    hire_rate: number;
+    days_to_fill: number;
+  }>;
+}
+
+interface RecruiterPerformanceData {
+  recruiterStats: Array<{
+    id: number;
+    name: string;
+    role: string;
+    candidates_assigned: number;
+    hires: number;
+    rejections: number;
+    avg_candidate_score: number;
+    hire_rate: number;
+  }>;
+}
+
+export default function Analytics() {
   const [dateRange, setDateRange] = useState('last30days');
   const [selectedMetric, setSelectedMetric] = useState('hires');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [funnelData, setFunnelData] = useState<HiringFunnelData | null>(null);
+  const [timeToHireData, setTimeToHireData] = useState<TimeToHireData | null>(null);
+  const [jobPerformanceData, setJobPerformanceData] = useState<JobPerformanceData | null>(null);
+  const [recruiterData, setRecruiterData] = useState<RecruiterPerformanceData | null>(null);
+
+  // Fetch analytics data
+  useEffect(() => {
+    const fetchAnalyticsData = async () => {
+      try {
+        setLoading(true);
+        const [
+          dashboardResponse,
+          funnelResponse,
+          timeToHireResponse,
+          jobPerformanceResponse,
+          recruiterResponse
+        ] = await Promise.all([
+          analyticsAPI.getDashboard(),
+          analyticsAPI.getHiringFunnel(),
+          analyticsAPI.getTimeToHire(),
+          analyticsAPI.getJobPerformance(),
+          analyticsAPI.getRecruiterPerformance()
+        ]);
+
+        if (dashboardResponse.success && dashboardResponse.data) {
+          setAnalyticsData(dashboardResponse.data);
+        }
+        if (funnelResponse.success && funnelResponse.data) {
+          setFunnelData(funnelResponse.data);
+        }
+        if (timeToHireResponse.success && timeToHireResponse.data) {
+          setTimeToHireData(timeToHireResponse.data);
+        }
+        if (jobPerformanceResponse.success && jobPerformanceResponse.data) {
+          setJobPerformanceData(jobPerformanceResponse.data);
+        }
+        if (recruiterResponse.success && recruiterResponse.data) {
+          setRecruiterData(recruiterResponse.data);
+        }
+      } catch (err) {
+        console.error('Error fetching analytics data:', err);
+        setError('Failed to load analytics data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalyticsData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        {error}
+      </div>
+    );
+  }
+
+  if (!analyticsData) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
+        No analytics data available
+      </div>
+    );
+  }
 
   const kpiCards = [
     {
       title: 'Total Applications',
-      value: analytics.totalCandidates,
-      change: '+15%',
+      value: analyticsData.overview.total_candidates,
+      change: '+15%', // Mock change
       positive: true,
       icon: Users,
       color: 'bg-blue-500',
     },
     {
       title: 'Successful Hires',
-      value: analytics.hired,
-      change: '+8%',
+      value: analyticsData.overview.hired,
+      change: '+8%', // Mock change
       positive: true,
       icon: Target,
       color: 'bg-green-500',
     },
     {
       title: 'Average Time to Hire',
-      value: `${analytics.timeToHire} days`,
-      change: '-5%',
+      value: `${Math.round(analyticsData.overview.avg_time_to_hire || 0)} days`,
+      change: '-5%', // Mock change
       positive: true,
       icon: Clock,
       color: 'bg-orange-500',
     },
     {
       title: 'Active Job Openings',
-      value: analytics.activeJobs,
-      change: '+3%',
+      value: analyticsData.overview.active_jobs,
+      change: '+3%', // Mock change
       positive: true,
       icon: Briefcase,
       color: 'bg-purple-500',
     },
   ];
 
-  const sourceData = Object.entries(analytics.sourceEffectiveness).map(([source, percentage]) => ({
-    source,
-    percentage,
-    applications: Math.floor((percentage / 100) * analytics.totalCandidates)
+  // Calculate source effectiveness percentages
+  const totalSourceApplications = analyticsData.sourceEffectiveness.reduce((sum, source) => sum + source.count, 0);
+  const sourceData = analyticsData.sourceEffectiveness.map(source => ({
+    source: source.source,
+    percentage: totalSourceApplications > 0 ? Math.round((source.count / totalSourceApplications) * 100) : 0,
+    applications: source.count
   }));
 
-  const conversionRates = [
-    { stage: 'Application to Screening', rate: 46, color: 'bg-blue-500' },
-    { stage: 'Screening to Interview', rate: 34, color: 'bg-yellow-500' },
-    { stage: 'Interview to Offer', rate: 35, color: 'bg-orange-500' },
-    { stage: 'Offer to Hire', rate: 63, color: 'bg-green-500' },
+  // Use real conversion rates from funnel data
+  const conversionRates = funnelData?.conversionRates.map((rate, index) => {
+    const colors = ['bg-blue-500', 'bg-yellow-500', 'bg-orange-500', 'bg-green-500'];
+    return {
+      stage: rate.stage,
+      rate: rate.rate,
+      color: colors[index] || 'bg-gray-500'
+    };
+  }) || [
+    { stage: 'Application to Screening', rate: 0, color: 'bg-blue-500' },
+    { stage: 'Screening to Interview', rate: 0, color: 'bg-yellow-500' },
+    { stage: 'Interview to Offer', rate: 0, color: 'bg-orange-500' },
+    { stage: 'Offer to Hire', rate: 0, color: 'bg-green-500' },
   ];
 
   return (
@@ -84,12 +229,9 @@ export default function Analytics({ analytics, onShowCandidateAnalytics }: Analy
               Export Report
             </span>
           </button>
-          <button 
-            onClick={onShowCandidateAnalytics}
-            className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-          >
+          <button className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
             <BarChart3 size={20} />
-            <span>Candidate Analytics</span>
+            <span>Refresh Data</span>
           </button>
         </div>
       </div>
@@ -126,22 +268,31 @@ export default function Analytics({ analytics, onShowCandidateAnalytics }: Analy
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Hiring Trends</h3>
           <div className="space-y-4">
-            {analytics.monthlyHires.map((month) => (
-              <div key={month.month} className="flex items-center">
-                <div className="w-12 text-sm text-gray-600">{month.month}</div>
-                <div className="flex-1 mx-4">
-                  <div className="bg-gray-200 h-8 rounded-full relative">
-                    <div
-                      className="bg-blue-500 h-full rounded-full flex items-center justify-end pr-3"
-                      style={{ width: `${(month.hires / Math.max(...analytics.monthlyHires.map(m => m.hires))) * 100}%` }}
-                    >
-                      <span className="text-white text-sm font-medium">{month.hires}</span>
+            {analyticsData.monthlyHires.length > 0 ? (
+              analyticsData.monthlyHires.map((month) => {
+                const maxHires = Math.max(...analyticsData.monthlyHires.map(m => m.hires), 1);
+                return (
+                  <div key={month.month} className="flex items-center">
+                    <div className="w-16 text-sm text-gray-600">{month.month}</div>
+                    <div className="flex-1 mx-4">
+                      <div className="bg-gray-200 h-8 rounded-full relative">
+                        <div
+                          className="bg-blue-500 h-full rounded-full flex items-center justify-end pr-3"
+                          style={{ width: `${(month.hires / maxHires) * 100}%` }}
+                        >
+                          <span className="text-white text-sm font-medium">{month.hires}</span>
+                        </div>
+                      </div>
                     </div>
+                    <div className="w-16 text-sm text-gray-500 text-right">{month.applications} apps</div>
                   </div>
-                </div>
-                <div className="w-16 text-sm text-gray-500 text-right">{month.applications} apps</div>
+                );
+              })
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                No monthly hiring data available
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -149,23 +300,30 @@ export default function Analytics({ analytics, onShowCandidateAnalytics }: Analy
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Source Effectiveness</h3>
           <div className="space-y-4">
-            {sourceData.map((source) => (
-              <div key={source.source} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-gray-900">{source.source}</span>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-24 bg-gray-200 h-2 rounded-full">
-                    <div
-                      className="bg-blue-500 h-full rounded-full"
-                      style={{ width: `${source.percentage}%` }}
-                    ></div>
+            {sourceData.length > 0 ? (
+              sourceData.map((source) => (
+                <div key={source.source} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
+                    <span className="text-sm font-medium text-gray-900">{source.source}</span>
                   </div>
-                  <span className="text-sm text-gray-600 w-12 text-right">{source.percentage}%</span>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-24 bg-gray-200 h-2 rounded-full">
+                      <div
+                        className="bg-blue-500 h-full rounded-full"
+                        style={{ width: `${source.percentage}%` }}
+                      ></div>
+                    </div>
+                    <span className="text-sm text-gray-600 w-12 text-right">{source.percentage}%</span>
+                    <span className="text-xs text-gray-500 w-8 text-right">({source.applications})</span>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                No source data available
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -210,64 +368,72 @@ export default function Analytics({ analytics, onShowCandidateAnalytics }: Analy
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Jobs</h3>
           <div className="space-y-3">
-            {[
-              { title: 'Senior Frontend Developer', applications: 105, hires: 3 },
-              { title: 'Product Manager', applications: 89, hires: 2 },
-              { title: 'UX Designer', applications: 67, hires: 1 },
-              { title: 'Backend Developer', applications: 45, hires: 2 },
-            ].map((job) => (
-              <div key={job.title} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">{job.title}</p>
-                  <p className="text-sm text-gray-600">{job.applications} applications</p>
+            {jobPerformanceData && jobPerformanceData.jobStats.length > 0 ? (
+              jobPerformanceData.jobStats.slice(0, 4).map((job) => (
+                <div key={job.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">{job.title}</p>
+                    <p className="text-sm text-gray-600">{job.total_applications} applications</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-green-600">{job.hires}</p>
+                    <p className="text-xs text-gray-500">hires</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-green-600">{job.hires}</p>
-                  <p className="text-xs text-gray-500">hires</p>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                No job performance data available
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Team Performance</h3>
           <div className="space-y-3">
-            {[
-              { name: 'Sarah Johnson', processed: 45, hired: 8 },
-              { name: 'Emma Wilson', processed: 38, hired: 6 },
-              { name: 'Mike Chen', processed: 32, hired: 5 },
-              { name: 'David Kim', processed: 28, hired: 4 },
-            ].map((member) => (
-              <div key={member.name} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">{member.name}</p>
-                  <p className="text-sm text-gray-600">{member.processed} processed</p>
+            {recruiterData && recruiterData.recruiterStats.length > 0 ? (
+              recruiterData.recruiterStats.slice(0, 4).map((member) => (
+                <div key={member.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">{member.name}</p>
+                    <p className="text-sm text-gray-600">{member.candidates_assigned} processed</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-blue-600">{member.hires}</p>
+                    <p className="text-xs text-gray-500">hires</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-blue-600">{member.hired}</p>
-                  <p className="text-xs text-gray-500">hires</p>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                No team performance data available
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Insights</h3>
           <div className="space-y-4">
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm font-medium text-blue-900">LinkedIn is your top source</p>
-              <p className="text-xs text-blue-700 mt-1">35% of all applications come from LinkedIn</p>
-            </div>
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm font-medium text-green-900">Hiring speed improved</p>
-              <p className="text-xs text-green-700 mt-1">Average time to hire decreased by 5 days</p>
-            </div>
-            <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
-              <p className="text-sm font-medium text-orange-900">Interview conversion up</p>
-              <p className="text-xs text-orange-700 mt-1">35% of interviews result in offers</p>
-            </div>
+            {sourceData.length > 0 && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-medium text-blue-900">{sourceData[0]?.source} is your top source</p>
+                <p className="text-xs text-blue-700 mt-1">{sourceData[0]?.percentage}% of all applications come from {sourceData[0]?.source}</p>
+              </div>
+            )}
+            {timeToHireData && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm font-medium text-green-900">Average time to hire</p>
+                <p className="text-xs text-green-700 mt-1">{Math.round(timeToHireData.overallStats.avg_time_to_hire || 0)} days</p>
+              </div>
+            )}
+            {conversionRates.length > 0 && conversionRates[2] && (
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm font-medium text-orange-900">Interview conversion rate</p>
+                <p className="text-xs text-orange-700 mt-1">{conversionRates[2].rate}% of interviews result in offers</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

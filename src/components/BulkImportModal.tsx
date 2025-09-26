@@ -48,6 +48,38 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
     }
   };
 
+  // Helper function to parse CSV line with proper comma handling
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // End of field
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add the last field
+    result.push(current.trim());
+    return result;
+  };
+
   const parseCSV = (file: File) => {
     setImportStatus('processing');
     const reader = new FileReader();
@@ -55,18 +87,22 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const lines = text.split('\n');
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const lines = text.split('\n').filter(line => line.trim());
+        const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
         
         const candidates = lines.slice(1)
           .filter(line => line.trim())
           .map((line, index) => {
-            const values = line.split(',').map(v => v.trim());
+            const values = parseCSVLine(line);
             const candidate: any = { id: `import-${index}` };
             
             headers.forEach((header, i) => {
               const value = values[i] || '';
               switch (header) {
+                case 'date':
+                case 'applied date':
+                  candidate.appliedDate = value ? new Date(value).toISOString() : new Date().toISOString();
+                  break;
                 case 'name':
                 case 'full name':
                   candidate.name = value;
@@ -77,11 +113,54 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
                   break;
                 case 'phone':
                 case 'phone number':
+                case 'phone no':
                   candidate.phone = value;
+                  break;
+                case 'location':
+                  candidate.location = value;
                   break;
                 case 'experience':
                 case 'years of experience':
                   candidate.experience = value;
+                  break;
+                case 'expertise':
+                  candidate.expertise = value;
+                  break;
+                case 'notice period':
+                  candidate.noticePeriod = value;
+                  break;
+                case 'willing to work on alternate saturday':
+                  candidate.willingAlternateSaturday = value.toLowerCase() === 'yes' ? true : 
+                                                      value.toLowerCase() === 'no' ? false : null;
+                  break;
+                case 'work preference':
+                  candidate.workPreference = value;
+                  break;
+                case 'current ctc':
+                  candidate.currentCtc = value;
+                  break;
+                case 'ctc frequency':
+                  candidate.ctcFrequency = value;
+                  break;
+                case 'expected ctc':
+                  candidate.expectedSalary = value;
+                  break;
+                case 'in house assignment':
+                  candidate.inHouseAssignmentStatus = value;
+                  break;
+                case 'interview date':
+                  candidate.interviewDate = value;
+                  break;
+                case 'interviewer':
+                case 'interviewer name':
+                  candidate.interviewerName = value;
+                  break;
+                case 'in office assignment':
+                  candidate.inOfficeAssignment = value;
+                  break;
+                case 'hr remarks':
+                case 'notes':
+                  candidate.notes = value;
                   break;
                 case 'skills':
                   candidate.skills = value.split(';').map(s => s.trim()).filter(Boolean);
@@ -89,8 +168,14 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
                 case 'source':
                   candidate.source = value || 'Bulk Import';
                   break;
-                case 'notes':
-                  candidate.notes = value;
+                case 'status':
+                  candidate.stage = value || 'Applied';
+                  break;
+                case 'resume location/link':
+                  candidate.resumeLocation = value;
+                  break;
+                case 'assignment location/link':
+                  candidate.assignmentLocation = value;
                   break;
                 default:
                   candidate[header] = value;
@@ -98,10 +183,13 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
             });
             
             // Set defaults
-            candidate.stage = 'Applied';
-            candidate.appliedDate = new Date().toISOString();
+            candidate.stage = candidate.stage || 'Applied';
+            candidate.appliedDate = candidate.appliedDate || new Date().toISOString();
             candidate.score = 0;
             candidate.communications = [];
+            candidate.salaryNegotiable = false;
+            candidate.immediateJoiner = false;
+            candidate.joiningTime = candidate.joiningTime || '';
             
             return candidate;
           });
@@ -109,6 +197,7 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
         setImportData(candidates);
         setImportStatus('success');
       } catch (error) {
+        console.error('CSV parsing error:', error);
         setImportStatus('error');
       }
     };
@@ -119,12 +208,12 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
   const handleImport = () => {
     if (!selectedJob || (importData?.length || 0) === 0) return;
     
-    const selectedJobData = jobs.find(job => job.id === selectedJob);
+    const selectedJobData = jobs.find(job => job.id.toString() === selectedJob);
     const candidatesWithJob = importData.map(candidate => ({
       ...candidate,
-      jobId: selectedJob,
+      jobId: parseInt(selectedJob),
       position: selectedJobData?.title || '',
-      assignedTo: selectedJobData?.assignedTo[0] || 'Unassigned'
+      assignedTo: selectedJobData?.assignedTo?.[0] || 1 // Default to admin user ID 1
     }));
     
     onImport(candidatesWithJob);
@@ -137,11 +226,104 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
   };
 
   const downloadTemplate = () => {
-    const csvContent = 'Name,Email,Phone,Experience,Skills,Source,Notes\n' +
-                      'John Doe,john@example.com,+1-555-0123,5 years,React;TypeScript;Node.js,LinkedIn,Strong technical background\n' +
-                      'Jane Smith,jane@example.com,+1-555-0124,3 years,Python;Django;PostgreSQL,Indeed,Good problem-solving skills';
+    // Helper function to escape CSV field
+    const escapeCSVField = (field: string): string => {
+      if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+        // Escape quotes by doubling them and wrap in quotes
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
+
+    const headers = [
+      'Date',
+      'Name',
+      'Email',
+      'Phone No',
+      'Location',
+      'Experience',
+      'Expertise',
+      'Notice Period',
+      'Willing to work on Alternate Saturday',
+      'Work Preference',
+      'Current CTC',
+      'CTC Frequency',
+      'Expected CTC',
+      'In House Assignment',
+      'Interview Date',
+      'Interviewer Name',
+      'In Office Assignment',
+      'HR Remarks',
+      'Skills',
+      'Source',
+      'Status',
+      'Resume Location/Link',
+      'Assignment Location/Link'
+    ];
+
+    // Sample data with proper comma escaping
+    const sampleData = [
+      [
+        '2025-01-24',
+        'John Doe',
+        'john@example.com',
+        '8888888888',
+        'New York',
+        '5 years',
+        'Frontend Development',
+        '2 weeks',
+        'Yes',
+        'Hybrid',
+        '8LPA',
+        'Annual',
+        '10LPA',
+        'Pending',
+        '2025-02-01',
+        'John Smith',
+        'Complete a React component with state management, API integration, and responsive design. Include error handling and loading states.',
+        'Strong technical background with excellent communication skills. Previous experience with React and TypeScript.',
+        'React;TypeScript;Node.js;JavaScript',
+        'LinkedIn',
+        'Applied',
+        'https://example.com/resumes/john_doe_resume.pdf',
+        'https://example.com/assignments/frontend_assignment.pdf'
+      ],
+      [
+        '2025-01-24',
+        'Jane Smith',
+        'jane@example.com',
+        '8888888888',
+        'San Francisco',
+        '3 years',
+        'Backend Development',
+        '1 month',
+        'No',
+        'Onsite',
+        '7LPA',
+        'Annual',
+        '9LPA',
+        'Shortlisted',
+        '2025-02-05',
+        'Jane Doe',
+        'Design and implement a REST API with authentication, database integration, and unit tests.',
+        'Good problem-solving skills, works well in team environments. Has experience with Python and Django.',
+        'Python;Django;PostgreSQL;REST APIs',
+        'Indeed',
+        'Screening',
+        'https://example.com/resumes/jane_smith_resume.pdf',
+        'https://example.com/assignments/backend_assignment.pdf'
+      ]
+    ];
+
+    // Create CSV content
+    let csvContent = headers.join(',') + '\n';
     
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    sampleData.forEach(row => {
+      const escapedRow = row.map(field => escapeCSVField(field));
+      csvContent += escapedRow.join(',') + '\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -152,7 +334,7 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">Bulk Import Candidates</h2>
           <button
@@ -262,23 +444,294 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
               </div>
 
               {/* Preview */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Preview (first 3 candidates)</h4>
-                <div className="space-y-2">
-                  {importData.slice(0, 3).map((candidate, index) => (
-                    <div key={index} className="bg-white p-3 rounded border text-sm">
-                      <div className="grid grid-cols-2 gap-2">
-                        <span><strong>Name:</strong> {candidate.name}</span>
-                        <span><strong>Email:</strong> {candidate.email}</span>
-                        <span><strong>Phone:</strong> {candidate.phone}</span>
-                        <span><strong>Experience:</strong> {candidate.experience}</span>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                    <FileText className="text-blue-600" size={24} />
+                    Preview (first 2 candidates)
+                  </h4>
+                  <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                    {importData.length} total candidates
+                  </div>
+                </div>
+                
+                <div className="space-y-6">
+                  {importData.slice(0, 2).map((candidate, index) => (
+                    <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                      {/* Header */}
+                      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                              <span className="text-white font-bold text-lg">
+                                {candidate.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || '?'}
+                              </span>
+                            </div>
+                            <div>
+                              <h5 className="text-white font-semibold text-lg">{candidate.name}</h5>
+                              <p className="text-blue-100 text-sm">{candidate.position || 'Position not specified'}</p>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium mt-1 inline-block ${
+                                candidate.stage === 'Applied' ? 'bg-blue-100 text-blue-800' :
+                                candidate.stage === 'Screening' ? 'bg-yellow-100 text-yellow-800' :
+                                candidate.stage === 'Interview' ? 'bg-orange-100 text-orange-800' :
+                                candidate.stage === 'Offer' ? 'bg-purple-100 text-purple-800' :
+                                candidate.stage === 'Hired' ? 'bg-green-100 text-green-800' :
+                                candidate.stage === 'Rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {candidate.stage || 'Applied'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white text-sm opacity-90">Candidate #{index + 1}</div>
+                            <div className="text-blue-100 text-xs">{candidate.source}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {/* Personal Information */}
+                          <div className="space-y-4">
+                            <h6 className="font-semibold text-gray-900 text-sm uppercase tracking-wide border-b border-gray-200 pb-2">
+                              Personal Information
+                            </h6>
+                            <div className="space-y-3">
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Email</span>
+                                  <span className="text-gray-900 font-medium">{candidate.email}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Phone</span>
+                                  <span className="text-gray-900 font-medium">{candidate.phone}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Location</span>
+                                  <span className="text-gray-900 font-medium">{candidate.location || 'Not specified'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Experience</span>
+                                  <span className="text-gray-900 font-medium">{candidate.experience}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Expertise</span>
+                                  <span className="text-gray-900 font-medium">{candidate.expertise || 'Not specified'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Work & Compensation */}
+                          <div className="space-y-4">
+                            <h6 className="font-semibold text-gray-900 text-sm uppercase tracking-wide border-b border-gray-200 pb-2">
+                              Work & Compensation
+                            </h6>
+                            <div className="space-y-3">
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Work Preference</span>
+                                  <span className="text-gray-900 font-medium">{candidate.workPreference || 'Not specified'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Current CTC</span>
+                                  <span className="text-gray-900 font-medium">{candidate.currentCtc || 'Not specified'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Expected CTC</span>
+                                  <span className="text-gray-900 font-medium">{candidate.expectedSalary || 'Not specified'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Notice Period</span>
+                                  <span className="text-gray-900 font-medium">{candidate.noticePeriod || 'Not specified'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Alternate Saturday</span>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    candidate.willingAlternateSaturday === true ? 'bg-green-100 text-green-800' :
+                                    candidate.willingAlternateSaturday === false ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {candidate.willingAlternateSaturday === true ? 'Yes' : 
+                                     candidate.willingAlternateSaturday === false ? 'No' : 'Not specified'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Assignment Details */}
+                          <div className="space-y-4">
+                            <h6 className="font-semibold text-gray-900 text-sm uppercase tracking-wide border-b border-gray-200 pb-2">
+                              Assignment Details
+                            </h6>
+                            <div className="space-y-3">
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">In House Assignment</span>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    candidate.inHouseAssignmentStatus === 'Shortlisted' ? 'bg-green-100 text-green-800' :
+                                    candidate.inHouseAssignmentStatus === 'Rejected' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {candidate.inHouseAssignmentStatus || 'Pending'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Interview Date</span>
+                                  <span className="text-gray-900 font-medium">
+                                    {candidate.interviewDate ? new Date(candidate.interviewDate).toLocaleDateString() : 'Not scheduled'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Interviewer Name</span>
+                                  <span className="text-gray-900 font-medium">{candidate.interviewerName || 'Not assigned'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <div>
+                                  <span className="text-gray-600 text-sm block">Applied Date</span>
+                                  <span className="text-gray-900 font-medium">
+                                    {candidate.appliedDate ? new Date(candidate.appliedDate).toLocaleDateString() : 'Not specified'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Additional Information */}
+                        {(candidate.notes || candidate.inOfficeAssignment || candidate.resumeLocation || candidate.assignmentLocation) && (
+                          <div className="mt-6 pt-6 border-t border-gray-200">
+                            <h6 className="font-semibold text-gray-900 text-sm uppercase tracking-wide border-b border-gray-200 pb-2 mb-4">
+                              Additional Information
+                            </h6>
+                            <div className="space-y-4">
+                              {candidate.notes && (
+                                <div className="bg-gray-50 rounded-lg p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-2 h-2 bg-orange-500 rounded-full mt-2 flex-shrink-0"></div>
+                                    <div className="flex-1">
+                                      <span className="text-gray-600 text-sm font-medium block mb-2">HR Remarks</span>
+                                      <p className="text-gray-800 leading-relaxed">{candidate.notes}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {candidate.inOfficeAssignment && (
+                                <div className="bg-blue-50 rounded-lg p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                    <div className="flex-1">
+                                      <span className="text-gray-600 text-sm font-medium block mb-2">In Office Assignment</span>
+                                      <p className="text-gray-800 leading-relaxed">{candidate.inOfficeAssignment}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {candidate.resumeLocation && (
+                                <div className="bg-green-50 rounded-lg p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                    <div className="flex-1">
+                                      <span className="text-gray-600 text-sm font-medium block mb-2">Resume Location</span>
+                                      <a href={candidate.resumeLocation} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-sm break-all">
+                                        {candidate.resumeLocation}
+                                      </a>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {candidate.assignmentLocation && (
+                                <div className="bg-purple-50 rounded-lg p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
+                                    <div className="flex-1">
+                                      <span className="text-gray-600 text-sm font-medium block mb-2">Assignment Location</span>
+                                      <a href={candidate.assignmentLocation} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-sm break-all">
+                                        {candidate.assignmentLocation}
+                                      </a>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Skills */}
+                        {candidate.skills && candidate.skills.length > 0 && (
+                          <div className="mt-6 pt-6 border-t border-gray-200">
+                            <h6 className="font-semibold text-gray-900 text-sm uppercase tracking-wide border-b border-gray-200 pb-2 mb-4">
+                              Skills
+                            </h6>
+                            <div className="flex flex-wrap gap-2">
+                              {candidate.skills.map((skill: string, skillIndex: number) => (
+                                <span key={skillIndex} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
-                  {importData.length > 3 && (
-                    <p className="text-gray-600 text-center">
-                      ... and {importData.length - 3} more candidates
-                    </p>
+                  
+                  {importData.length > 2 && (
+                    <div className="text-center py-6">
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                            <span className="text-gray-600 font-bold">+</span>
+                          </div>
+                          <div>
+                            <p className="text-gray-900 font-medium">
+                              And {importData.length - 2} more candidates
+                            </p>
+                            <p className="text-gray-600 text-sm">
+                              All will be imported with the same job assignment
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

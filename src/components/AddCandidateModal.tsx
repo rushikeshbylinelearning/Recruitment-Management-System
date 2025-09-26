@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Plus, Trash2 } from 'lucide-react';
+import { X, Upload, Plus, Trash2, FileText, Loader } from 'lucide-react';
 import { JobPosting } from '../types';
 import { filesAPI } from '../services/api';
+import { parseResume, ParsedCandidateData } from '../utils/resumeParser';
 
 interface AddCandidateModalProps {
   isOpen: boolean;
@@ -41,7 +42,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     inHouseAssignmentStatus: 'Pending',
     interviewDate: '',
     interviewerId: null as number | null,
-    inOfficeAssignment: ''
+    inOfficeAssignment: '',
+    // New location fields
+    assignmentLocation: '',
+    resumeLocation: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -109,6 +113,8 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   };
 
   const [uploading, setUploading] = useState(false);
+  const [parsingResume, setParsingResume] = useState(false);
+  const [parseError, setParseError] = useState<string>('');
 
   // Populate form when editing
   useEffect(() => {
@@ -134,17 +140,32 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         noticePeriod: editingCandidate.availability?.noticePeriod || '',
         immediateJoiner: editingCandidate.availability?.immediateJoiner || false,
         resume: editingCandidate.resume || '',
-        // New fields
+        // New fields - handle both structured and flat data
         location: editingCandidate.location || '',
         expertise: editingCandidate.expertise || '',
-        willingAlternateSaturday: editingCandidate.workPreferences?.willingAlternateSaturday || null,
-        workPreference: editingCandidate.workPreferences?.workPreference || '',
-        currentCtc: editingCandidate.workPreferences?.currentCtc || '',
-        ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 'Annual',
-        inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 'Pending',
-        interviewDate: editingCandidate.assignmentDetails?.interviewDate || '',
-        interviewerId: editingCandidate.assignmentDetails?.interviewerId || null,
-        inOfficeAssignment: editingCandidate.assignmentDetails?.inOfficeAssignment || ''
+        willingAlternateSaturday: editingCandidate.workPreferences?.willingAlternateSaturday !== undefined ? 
+                                 editingCandidate.workPreferences.willingAlternateSaturday :
+                                 editingCandidate.willingAlternateSaturday !== undefined ? 
+                                 editingCandidate.willingAlternateSaturday : null,
+        workPreference: editingCandidate.workPreferences?.workPreference || 
+                       editingCandidate.workPreference || '',
+        currentCtc: editingCandidate.workPreferences?.currentCtc || 
+                   editingCandidate.currentCtc || '',
+        ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 
+                     editingCandidate.ctcFrequency || 'Annual',
+        inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 
+                               editingCandidate.inHouseAssignmentStatus || 'Pending',
+        interviewDate: editingCandidate.assignmentDetails?.interviewDate ? 
+                      new Date(editingCandidate.assignmentDetails.interviewDate).toISOString().split('T')[0] :
+                      editingCandidate.interviewDate ? 
+                      new Date(editingCandidate.interviewDate).toISOString().split('T')[0] : '',
+        interviewerId: editingCandidate.assignmentDetails?.interviewerId || 
+                      editingCandidate.interviewerId || null,
+        inOfficeAssignment: editingCandidate.assignmentDetails?.inOfficeAssignment || 
+                           editingCandidate.inOfficeAssignment || '',
+        // New location fields
+        assignmentLocation: editingCandidate.assignmentLocation || '',
+        resumeLocation: editingCandidate.resumeLocation || ''
       });
 
       // Set uploaded file if exists
@@ -186,7 +207,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         inHouseAssignmentStatus: 'Pending',
         interviewDate: '',
         interviewerId: null as number | null,
-        inOfficeAssignment: ''
+        inOfficeAssignment: '',
+        // New location fields
+        assignmentLocation: '',
+        resumeLocation: ''
       });
       setUploadedFile(null);
     }
@@ -270,6 +294,9 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       interviewDate: formData.interviewDate,
       interviewerId: formData.interviewerId,
       inOfficeAssignment: formData.inOfficeAssignment,
+      // New location fields
+      assignmentLocation: formData.assignmentLocation,
+      resumeLocation: formData.resumeLocation,
       interviews: []
     };
 
@@ -305,7 +332,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       inHouseAssignmentStatus: 'Pending',
       interviewDate: '',
       interviewerId: null as number | null,
-      inOfficeAssignment: ''
+      inOfficeAssignment: '',
+      // New location fields
+      assignmentLocation: '',
+      resumeLocation: ''
     });
     setErrors({});
     setUploadedFile(null);
@@ -362,6 +392,65 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     }));
   };
 
+  const handleParseResume = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check file type
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+    
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      setParseError('Please select a PDF, Word document, or text file.');
+      return;
+    }
+
+    try {
+      setParsingResume(true);
+      setParseError('');
+      
+      // Parse the resume
+      const parsedData: ParsedCandidateData = await parseResume(file);
+      
+      // Update form data with parsed information
+      setFormData(prev => ({
+        ...prev,
+        name: parsedData.name || prev.name,
+        email: parsedData.email || prev.email,
+        phone: parsedData.phone || prev.phone,
+        location: parsedData.location || prev.location,
+        experience: parsedData.experience || prev.experience,
+        skills: parsedData.skills ? parsedData.skills.join(', ') : prev.skills,
+        expertise: parsedData.expertise || prev.expertise,
+        expectedSalary: parsedData.expectedSalary || prev.expectedSalary,
+        currentCtc: parsedData.currentCtc || prev.currentCtc,
+        noticePeriod: parsedData.noticePeriod || prev.noticePeriod,
+        immediateJoiner: parsedData.immediateJoiner !== undefined ? parsedData.immediateJoiner : prev.immediateJoiner,
+        workPreference: parsedData.workPreference || prev.workPreference,
+        willingAlternateSaturday: parsedData.willingAlternateSaturday !== undefined ? parsedData.willingAlternateSaturday : prev.willingAlternateSaturday,
+        notes: parsedData.notes ? (prev.notes ? `${prev.notes}\n\nParsed from resume:\n${parsedData.notes}` : `Parsed from resume:\n${parsedData.notes}`) : prev.notes
+      }));
+      
+      // Also upload the file
+      await handleFileUpload(event);
+      
+    } catch (error) {
+      console.error('Resume parsing error:', error);
+      setParseError(error instanceof Error ? error.message : 'Failed to parse resume');
+    } finally {
+      setParsingResume(false);
+      // Reset the file input
+      event.target.value = '';
+    }
+  };
+
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -374,7 +463,17 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Candidate</h2>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {editingCandidate ? (editingCandidate.id === 0 ? 'Add Candidate from Resume' : 'Edit Candidate') : 'Add New Candidate'}
+            </h2>
+            {editingCandidate?.id === 0 && (
+              <p className="text-sm text-blue-600 mt-1 flex items-center">
+                <FileText size={16} className="mr-1" />
+                Information extracted from resume - please review and edit as needed
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -537,33 +636,39 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={formData.resume}
-                    onChange={(e) => setFormData(prev => ({ ...prev, resume: e.target.value }))}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Resume filename or URL"
-                  />
-                  <label className={`px-3 py-2 bg-gray-100 text-gray-600 rounded-lg transition-colors cursor-pointer ${uploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200'}`}>
-                    {uploading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                    ) : (
-                      <Upload size={16} />
-                    )}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
                     <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,.txt"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                      disabled={uploading}
+                      type="text"
+                      value={formData.resume}
+                      onChange={(e) => setFormData(prev => ({ ...prev, resume: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Resume filename or URL"
                     />
-                  </label>
+                    <label className={`px-3 py-2 bg-gray-100 text-gray-600 rounded-lg transition-colors cursor-pointer ${uploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200'}`}>
+                      {uploading ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                      ) : (
+                        <Upload size={16} />
+                      )}
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.txt"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        disabled={uploading}
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
               
               {errors.resume && (
                 <p className="text-red-500 text-sm mt-1">{errors.resume}</p>
+              )}
+              
+              {parseError && (
+                <p className="text-red-500 text-sm mt-1">{parseError}</p>
               )}
             </div>
           </div>
@@ -808,7 +913,33 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notes (HR Remarks)
+              Assignment Location/Link
+            </label>
+            <input
+              type="text"
+              value={formData.assignmentLocation}
+              onChange={(e) => setFormData(prev => ({ ...prev, assignmentLocation: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="File path or URL to assignment file"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Resume Location/Link
+            </label>
+            <input
+              type="text"
+              value={formData.resumeLocation}
+              onChange={(e) => setFormData(prev => ({ ...prev, resumeLocation: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="File path or URL to resume file"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Notes
             </label>
             <textarea
               value={formData.notes}

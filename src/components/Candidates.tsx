@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download } from 'lucide-react';
+import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download, FileText, Users, DollarSign, CheckCircle, XCircle, Briefcase } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import AddCandidateModal from './AddCandidateModal';
@@ -100,6 +100,18 @@ export default function Candidates() {
     }
   };
 
+  const getStageIcon = (stage: string) => {
+    switch (stage) {
+      case 'Applied': return <FileText size={20} className="text-blue-600" />;
+      case 'Screening': return <Search size={20} className="text-yellow-600" />;
+      case 'Interview': return <Users size={20} className="text-orange-600" />;
+      case 'Offer': return <DollarSign size={20} className="text-purple-600" />;
+      case 'Hired': return <CheckCircle size={20} className="text-green-600" />;
+      case 'Rejected': return <XCircle size={20} className="text-red-600" />;
+      default: return <Briefcase size={20} className="text-gray-600" />;
+    }
+  };
+
   const candidatesByStage = stages.reduce((acc, stage) => {
     acc[stage] = filteredCandidates.filter(candidate => candidate.stage === stage);
     return acc;
@@ -110,18 +122,21 @@ export default function Candidates() {
   const handleBulkImport = async (candidatesData: any[]) => {
     try {
       setLoading(true);
-      // For now, create candidates one by one
-      // In the future, we could create a bulk import endpoint
-      for (const candidateData of candidatesData) {
-        await candidatesAPI.createCandidate(candidateData);
+      
+      // Use the bulk import endpoint
+      const response = await candidatesAPI.bulkImportCandidates(candidatesData);
+      
+      if (response.success) {
+        setError('');
+        // Reload candidates
+        const candidatesResponse = await candidatesAPI.getCandidates();
+        if (candidatesResponse.success && candidatesResponse.data) {
+          setCandidates(candidatesResponse.data.candidates || []);
+        }
+        setShowBulkImportModal(false);
+      } else {
+        setError('Failed to import candidates');
       }
-      setError('');
-      // Reload candidates
-      const candidatesResponse = await candidatesAPI.getCandidates();
-      if (candidatesResponse.success && candidatesResponse.data) {
-        setCandidates(candidatesResponse.data.candidates || []);
-      }
-      setShowBulkImportModal(false);
     } catch (err) {
       setError('Failed to import candidates');
     } finally {
@@ -129,14 +144,87 @@ export default function Candidates() {
     }
   };
 
-  const handleShowAdvancedSearch = () => {
-    // TODO: Implement advanced search functionality
-    console.log('Advanced search clicked');
-  };
 
   const handleShowResumeParser = () => {
-    // TODO: Implement resume parser functionality
-    console.log('Resume parser clicked');
+    // Create a hidden file input for resume parsing
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.txt';
+    input.style.display = 'none';
+    
+    input.onchange = async (event) => {
+      const file = (event.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setLoading(true);
+        
+        // Import the resume parser
+        const { parseResume } = await import('../utils/resumeParser');
+        
+        // Parse the resume
+        const parsedData = await parseResume(file);
+        
+        // Set the parsed data and open the modal
+        setEditingCandidate({
+          id: 0, // Temporary ID for new candidate
+          name: parsedData.name || '',
+          email: parsedData.email || '',
+          phone: parsedData.phone || '',
+          position: parsedData.expertise || '',
+          stage: 'Applied',
+          source: 'Resume Parser',
+          appliedDate: new Date().toISOString(),
+          notes: parsedData.notes || '',
+          score: 0,
+          skills: parsedData.skills || [],
+          experience: parsedData.experience || '',
+          salary: {
+            expected: parsedData.expectedSalary || '',
+            offered: '',
+            negotiable: true
+          },
+          availability: {
+            joiningTime: '',
+            noticePeriod: parsedData.noticePeriod || '',
+            immediateJoiner: parsedData.immediateJoiner || false
+          },
+          location: parsedData.location || '',
+          expertise: parsedData.expertise || '',
+          willingAlternateSaturday: parsedData.willingAlternateSaturday,
+          workPreference: parsedData.workPreference || '',
+          currentCtc: parsedData.currentCtc || '',
+          ctcFrequency: 'Annual',
+          inHouseAssignmentStatus: 'Pending',
+          interviewDate: '',
+          interviewerId: null,
+          inOfficeAssignment: '',
+          assignmentLocation: '',
+          resumeLocation: '',
+          communications: [],
+          interviews: [],
+          communicationsCount: 0,
+          interviewsCount: 0,
+          assignedTo: 'Unassigned',
+          jobId: jobs.length > 0 ? jobs[0].id : null,
+          resumeFileId: null,
+          resume: file.name
+        } as any);
+        
+        setShowAddModal(true);
+        setError('');
+        
+      } catch (error) {
+        console.error('Resume parsing error:', error);
+        setError(error instanceof Error ? error.message : 'Failed to parse resume');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
   };
 
   // CRUD Operations
@@ -203,7 +291,7 @@ export default function Candidates() {
     try {
       setLoading(true);
       
-      if (editingCandidate) {
+      if (editingCandidate && editingCandidate.id > 0) {
         // Update existing candidate
         const response = await candidatesAPI.updateCandidate(editingCandidate.id, candidateData);
         if (response.success) {
@@ -425,13 +513,13 @@ export default function Candidates() {
             <Upload size={20} />
             <span>Bulk Import</span>
           </button>
-          <button
+          {/* <button
             onClick={handleShowAdvancedSearch}
             className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
           >
             <Search size={20} />
             <span>Advanced Search</span>
-          </button>
+          </button> */}
           <button
             onClick={() => setViewMode('kanban')}
             className={`px-4 py-2 rounded-lg transition-colors ${

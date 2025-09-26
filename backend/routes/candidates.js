@@ -84,7 +84,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     // Structure work preferences
     candidate.workPreferences = {
       workPreference: candidate.work_preference || null,
-      willingAlternateSaturday: candidate.willing_alternate_saturday || null,
+      willingAlternateSaturday: candidate.willing_alternate_saturday === null ? null : Boolean(candidate.willing_alternate_saturday),
       currentCtc: candidate.current_ctc || null,
       ctcFrequency: candidate.ctc_frequency || 'Annual'
     };
@@ -96,6 +96,10 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
       interviewerId: candidate.interviewer_id || null,
       inOfficeAssignment: candidate.in_office_assignment || null
     };
+
+    // Add location fields
+    candidate.assignmentLocation = candidate.assignment_location || null;
+    candidate.resumeLocation = candidate.resume_location || null;
 
     // Initialize empty arrays for frontend compatibility
     candidate.communications = [];
@@ -121,6 +125,9 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     delete candidate.interview_date;
     delete candidate.interviewer_id;
     delete candidate.in_office_assignment;
+    // Remove new location snake_case fields
+    delete candidate.assignment_location;
+    delete candidate.resume_location;
 
     // Get communications count
     const commCount = await query(
@@ -199,7 +206,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   // Structure work preferences
   candidate.workPreferences = {
     workPreference: candidate.work_preference || null,
-    willingAlternateSaturday: candidate.willing_alternate_saturday || null,
+    willingAlternateSaturday: candidate.willing_alternate_saturday === null ? null : Boolean(candidate.willing_alternate_saturday),
     currentCtc: candidate.current_ctc || null,
     ctcFrequency: candidate.ctc_frequency || 'Annual'
   };
@@ -211,6 +218,10 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
     interviewerId: candidate.interviewer_id || null,
     inOfficeAssignment: candidate.in_office_assignment || null
   };
+
+  // Add location fields
+  candidate.assignmentLocation = candidate.assignment_location || null;
+  candidate.resumeLocation = candidate.resume_location || null;
   
   // Remove snake_case fields
   delete candidate.resume_file_id;
@@ -232,6 +243,9 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   delete candidate.interview_date;
   delete candidate.interviewer_id;
   delete candidate.in_office_assignment;
+  // Remove new location snake_case fields
+  delete candidate.assignment_location;
+  delete candidate.resume_location;
 
   // Get communications
   const communications = await query(
@@ -338,7 +352,10 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     inHouseAssignmentStatus,
     interviewDate,
     interviewerId,
-    inOfficeAssignment
+    inOfficeAssignment,
+    // New location fields
+    assignmentLocation,
+    resumeLocation
   } = req.body;
 
   // Validate assigned user exists (only if assignedTo is a valid user ID)
@@ -366,8 +383,8 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, notes, score, 
      assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
      location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
-     interview_date, interviewer_id, in_office_assignment) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       jobId || null,
       name, 
@@ -400,7 +417,10 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
       inHouseAssignmentStatus || 'Pending',
       interviewDate || null,
       interviewerId || null,
-      inOfficeAssignment || null
+      inOfficeAssignment || null,
+      // New location fields
+      assignmentLocation || null,
+      resumeLocation || null
     ]
   );
 
@@ -446,7 +466,10 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
     inHouseAssignmentStatus,
     interviewDate,
     interviewerId,
-    inOfficeAssignment
+    inOfficeAssignment,
+    // New location fields
+    assignmentLocation,
+    resumeLocation
   } = req.body;
 
   // Check if candidate exists
@@ -487,6 +510,9 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   const safeInterviewDate = interviewDate === undefined ? null : interviewDate;
   const safeInterviewerId = interviewerId === undefined ? null : interviewerId;
   const safeInOfficeAssignment = inOfficeAssignment === undefined ? null : inOfficeAssignment;
+  // New location fields safe values
+  const safeAssignmentLocation = assignmentLocation === undefined ? null : assignmentLocation;
+  const safeResumeLocation = resumeLocation === undefined ? null : resumeLocation;
 
   // Update candidate
   await query(
@@ -495,12 +521,13 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
      salary_offered = ?, salary_negotiable = ?, joining_time = ?, notice_period = ?, immediate_joiner = ?,
      location = ?, expertise = ?, willing_alternate_saturday = ?, work_preference = ?, current_ctc = ?, 
      ctc_frequency = ?, in_house_assignment_status = ?, interview_date = ?, interviewer_id = ?, 
-     in_office_assignment = ?, updated_at = NOW() 
+     in_office_assignment = ?, assignment_location = ?, resume_location = ?, updated_at = NOW() 
      WHERE id = ?`,
     [name, email, phone, position, stage, source, appliedDate, safeResumePath, safeNotes, safeScore, assignedUserId,
      JSON.stringify(skills), safeExperience, safeSalaryExpected, safeSalaryOffered, safeSalaryNegotiable, safeJoiningTime, safeNoticePeriod, safeImmediateJoiner,
      safeLocation, safeExpertise, safeWillingAlternateSaturday, safeWorkPreference, safeCurrentCtc, safeCtcFrequency, 
-     safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, candidateId]
+     safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, 
+     safeAssignmentLocation, safeResumeLocation, candidateId]
   );
 
   res.json({
@@ -624,29 +651,60 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
       const candidate = candidates[i];
       
       // Validate required fields
-      if (!candidate.name || !candidate.email || !candidate.position || !candidate.assignedTo) {
+      if (!candidate.name || !candidate.email || !candidate.position) {
         errors.push({ row: i + 1, error: 'Missing required fields' });
         continue;
       }
 
+      // Set default assignedTo if not provided
+      let assignedTo = candidate.assignedTo || 1; // Default to admin user ID 1
+
       // Validate assigned user exists
-      const users = await query('SELECT id FROM users WHERE id = ?', [candidate.assignedTo]);
+      const users = await query('SELECT id FROM users WHERE id = ?', [assignedTo]);
       if (users.length === 0) {
         errors.push({ row: i + 1, error: 'Assigned user not found' });
         continue;
       }
 
-      // Create candidate
+      // Resolve interviewer name to ID
+      let interviewerId = null;
+      if (candidate.interviewerName && candidate.interviewerName.trim()) {
+        // Try exact match first
+        let interviewerQuery = await query('SELECT id FROM users WHERE name = ?', [candidate.interviewerName.trim()]);
+        
+        // If not found, try case-insensitive search
+        if (interviewerQuery.length === 0) {
+          interviewerQuery = await query('SELECT id FROM users WHERE LOWER(name) = LOWER(?)', [candidate.interviewerName.trim()]);
+        }
+        
+        // If still not found, try partial match
+        if (interviewerQuery.length === 0) {
+          interviewerQuery = await query('SELECT id FROM users WHERE LOWER(name) LIKE LOWER(?)', [`%${candidate.interviewerName.trim()}%`]);
+        }
+        
+        if (interviewerQuery.length > 0) {
+          interviewerId = interviewerQuery[0].id;
+        }
+      }
+
+      // Create candidate with all new fields
       const result = await query(
-        `INSERT INTO candidates (name, email, phone, position, stage, source, applied_date, resume_path, notes, score, 
-         assigned_to, skills, experience, salary_expected, salary_negotiable, joining_time, notice_period, immediate_joiner) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
+        `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, notes, score, 
+         assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
+         location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
+         interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
          candidate.source || 'Bulk Import', candidate.appliedDate || new Date().toISOString().split('T')[0],
-         candidate.resumePath || null, candidate.notes || '', candidate.score || 0, candidate.assignedTo,
-         JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.salaryExpected || '',
-         candidate.salaryNegotiable !== undefined ? candidate.salaryNegotiable : true,
-         candidate.joiningTime || '', candidate.noticePeriod || '', candidate.immediateJoiner || false]
+         candidate.resumePath || null, candidate.notes || '', candidate.score || 0, assignedTo,
+         JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.expectedSalary || '', 
+         candidate.salaryOffered || '', candidate.salaryNegotiable !== undefined ? candidate.salaryNegotiable : true,
+         candidate.joiningTime || '', candidate.noticePeriod || '', candidate.immediateJoiner || false,
+         // New fields
+         candidate.location || null, candidate.expertise || null, candidate.willingAlternateSaturday || null,
+         candidate.workPreference || null, candidate.currentCtc || null, candidate.ctcFrequency || 'Annual',
+         candidate.inHouseAssignmentStatus || 'Pending', candidate.interviewDate || null, interviewerId,
+         candidate.inOfficeAssignment || null, candidate.assignmentLocation || null, candidate.resumeLocation || null]
       );
 
       results.push({ row: i + 1, candidateId: result.insertId });

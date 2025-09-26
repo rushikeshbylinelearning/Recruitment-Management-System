@@ -1,5 +1,4 @@
-import React from 'react';
-import { X, Mail, Phone, MapPin, Calendar, Star, Download, FileText, User } from 'lucide-react';
+import { X, Mail, Phone, MapPin, Star, Download, FileText, User } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI } from '../services/api';
 
@@ -89,7 +88,69 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
+              {candidate.workPreferences && (
+                 <div className="bg-gray-50 rounded-lg p-4">
+                   <h3 className="text-lg font-medium text-gray-900 mb-4">Work Preferences</h3>
+                   <div className="space-y-3">
+                     {candidate.workPreferences.workPreference && (
+                       <div className="flex items-center justify-between">
+                         <span className="text-gray-600">Work Preference:</span>
+                         <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                           {candidate.workPreferences.workPreference}
+                         </span>
+                       </div>
+                     )}
+                     {candidate.workPreferences.currentCtc && (
+                       <div className="flex items-center justify-between">
+                         <span className="text-gray-600">Current CTC:</span>
+                         <span className="text-gray-900">₹{candidate.workPreferences.currentCtc} ({candidate.workPreferences.ctcFrequency || 'Annual'})</span>
+                       </div>
+                     )}
+                     <div className="flex items-center justify-between">
+                       <span className="text-gray-600">Alternate Saturday:</span>
+                       <span className={`px-2 py-1 rounded-full text-sm ${
+                         candidate.workPreferences.willingAlternateSaturday === true
+                           ? 'bg-green-100 text-green-800'
+                           : candidate.workPreferences.willingAlternateSaturday === false
+                           ? 'bg-red-100 text-red-800'
+                           : 'bg-gray-100 text-gray-800'
+                       }`}>
+                         {candidate.workPreferences.willingAlternateSaturday === true ? 'Yes' : 
+                          candidate.workPreferences.willingAlternateSaturday === false ? 'No' : 'Not Specified'}
+                       </span>
+                     </div>
+                   </div>
+                 </div>
+               )}
+
+               {(candidate.skills && candidate.skills.length > 0) || candidate.expertise && (
+                 <div className="bg-gray-50 rounded-lg p-4">
+                   <h3 className="text-lg font-medium text-gray-900 mb-4">Skills & Expertise</h3>
+                   {candidate.expertise && (
+                     <div className="mb-3">
+                       <span className="text-sm text-gray-600">Primary Expertise:</span>
+                       <p className="text-gray-900 font-medium">{candidate.expertise}</p>
+                     </div>
+                   )}
+                   {candidate.skills && candidate.skills.length > 0 && (
+                     <div>
+                       <span className="text-sm text-gray-600 mb-2 block">Technical Skills:</span>
+                       <div className="flex flex-wrap gap-2">
+                         {candidate.skills.map((skill, index) => (
+                           <span
+                             key={index}
+                             className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                           >
+                             {skill}
+                           </span>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               )}
+
+<div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Application Details</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -112,32 +173,13 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                 </div>
               </div>
 
-              {(candidate.skills && candidate.skills.length > 0) || candidate.expertise && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Skills & Expertise</h3>
-                  {candidate.expertise && (
-                    <div className="mb-3">
-                      <span className="text-sm text-gray-600">Primary Expertise:</span>
-                      <p className="text-gray-900 font-medium">{candidate.expertise}</p>
-                    </div>
-                  )}
-                  {candidate.skills && candidate.skills.length > 0 && (
-                    <div>
-                      <span className="text-sm text-gray-600 mb-2 block">Technical Skills:</span>
-                      <div className="flex flex-wrap gap-2">
-                        {candidate.skills.map((skill, index) => (
-                          <span
-                            key={index}
-                            className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+               {candidate.notes && (
+                 <div className="bg-gray-50 rounded-lg p-4">
+                   <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
+                   <p className="text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
+                 </div>
+               )}
+
             </div>
 
             {/* Right Column - Additional Info */}
@@ -166,41 +208,6 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                           : 'bg-red-100 text-red-800'
                       }`}>
                         {candidate.salary.negotiable ? 'Yes' : 'No'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {candidate.workPreferences && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Work Preferences</h3>
-                  <div className="space-y-3">
-                    {candidate.workPreferences.workPreference && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Work Preference:</span>
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                          {candidate.workPreferences.workPreference}
-                        </span>
-                      </div>
-                    )}
-                    {candidate.workPreferences.currentCtc && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Current CTC:</span>
-                        <span className="text-gray-900">₹{candidate.workPreferences.currentCtc} ({candidate.workPreferences.ctcFrequency || 'Annual'})</span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Alternate Saturday:</span>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        candidate.workPreferences.willingAlternateSaturday === true
-                          ? 'bg-green-100 text-green-800'
-                          : candidate.workPreferences.willingAlternateSaturday === false
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {candidate.workPreferences.willingAlternateSaturday === true ? 'Yes' : 
-                         candidate.workPreferences.willingAlternateSaturday === false ? 'No' : 'Not Specified'}
                       </span>
                     </div>
                   </div>
@@ -289,16 +296,36 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                         <p className="text-gray-700 text-sm bg-white p-3 rounded border">{candidate.assignmentDetails.inOfficeAssignment}</p>
                       </div>
                     )}
+                    {candidate.assignmentLocation && (
+                      <div>
+                        <span className="text-sm text-gray-600 block mb-2">Assignment Location:</span>
+                        <a 
+                          href={candidate.assignmentLocation} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 text-sm break-all"
+                        >
+                          {candidate.assignmentLocation}
+                        </a>
+                      </div>
+                    )}
+                    {candidate.resumeLocation && (
+                      <div>
+                        <span className="text-sm text-gray-600 block mb-2">Resume Location/Link:</span>
+                        <a 
+                          href={candidate.resumeLocation} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 text-sm break-all"
+                        >
+                          {candidate.resumeLocation}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {candidate.notes && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">HR Remarks</h3>
-                  <p className="text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
-                </div>
-              )}
             </div>
           </div>
         </div>

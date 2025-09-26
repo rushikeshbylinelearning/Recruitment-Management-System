@@ -5,13 +5,48 @@ import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import InterviewerDashboard from './components/InterviewerDashboard';
 import Jobs from './components/Jobs';
+import InterviewerJobs from './components/InterviewerJobs';
 import Candidates from './components/Candidates';
+import InterviewerCandidates from './components/InterviewerCandidates';
+import InterviewerFeedback from './components/InterviewerFeedback';
 import Team from './components/Team';
 import Tasks from './components/Tasks';
 import Communications from './components/Communications';
 import Analytics from './components/Analytics';
 import Settings from './components/Settings';
+
+// Role-based component wrapper
+function RoleBasedDashboard() {
+  const { user } = useAuth();
+  
+  if (user?.role === 'Interviewer') {
+    return <InterviewerDashboard />;
+  }
+  
+  return <Dashboard />;
+}
+
+function RoleBasedJobs() {
+  const { user } = useAuth();
+  
+  if (user?.role === 'Interviewer') {
+    return <InterviewerJobs />;
+  }
+  
+  return <Jobs />;
+}
+
+function RoleBasedCandidates() {
+  const { user } = useAuth();
+  
+  if (user?.role === 'Interviewer') {
+    return <InterviewerCandidates />;
+  }
+  
+  return <Candidates />;
+}
 
 function AppContent() {
   const { isAuthenticated } = useAuth();
@@ -27,9 +62,12 @@ function AppContent() {
       {/* Protected Routes */}
       <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="jobs" element={<Jobs />} />
-        <Route path="candidates" element={<Candidates />} />
+        <Route path="dashboard" element={<RoleBasedDashboard />} />
+        <Route path="jobs" element={<RoleBasedJobs />} />
+        <Route path="candidates" element={<RoleBasedCandidates />} />
+        <Route path="interviewer-jobs" element={<InterviewerJobs />} />
+        <Route path="interviewer-candidates" element={<InterviewerCandidates />} />
+        <Route path="interviewer-feedback" element={<InterviewerFeedback />} />
         <Route path="team" element={<Team />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="communications" element={<Communications />} />
