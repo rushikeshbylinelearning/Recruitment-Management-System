@@ -152,7 +152,7 @@ export interface PostInterviewFeedback {
 export interface TeamMember {
   id: number;
   name: string;
-  role: 'Recruiter' | 'HR Manager' | 'Team Lead' | 'Admin' | 'Interviewer';
+  role: 'Recruiter' | 'HR Manager' | 'Admin' | 'Interviewer';
   email: string;
   username: string;
   password: string;
@@ -189,7 +189,7 @@ export interface User {
   name: string;
   email: string;
   username: string;
-  role: 'Recruiter' | 'HR Manager' | 'Team Lead' | 'Admin' | 'Interviewer';
+  role: 'Recruiter' | 'HR Manager' | 'Admin' | 'Interviewer';
   permissions: Permission[];
   avatar: string;
   interviewerProfile?: InterviewerProfile;

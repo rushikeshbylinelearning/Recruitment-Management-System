@@ -99,7 +99,7 @@ export interface User {
   username: string;
   email: string;
   name: string;
-  role: 'Admin' | 'HR Manager' | 'Team Lead' | 'Recruiter' | 'Interviewer';
+  role: 'Admin' | 'HR Manager' | 'Recruiter' | 'Interviewer';
   avatar?: string | null;
   status: 'Active' | 'Away' | 'Busy';
   last_login?: string | null;

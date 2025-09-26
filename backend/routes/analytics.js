@@ -218,7 +218,7 @@ router.get('/recruiter-performance', authenticateToken, checkPermission('analyti
        ROUND(COUNT(CASE WHEN c.stage = 'Hired' THEN 1 END) * 100.0 / COUNT(c.id), 2) as hire_rate
      FROM users u
      LEFT JOIN candidates c ON u.id = c.assigned_to
-     WHERE u.role IN ('Recruiter', 'HR Manager', 'Team Lead')
+     WHERE u.role IN ('Recruiter', 'HR Manager')
      GROUP BY u.id, u.name, u.role
      ORDER BY hires DESC`,
     []

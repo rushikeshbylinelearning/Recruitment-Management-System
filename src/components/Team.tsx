@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, MoreVertical, Mail, CheckCircle, Clock, AlertCircle, X, Save, Edit } from 'lucide-react';
 import { TeamMember } from '../types';
 import { usersAPI, User } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Team() {
+  const { hasPermission, user } = useAuth();
   const [team, setTeam] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -69,7 +71,17 @@ export default function Team() {
     }
   };
 
-  const roles = ['Admin', 'HR Manager', 'Team Lead', 'Recruiter', 'Interviewer'];
+  // Define available roles based on current user's permissions
+  const getAvailableRoles = () => {
+    if (user?.role === 'Admin' || user?.role === 'HR Manager') {
+      return ['Admin', 'HR Manager', 'Recruiter', 'Interviewer'];
+    } else if (user?.role === 'Recruiter') {
+      return ['Interviewer']; // Recruiters can only create Interviewers
+    }
+    return ['Interviewer']; // Default fallback
+  };
+  
+  const roles = getAvailableRoles();
   const statuses = ['Active', 'Away', 'Busy'];
 
   const handleAddMember = () => {
@@ -78,7 +90,7 @@ export default function Team() {
       email: '',
       username: '',
       password: '',
-      role: 'Recruiter',
+      role: user?.role === 'Recruiter' ? 'Interviewer' : 'Recruiter',
       status: 'Active'
     });
     setErrors({});
@@ -193,7 +205,7 @@ export default function Team() {
         email: '',
         username: '',
         password: '',
-        role: 'Recruiter',
+        role: user?.role === 'Recruiter' ? 'Interviewer' : 'Recruiter',
         status: 'Active'
       });
       setErrors({});
@@ -206,10 +218,6 @@ export default function Team() {
   };
 
 
-  const hasPermission = () => {
-    // Mock permission check - replace with actual implementation
-    return true;
-  };
 
   return (
     <div className="space-y-6">
@@ -219,13 +227,15 @@ export default function Team() {
           <h1 className="text-3xl font-bold text-gray-900">Team Management</h1>
           <p className="text-gray-600 mt-1">Manage your hiring team members and their performance</p>
         </div>
-        <button 
-          onClick={handleAddMember}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          <span>Add Member</span>
-        </button>
+        {hasPermission('team', 'create') && (
+          <button 
+            onClick={handleAddMember}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            <span>Add Member</span>
+          </button>
+        )}
       </div>
 
       {/* Loading State */}
@@ -265,7 +275,6 @@ export default function Team() {
           <option value="All">All Roles</option>
           <option value="Recruiter">Recruiter</option>
           <option value="HR Manager">HR Manager</option>
-          <option value="Team Lead">Team Lead</option>
           <option value="Admin">Admin</option>
         </select>
       </div>
@@ -287,7 +296,7 @@ export default function Team() {
                 </div>
               </div>
               <div className="flex space-x-1">
-                {hasPermission() && (
+                {hasPermission('team', 'edit') && (user?.role === 'Admin' || user?.role === 'HR Manager' || member.role === 'Interviewer') && (
                   <button
                     onClick={() => handleEditMember(member)}
                     className="text-gray-400 hover:text-blue-600 p-1"
@@ -296,9 +305,20 @@ export default function Team() {
                     <Edit size={16} />
                   </button>
                 )}
-                <button className="text-gray-400 hover:text-gray-600">
-                  <MoreVertical size={16} />
-                </button>
+                {hasPermission('team', 'delete') && member.id !== user?.id && (user?.role === 'Admin' || user?.role === 'HR Manager' || member.role === 'Interviewer') && (
+                  <button 
+                    onClick={() => {
+                      if (confirm('Are you sure you want to delete this team member?')) {
+                        // Handle delete logic here
+                        console.log('Delete member:', member.id);
+                      }
+                    }}
+                    className="text-gray-400 hover:text-red-600 p-1"
+                    title="Delete member"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -621,44 +641,48 @@ export default function Team() {
               >
                 Cancel
               </button>
-              <button
-                onClick={async () => {
-                  if (confirm(`Are you sure you want to delete ${editingMember?.name}?`)) {
-                    try {
-                      setLoading(true);
-                      const response = await usersAPI.deleteUser(editingMember!.id);
-                      if (response.success) {
-                        // Clear any previous errors
-                        setError('');
-                        // Reload users to get updated data
-                        const usersResponse = await usersAPI.getUsers();
-                        if (usersResponse.success && usersResponse.data) {
-                          setTeam(usersResponse.data.users);
+              {hasPermission('team', 'delete') && editingMember?.id !== user?.id && (user?.role === 'Admin' || user?.role === 'HR Manager' || editingMember?.role === 'Interviewer') && (
+                <button
+                  onClick={async () => {
+                    if (confirm(`Are you sure you want to delete ${editingMember?.name}?`)) {
+                      try {
+                        setLoading(true);
+                        const response = await usersAPI.deleteUser(editingMember!.id);
+                        if (response.success) {
+                          // Clear any previous errors
+                          setError('');
+                          // Reload users to get updated data
+                          const usersResponse = await usersAPI.getUsers();
+                          if (usersResponse.success && usersResponse.data) {
+                            setTeam(usersResponse.data.users);
+                          }
+                          setShowEditMemberModal(false);
+                          setEditingMember(null);
+                        } else {
+                          setError('Failed to delete team member');
                         }
-                        setShowEditMemberModal(false);
-                        setEditingMember(null);
-                      } else {
+                      } catch (err) {
+                        console.error('Error deleting member:', err);
                         setError('Failed to delete team member');
+                      } finally {
+                        setLoading(false);
                       }
-                    } catch (err) {
-                      console.error('Error deleting member:', err);
-                      setError('Failed to delete team member');
-                    } finally {
-                      setLoading(false);
                     }
-                  }
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Delete
-              </button>
-              <button
-                onClick={handleSubmitMember}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-              >
-                <Save size={16} />
-                <span>Save Changes</span>
-              </button>
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
+              {hasPermission('team', 'edit') && (user?.role === 'Admin' || user?.role === 'HR Manager' || editingMember?.role === 'Interviewer') && (
+                <button
+                  onClick={handleSubmitMember}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                >
+                  <Save size={16} />
+                  <span>Save Changes</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

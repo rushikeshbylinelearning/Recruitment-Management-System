@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Clock, User, Video, MapPin, Plus, X, Save, Edit, Trash2 } from 'lucide-react';
+import { X, Save } from 'lucide-react';
 import { Interview, Candidate, TeamMember } from '../types';
 
 interface InterviewSchedulerProps {
@@ -50,8 +50,8 @@ export default function InterviewScheduler({
     
     if (!validateForm()) return;
 
-    const selectedCandidate = candidates.find(c => c.id === formData.candidateId);
-    const selectedInterviewer = interviewers.find(i => i.id === formData.interviewerId);
+    const selectedCandidate = candidates.find(c => c.id.toString() === formData.candidateId);
+    const selectedInterviewer = interviewers.find(i => i.id.toString() === formData.interviewerId);
 
     const interviewData = {
       id: editingInterview?.id || `interview-${Date.now()}`,
@@ -139,8 +139,7 @@ export default function InterviewScheduler({
                 <option value="">Select interviewer</option>
                 {interviewers.filter(member => 
                   member.role === 'Interviewer' || 
-                  member.role === 'HR Manager' || 
-                  member.role === 'Team Lead'
+                  member.role === 'HR Manager'
                 ).map(interviewer => (
                   <option key={interviewer.id} value={interviewer.id}>
                     {interviewer.name} - {interviewer.role}
@@ -189,7 +188,7 @@ export default function InterviewScheduler({
               </label>
               <select
                 value={formData.type}
-                onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
+                onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as "Technical" | "HR" | "Managerial" | "Final" }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="Technical">Technical</option>

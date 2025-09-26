@@ -1,8 +1,8 @@
-import { JobPosting, Candidate, TeamMember, Task, Analytics, Permission } from '../types';
+import { JobPosting, Candidate, TeamMember, Task, Analytics } from '../types';
 
 export const mockJobs: JobPosting[] = [
   {
-    id: '1',
+    id: 1,
     title: 'Senior Frontend Developer',
     department: 'Engineering',
     location: 'San Francisco, CA',
@@ -21,7 +21,7 @@ export const mockJobs: JobPosting[] = [
     assignedTo: ['Sarah Johnson', 'Mike Chen']
   },
   {
-    id: '2',
+    id: 2,
     title: 'Product Manager',
     department: 'Product',
     location: 'New York, NY',
@@ -39,7 +39,7 @@ export const mockJobs: JobPosting[] = [
     assignedTo: ['Emma Wilson']
   },
   {
-    id: '3',
+    id: 3,
     title: 'UX Designer',
     department: 'Design',
     location: 'Remote',
@@ -60,7 +60,7 @@ export const mockJobs: JobPosting[] = [
 
 export const mockCandidates: Candidate[] = [
   {
-    id: '1',
+    id: 1,
     name: 'Alice Cooper',
     email: 'alice.cooper@email.com',
     phone: '+1-555-0101',
@@ -74,7 +74,7 @@ export const mockCandidates: Candidate[] = [
     assignedTo: 'Sarah Johnson',
     communications: [
       {
-        id: '1',
+        id: 1,
         type: 'Email',
         date: '2024-01-22',
         content: 'Initial screening completed',
@@ -146,7 +146,7 @@ export const mockCandidates: Candidate[] = [
     }
   },
   {
-    id: '2',
+    id: 2,
     name: 'Bob Smith',
     email: 'bob.smith@email.com',
     phone: '+1-555-0102',
@@ -160,7 +160,7 @@ export const mockCandidates: Candidate[] = [
     assignedTo: 'Emma Wilson',
     communications: [
       {
-        id: '2',
+        id: 2,
         type: 'Phone',
         date: '2024-01-21',
         content: 'Phone screening scheduled',
@@ -181,7 +181,7 @@ export const mockCandidates: Candidate[] = [
     interviews: []
   },
   {
-    id: '3',
+    id: 3,
     name: 'Carol Davis',
     email: 'carol.davis@email.com',
     phone: '+1-555-0103',
@@ -208,7 +208,7 @@ export const mockCandidates: Candidate[] = [
     interviews: []
   },
   {
-    id: '4',
+    id: 4,
     name: 'Daniel Johnson',
     email: 'daniel.johnson@email.com',
     phone: '+1-555-0104',
@@ -222,7 +222,7 @@ export const mockCandidates: Candidate[] = [
     assignedTo: 'Sarah Johnson',
     communications: [
       {
-        id: '3',
+        id: 3,
         type: 'Email',
         date: '2024-01-25',
         content: 'Offer letter sent',
@@ -244,7 +244,7 @@ export const mockCandidates: Candidate[] = [
     interviews: []
   },
   {
-    id: '5',
+    id: 5,
     name: 'Eva Martinez',
     email: 'eva.martinez@email.com',
     phone: '+1-555-0105',
@@ -258,7 +258,7 @@ export const mockCandidates: Candidate[] = [
     assignedTo: 'Emma Wilson',
     communications: [
       {
-        id: '4',
+        id: 4,
         type: 'Email',
         date: '2024-01-28',
         content: 'Welcome package sent',
@@ -283,7 +283,7 @@ export const mockCandidates: Candidate[] = [
 
 export const mockTeam: TeamMember[] = [
   {
-    id: '1',
+    id: 1,
     username: 'admin',
     password: 'admin123',
     name: 'Sarah Johnson',
@@ -308,7 +308,7 @@ export const mockTeam: TeamMember[] = [
     createdDate: '2024-01-01T00:00:00Z'
   },
   {
-    id: '2',
+    id: 2,
     username: 'sarah.johnson',
     password: 'sarah123',
     name: 'Sarah Johnson',
@@ -332,7 +332,7 @@ export const mockTeam: TeamMember[] = [
     createdDate: '2024-01-01T00:00:00Z'
   },
   {
-    id: '3',
+    id: 3,
     username: 'mike.chen',
     password: 'mike123',
     name: 'Mike Chen',
@@ -344,6 +344,7 @@ export const mockTeam: TeamMember[] = [
       { module: 'candidates', actions: ['view', 'edit'] },
       { module: 'communications', actions: ['view', 'create'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'team', actions: ['view', 'create'] },
       { module: 'analytics', actions: ['view'] },
     ],
     avatar: '',
@@ -355,11 +356,11 @@ export const mockTeam: TeamMember[] = [
     createdDate: '2024-01-05T00:00:00Z'
   },
   {
-    id: '4',
+    id: 4,
     username: 'emma.wilson',
     password: 'emma123',
     name: 'Emma Wilson',
-    role: 'Team Lead',
+    role: 'HR Manager',
     email: 'emma.wilson@company.com',
     permissions: [
       { module: 'dashboard', actions: ['view'] },
@@ -379,7 +380,7 @@ export const mockTeam: TeamMember[] = [
     createdDate: '2024-01-03T00:00:00Z'
   },
   {
-    id: '5',
+    id: 5,
     username: 'david.kim',
     password: 'david123',
     name: 'David Kim',
@@ -391,6 +392,7 @@ export const mockTeam: TeamMember[] = [
       { module: 'candidates', actions: ['view', 'edit'] },
       { module: 'communications', actions: ['view', 'create'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'team', actions: ['view', 'create'] },
       { module: 'analytics', actions: ['view'] },
     ],
     avatar: '',
@@ -432,7 +434,7 @@ export const mockTeam: TeamMember[] = [
 
 export const mockTasks: Task[] = [
   {
-    id: '1',
+    id: 1,
     title: 'Review Frontend Developer Applications',
     description: 'Screen and evaluate new applications for Senior Frontend Developer position',
     assignedTo: 'Sarah Johnson',
@@ -443,7 +445,7 @@ export const mockTasks: Task[] = [
     createdDate: '2024-01-28'
   },
   {
-    id: '2',
+    id: 2,
     title: 'Schedule Interviews for Product Manager Role',
     description: 'Coordinate interview schedules for shortlisted Product Manager candidates',
     assignedTo: 'Emma Wilson',
@@ -455,7 +457,7 @@ export const mockTasks: Task[] = [
     createdDate: '2024-01-26'
   },
   {
-    id: '3',
+    id: 3,
     title: 'Prepare Offer Letter',
     description: 'Draft and prepare offer letter for Daniel Johnson',
     assignedTo: 'Sarah Johnson',
@@ -467,7 +469,7 @@ export const mockTasks: Task[] = [
     createdDate: '2024-01-23'
   },
   {
-    id: '4',
+    id: 4,
     title: 'Update Job Posting on Indeed',
     description: 'Refresh job posting description and requirements',
     assignedTo: 'Mike Chen',
@@ -478,7 +480,7 @@ export const mockTasks: Task[] = [
     createdDate: '2024-01-27'
   },
   {
-    id: '5',
+    id: 5,
     title: 'Conduct Reference Checks',
     description: 'Complete reference verification for Eva Martinez',
     assignedTo: 'Emma Wilson',

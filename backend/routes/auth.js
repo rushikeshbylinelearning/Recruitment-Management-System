@@ -116,8 +116,6 @@ router.post('/register', validateUser, handleValidationErrors, asyncHandler(asyn
     'admin': 'Admin',
     'hr manager': 'HR Manager',
     'hr': 'HR Manager',
-    'team lead': 'Team Lead',
-    'lead': 'Team Lead',
     'recruiter': 'Recruiter',
     'interviewer': 'Interviewer'
   };
@@ -341,21 +339,13 @@ function getDefaultPermissions(role) {
       { module: 'team', actions: ['view'] },
       { module: 'analytics', actions: ['view'] },
     ],
-    'Team Lead': [
-      { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view', 'edit'] },
-      { module: 'candidates', actions: ['view', 'edit'] },
-      { module: 'communications', actions: ['view', 'create', 'edit'] },
-      { module: 'tasks', actions: ['view', 'create', 'edit'] },
-      { module: 'team', actions: ['view'] },
-      { module: 'analytics', actions: ['view'] },
-    ],
     'Recruiter': [
       { module: 'dashboard', actions: ['view'] },
       { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view', 'edit'] },
       { module: 'communications', actions: ['view', 'create'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'team', actions: ['view', 'create'] },
       { module: 'analytics', actions: ['view'] },
     ],
     'Interviewer': [

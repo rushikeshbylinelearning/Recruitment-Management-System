@@ -30,46 +30,13 @@ export default function Settings() {
     { name: 'Google Calendar', status: 'Connected', description: 'Interview scheduling integration' },
     { name: 'WhatsApp Business', status: 'Not Connected', description: 'Candidate communication via WhatsApp' },
   ]);
-  const [rolePermissions, setRolePermissions] = useState({
-    'Admin': [
-      { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view', 'create', 'edit', 'delete'] },
-      { module: 'candidates', actions: ['view', 'create', 'edit', 'delete'] },
-      { module: 'communications', actions: ['view', 'create', 'edit', 'delete'] },
-      { module: 'tasks', actions: ['view', 'create', 'edit', 'delete'] },
-      { module: 'team', actions: ['view', 'create', 'edit', 'delete'] },
-      { module: 'analytics', actions: ['view'] },
-      { module: 'settings', actions: ['view', 'edit'] },
-    ],
-    'HR Manager': [
-      { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view', 'create', 'edit'] },
-      { module: 'candidates', actions: ['view', 'create', 'edit'] },
-      { module: 'communications', actions: ['view', 'create', 'edit'] },
-      { module: 'tasks', actions: ['view', 'create', 'edit'] },
-      { module: 'team', actions: ['view'] },
-      { module: 'analytics', actions: ['view'] },
-    ],
-    'Team Lead': [
-      { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view', 'edit'] },
-      { module: 'candidates', actions: ['view', 'edit'] },
-      { module: 'communications', actions: ['view', 'create', 'edit'] },
-      { module: 'tasks', actions: ['view', 'create', 'edit'] },
-      { module: 'team', actions: ['view'] },
-      { module: 'analytics', actions: ['view'] },
-    ],
-    'Recruiter': [
-      { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view'] },
-      { module: 'candidates', actions: ['view', 'edit'] },
-      { module: 'communications', actions: ['view', 'create'] },
-      { module: 'tasks', actions: ['view', 'create', 'edit'] },
-      { module: 'team', actions: ['view'] },
-      { module: 'analytics', actions: ['view'] },
-    ],
-  });
+  const [rolePermissions, setRolePermissions] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+
+  // Load role permissions on component mount
+  useEffect(() => {
+    loadRolePermissions();
+  }, []);
 
   const tabs = [
     { id: 'team', label: 'Team Management', icon: Users },
@@ -78,6 +45,21 @@ export default function Settings() {
     { id: 'integrations', label: 'Integrations', icon: Globe },
     { id: 'system', label: 'System', icon: Database },
   ];
+
+  // Load role permissions from API
+  const loadRolePermissions = async () => {
+    try {
+      setPermissionsLoading(true);
+      const response = await usersAPI.getRolePermissions();
+      if (response.success && response.data) {
+        setRolePermissions(response.data.rolePermissions);
+      }
+    } catch (error) {
+      console.error('Error loading role permissions:', error);
+    } finally {
+      setPermissionsLoading(false);
+    }
+  };
 
   // Load team members from API
   const loadTeamMembers = async () => {
@@ -251,6 +233,8 @@ export default function Settings() {
     try {
       await usersAPI.updateRolePermissions(rolePermissions);
       alert('Role permissions updated successfully!');
+      // Reload permissions to reflect the changes
+      await loadRolePermissions();
     } catch (error: any) {
       console.error('Error updating role permissions:', error);
       const errorMessage = error.response?.data?.message || 'An error occurred while updating role permissions';
@@ -391,6 +375,13 @@ export default function Settings() {
         </button>
       </div>
       
+      {Object.keys(rolePermissions).length === 0 && !permissionsLoading && (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading permissions...</p>
+        </div>
+      )}
+      
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="font-medium text-blue-900 mb-2">ℹ️ Role Permissions</h4>
         <p className="text-sm text-blue-700">
@@ -399,8 +390,9 @@ export default function Settings() {
         </p>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {Object.entries(rolePermissions).map(([role, permissions]) => (
+      {Object.keys(rolePermissions).length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {Object.entries(rolePermissions).map(([role, permissions]) => (
           <div key={role} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
             <div className="flex justify-between items-center mb-4">
               <h4 className="font-semibold text-gray-900">{role}</h4>
@@ -435,7 +427,8 @@ export default function Settings() {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 
@@ -732,7 +725,6 @@ export default function Settings() {
                   >
                     <option value="Admin">Admin</option>
                     <option value="HR Manager">HR Manager</option>
-                    <option value="Team Lead">Team Lead</option>
                     <option value="Recruiter">Recruiter</option>
                     <option value="Interviewer">Interviewer</option>
                   </select>
@@ -870,7 +862,6 @@ export default function Settings() {
                   >
                     <option value="Admin">Admin</option>
                     <option value="HR Manager">HR Manager</option>
-                    <option value="Team Lead">Team Lead</option>
                     <option value="Recruiter">Recruiter</option>
                     <option value="Interviewer">Interviewer</option>
                   </select>

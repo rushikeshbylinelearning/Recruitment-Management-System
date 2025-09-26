@@ -38,7 +38,6 @@ export default function Login() {
     { username: 'admin', password: 'admin123', role: 'Admin' },
     { username: 'sarah.johnson', password: 'sarah123', role: 'HR Manager' },
     { username: 'mike.chen', password: 'mike123', role: 'Recruiter' },
-    { username: 'emma.wilson', password: 'emma123', role: 'Team Lead' },
     { username: 'john.smith', password: 'john123', role: 'Interviewer' }
   ];
 

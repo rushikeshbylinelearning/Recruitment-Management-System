@@ -201,7 +201,7 @@ router.delete('/email-templates/:id', authenticateToken, requireAdmin, validateI
 
 // Get role permissions
 router.get('/role-permissions', authenticateToken, checkPermission('settings', 'view'), handleValidationErrors, asyncHandler(async (req, res) => {
-  const roles = ['Admin', 'HR Manager', 'Team Lead', 'Recruiter', 'Interviewer'];
+  const roles = ['Admin', 'HR Manager', 'Recruiter', 'Interviewer'];
   
   const rolePermissions = {};
   

@@ -89,7 +89,7 @@ export default function ResumeParser({ isOpen, onClose, onParsed }: ResumeParser
         experience: [
           {
             company: 'Tech Corp',
-            position: 'Senior Software Engineer',
+            position: ' Software Engineer',
             duration: '2020 - Present',
             description: 'Led development of microservices architecture, managed team of 5 developers, implemented CI/CD pipelines'
           },
