@@ -32,8 +32,6 @@ export interface Candidate {
   appliedDate: string;
   resume: string;
   resumeFileId?: string;
-  notes: string;
-  score: number;
   assignedTo: string;
   communications: Communication[];
   skills: string[];
@@ -227,4 +225,63 @@ export interface Analytics {
   timeToHire: number;
   sourceEffectiveness: { [key: string]: number };
   monthlyHires: { month: string; hires: number; applications: number }[];
+}
+
+// New types for multi-user notes and ratings system
+export interface CandidateNote {
+  id: number;
+  candidate_id: number;
+  user_id: number;
+  user_role: 'Recruiter' | 'Interviewer' | 'HR Manager' | 'Admin';
+  note_type: 'Pre-Interview' | 'Interview' | 'Post-Interview' | 'General';
+  content: string;
+  is_private: boolean;
+  created_at: string;
+  updated_at: string;
+  user_name?: string;
+  user_role_name?: string;
+}
+
+export interface CreateCandidateNote {
+  noteType: 'Pre-Interview' | 'Interview' | 'Post-Interview' | 'General';
+  content: string;
+  isPrivate?: boolean;
+}
+
+export interface UpdateCandidateNote {
+  content: string;
+  isPrivate?: boolean;
+}
+
+export interface CandidateRating {
+  id: number;
+  candidate_id: number;
+  user_id: number;
+  user_role: 'Recruiter' | 'Interviewer' | 'HR Manager' | 'Admin';
+  rating_type: 'Technical' | 'Communication' | 'Cultural Fit' | 'Overall';
+  score: number;
+  comments?: string;
+  created_at: string;
+  updated_at: string;
+  user_name?: string;
+  user_role_name?: string;
+}
+
+export interface CreateCandidateRating {
+  ratingType: 'Technical' | 'Communication' | 'Cultural Fit' | 'Overall';
+  score: number;
+  comments?: string;
+}
+
+export interface UpdateCandidateRating {
+  score: number;
+  comments?: string;
+}
+
+export interface AggregatedScore {
+  rating_type: string;
+  average_score: number;
+  total_ratings: number;
+  min_score: number;
+  max_score: number;
 }

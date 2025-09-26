@@ -160,7 +160,8 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
                   break;
                 case 'hr remarks':
                 case 'notes':
-                  candidate.notes = value;
+                  // Notes are now handled through the new notes system
+                  // Skip this field as it's not part of the candidate schema anymore
                   break;
                 case 'skills':
                   candidate.skills = value.split(';').map(s => s.trim()).filter(Boolean);
@@ -637,23 +638,13 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
                         </div>
 
                         {/* Additional Information */}
-                        {(candidate.notes || candidate.inOfficeAssignment || candidate.resumeLocation || candidate.assignmentLocation) && (
+                        {(candidate.inOfficeAssignment || candidate.resumeLocation || candidate.assignmentLocation) && (
                           <div className="mt-6 pt-6 border-t border-gray-200">
                             <h6 className="font-semibold text-gray-900 text-sm uppercase tracking-wide border-b border-gray-200 pb-2 mb-4">
                               Additional Information
                             </h6>
                             <div className="space-y-4">
-                              {candidate.notes && (
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                  <div className="flex items-start gap-3">
-                                    <div className="w-2 h-2 bg-orange-500 rounded-full mt-2 flex-shrink-0"></div>
-                                    <div className="flex-1">
-                                      <span className="text-gray-600 text-sm font-medium block mb-2">HR Remarks</span>
-                                      <p className="text-gray-800 leading-relaxed">{candidate.notes}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                              {/* Notes are now handled through the new notes system */}
                               {candidate.inOfficeAssignment && (
                                 <div className="bg-blue-50 rounded-lg p-4">
                                   <div className="flex items-start gap-3">

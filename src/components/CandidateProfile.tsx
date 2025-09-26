@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare, FileText, Video, MapPin } from 'lucide-react';
-import { Candidate, Interview } from '../types';
+import { Candidate } from '../types';
 
 interface CandidateProfileProps {
   candidate: Candidate;
   onClose: () => void;
-  onUpdateCandidate: (candidate: Candidate) => void;
 }
 
-export default function CandidateProfile({ candidate, onClose, onUpdateCandidate }: CandidateProfileProps) {
+export default function CandidateProfile({ candidate, onClose }: CandidateProfileProps) {
   const [activeTab, setActiveTab] = useState('overview');
 
   const tabs = [
@@ -163,7 +162,7 @@ export default function CandidateProfile({ candidate, onClose, onUpdateCandidate
             <p className="text-sm text-gray-600 mb-2">Experience</p>
             <p className="font-medium text-gray-900 mb-4">{candidate.experience}</p>
             <p className="text-sm text-gray-600 mb-2">Overall Score</p>
-            {renderStarRating(candidate.score)}
+            <div className="text-sm text-gray-500">Score will be calculated from ratings</div>
           </div>
           <div>
             <p className="text-sm text-gray-600 mb-2">Skills</p>
@@ -178,13 +177,7 @@ export default function CandidateProfile({ candidate, onClose, onUpdateCandidate
         </div>
       </div>
 
-      {/* Notes */}
-      {candidate.notes && (
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
-          <p className="text-gray-700">{candidate.notes}</p>
-        </div>
-      )}
+      {/* Notes section removed - use new multi-user notes system */}
     </div>
   );
 

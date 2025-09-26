@@ -23,9 +23,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     resume: '',
     experience: '',
     skills: '',
-    notes: '',
     stage: 'Applied',
-    score: 0,
     expectedSalary: '',
     offeredSalary: '',
     salaryNegotiable: true,
@@ -127,8 +125,6 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         jobId: editingCandidate.jobId || (jobs.length > 0 ? jobs[0].id : 0),
         source: editingCandidate.source || 'Manual Entry',
         stage: editingCandidate.stage || 'Applied',
-        notes: editingCandidate.notes || '',
-        score: editingCandidate.score || 0,
         skills: Array.isArray(editingCandidate.skills) 
           ? editingCandidate.skills.join(', ') 
           : (editingCandidate.skills || ''),
@@ -186,8 +182,6 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         jobId: jobs.length > 0 ? jobs[0].id : 0,
         source: 'Manual Entry',
         stage: 'Applied',
-        notes: '',
-        score: 0,
         skills: '',
         experience: '',
         expectedSalary: '',
@@ -266,12 +260,14 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
 
     const selectedJob = jobs.find(job => job.id === formData.jobId);
     
+    // Notes and score are now handled by the new notes/ratings system
+    // No need to remove them as they're not in the formData anymore
+    
     const candidateData = {
       ...formData,
       position: selectedJob?.title || formData.position,
       skills: formData.skills.split(',').map(skill => skill.trim()).filter(Boolean),
       appliedDate: editingCandidate ? editingCandidate.appliedDate : new Date().toISOString(),
-      score: formData.score || 0,
       assignedTo: editingCandidate ? editingCandidate.assignedTo : (selectedJob?.assignedTo[0] || 'Unassigned'),
       communications: [],
       resumeFileId: uploadedFile?.fileId || null,
@@ -313,9 +309,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       resume: '',
       experience: '',
       skills: '',
-      notes: '',
       stage: 'Applied',
-      score: 0,
       expectedSalary: '',
       offeredSalary: '',
       salaryNegotiable: true,
@@ -435,7 +429,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         immediateJoiner: parsedData.immediateJoiner !== undefined ? parsedData.immediateJoiner : prev.immediateJoiner,
         workPreference: parsedData.workPreference || prev.workPreference,
         willingAlternateSaturday: parsedData.willingAlternateSaturday !== undefined ? parsedData.willingAlternateSaturday : prev.willingAlternateSaturday,
-        notes: parsedData.notes ? (prev.notes ? `${prev.notes}\n\nParsed from resume:\n${parsedData.notes}` : `Parsed from resume:\n${parsedData.notes}`) : prev.notes
+        // Notes will be handled through the new notes system after candidate creation
       }));
       
       // Also upload the file
@@ -937,18 +931,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notes
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Additional notes about the candidate..."
-            />
-          </div>
+          {/* Notes are now handled through the new multi-user notes system after candidate creation */}
 
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button

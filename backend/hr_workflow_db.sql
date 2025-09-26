@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Sep 25, 2025 at 11:18 AM
+-- Generation Time: Sep 26, 2025 at 08:03 AM
 -- Server version: 9.1.0
 -- PHP Version: 8.1.31
 
@@ -157,16 +157,14 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   KEY `idx_interviewer_id` (`interviewer_id`),
   KEY `idx_assignment_location` (`assignment_location`(250)),
   KEY `idx_resume_location` (`resume_location`(250))
-) ENGINE=MyISAM AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
+) ENGINE=MyISAM AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
 
 --
 -- Dumping data for table `candidates`
 --
 
 INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, `stage`, `source`, `applied_date`, `resume_path`, `notes`, `score`, `assigned_to`, `skills`, `experience`, `salary_expected`, `salary_offered`, `salary_negotiable`, `joining_time`, `notice_period`, `immediate_joiner`, `created_at`, `updated_at`, `resume_file_id`, `location`, `expertise`, `willing_alternate_saturday`, `work_preference`, `current_ctc`, `ctc_frequency`, `in_house_assignment_status`, `interview_date`, `interviewer_id`, `in_office_assignment`, `assignment_location`, `resume_location`) VALUES
-(4, 1, 'New Candidate', 'new@candidate.com', '678789543', ' Full Stack Developer', 'Offer', 'AngelList', '2025-09-24', NULL, 'New Notes', 0.00, NULL, '[\"React\", \"Tailwind CSS\", \"JS\"]', '5', '12LPA', '9LPA', 1, '3 Weeks', '1 Month', 1, '2025-09-24 14:35:13', '2025-09-24 14:35:13', 7, NULL, NULL, NULL, NULL, NULL, 'Annual', 'Pending', NULL, NULL, NULL, NULL, NULL),
-(2, 1, 'Basic Candidate', 'candidate@gmail.com', '97676897762', ' Full Stack Developer', 'Screening', 'Indeed', '2025-09-18', NULL, 'Good in Frontend Lacks the Backend', 0.00, NULL, '[]', '3', '5LPA', '4LPA', 1, '2 Weeks', '1 Week', 1, '2025-09-24 13:08:31', '2025-09-25 09:23:28', 3164, 'Pune', 'JavaScript', 1, 'Onsite', '3.50LPA', 'Annual', 'Shortlisted', '2025-09-21', NULL, 'Some Details About the in Office assignment', NULL, NULL),
-(5, 1, 'Test Candidate', 'test@candidate.com', '896703281', ' Full Stack Developer', 'Interview', 'Company Website', '2025-09-25', NULL, 'Notes about the assignment did this well and that welll', 0.00, NULL, '[\"React\", \"Tailwind\"]', '3 Years', '6LPA', NULL, 0, '1 Week', '1 Month', 1, '2025-09-25 09:30:52', '2025-09-25 09:30:52', NULL, 'Baner, Pune', 'Full Stack Developer', NULL, 'Onsite', '4.8LPA', 'Annual', 'Shortlisted', '2025-09-27', NULL, 'Details about the interview the interview;s details', 'C:\\wamp64\\www\\Kodeit-Iomad-local\\iomad-test\\', 'C:\\wamp64\\www\\Kodeit-Iomad-local\\resume.pdf');
+(4, 1, 'Jane Smith', 'jane@example.com', '8888888888', 'Senior Full Stack Developer', 'Screening', 'Indeed', '2025-01-23', NULL, 'Good problem-solving skills, works well in team environments. Has experience with Python and Django.', 0.00, 1, '[\"Python\", \"Django\", \"PostgreSQL\", \"REST APIs\"]', '3 years', '9LPA', '', 0, '', '1 month', 0, '2025-09-25 11:53:02', '2025-09-25 14:26:29', NULL, 'San Francisco', 'Backend Development', NULL, 'Onsite', '7LPA', 'Annual', 'Shortlisted', '0000-00-00', 3, 'Design and implement a REST API with authentication, database integration, and unit tests.', 'https://example.com/assignments/backend_assignment.pdf', 'https://example.com/resumes/jane_smith_resume.pdf');
 
 -- --------------------------------------------------------
 
@@ -468,7 +466,7 @@ CREATE TABLE IF NOT EXISTS `job_postings` (
 --
 
 INSERT INTO `job_postings` (`id`, `title`, `department`, `location`, `job_type`, `status`, `posted_date`, `deadline`, `description`, `requirements`, `applicant_count`, `created_by`, `created_at`, `updated_at`) VALUES
-(1, ' Full Stack Developer', 'Engineering', 'Baner, Pune', 'Full-time', 'Active', '2025-09-22', '2025-09-27', 'Some Description and Changed the Deadline', '[\"React\", \"PHP\", \"Node js\", \"and so on....\"]', 0, 1, '2025-09-24 11:08:16', '2025-09-24 11:20:48');
+(1, 'Senior Full Stack Developer', 'Engineering', 'Baner, Pune', 'Full-time', 'Active', '2025-09-22', '2025-09-27', 'Some Description and Changed the Deadline', '[\"React\", \"PHP\", \"Node js\", \"and so on....\"]', 0, 1, '2025-09-24 11:08:16', '2025-09-24 11:20:48');
 
 -- --------------------------------------------------------
 
@@ -488,7 +486,7 @@ CREATE TABLE IF NOT EXISTS `permissions` (
   UNIQUE KEY `unique_user_module` (`user_id`,`module`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_module` (`module`)
-) ENGINE=MyISAM AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=187 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `permissions`
@@ -511,13 +509,34 @@ INSERT INTO `permissions` (`id`, `user_id`, `module`, `actions`, `created_at`, `
 (14, 2, 'team', '[\"view\", \"create\", \"edit\", \"delete\"]', '2025-09-24 09:38:14', '2025-09-24 09:38:14'),
 (15, 2, 'analytics', '[\"view\"]', '2025-09-24 09:38:14', '2025-09-24 09:38:14'),
 (16, 2, 'settings', '[\"view\", \"edit\"]', '2025-09-24 09:38:14', '2025-09-24 09:38:14'),
-(17, 3, 'dashboard', '[\"view\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29'),
-(18, 3, 'jobs', '[\"view\", \"create\", \"edit\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29'),
-(19, 3, 'candidates', '[\"view\", \"create\", \"edit\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29'),
-(20, 3, 'communications', '[\"view\", \"create\", \"edit\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29'),
-(21, 3, 'tasks', '[\"view\", \"create\", \"edit\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29'),
-(22, 3, 'team', '[\"view\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29'),
-(23, 3, 'analytics', '[\"view\"]', '2025-09-24 10:04:29', '2025-09-24 10:04:29');
+(172, 3, 'tasks', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(171, 3, 'jobs', '[\"view\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(170, 3, 'dashboard', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(169, 3, 'communications', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(168, 3, 'candidates', '[\"view\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(182, 4, 'dashboard', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(180, 5, 'team', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(179, 5, 'tasks', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(178, 5, 'jobs', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(177, 5, 'dashboard', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(184, 4, 'jobs', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(183, 4, 'interviews', '[\"view\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(159, 1, 'analytics', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(164, 1, 'settings', '[\"view\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(163, 1, 'jobs', '[\"view\", \"create\", \"edit\", \"delete\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(162, 1, 'dashboard', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(161, 1, 'communications', '[\"view\", \"create\", \"edit\", \"delete\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(160, 1, 'candidates', '[\"view\", \"create\", \"edit\", \"delete\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(167, 3, 'analytics', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(174, 5, 'analytics', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(175, 5, 'candidates', '[\"view\", \"edit\", \"create\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(165, 1, 'tasks', '[\"view\", \"create\", \"edit\", \"delete\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(166, 1, 'team', '[\"view\", \"create\", \"edit\", \"delete\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(176, 5, 'communications', '[\"view\", \"create\", \"edit\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(173, 3, 'team', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(185, 4, 'tasks', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(181, 4, 'candidates', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25'),
+(186, 4, 'team', '[\"view\"]', '2025-09-26 07:57:25', '2025-09-26 07:57:25');
 
 -- --------------------------------------------------------
 
@@ -635,14 +654,15 @@ CREATE TABLE IF NOT EXISTS `tasks` (
   KEY `idx_due_date` (`due_date`),
   KEY `idx_created_by` (`created_by`),
   KEY `idx_tasks_assigned_status` (`assigned_to`,`status`)
-) ENGINE=MyISAM AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `tasks`
 --
 
 INSERT INTO `tasks` (`id`, `title`, `description`, `assigned_to`, `job_id`, `candidate_id`, `priority`, `status`, `due_date`, `created_by`, `created_at`, `updated_at`) VALUES
-(6, 'New Task Check', 'Description', 3, '1', 2, 'High', 'In Progress', '2025-09-26', 1, '2025-09-25 09:14:04', '2025-09-25 09:14:04');
+(6, 'New Task Check', 'Description', 3, '1', 2, 'High', 'Completed', '2025-09-26', 1, '2025-09-25 09:14:04', '2025-09-25 11:25:10'),
+(7, 'Task Name', 'Description related to this task', 5, NULL, NULL, 'High', 'In Progress', '2025-09-27', 1, '2025-09-26 06:22:36', '2025-09-26 06:22:36');
 
 -- --------------------------------------------------------
 
@@ -671,15 +691,17 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `idx_role` (`role`),
   KEY `idx_status` (`status`),
   KEY `idx_users_created_at` (`created_at`)
-) ENGINE=MyISAM AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `users`
 --
 
 INSERT INTO `users` (`id`, `username`, `email`, `name`, `password_hash`, `role`, `avatar`, `status`, `last_login`, `created_at`, `updated_at`) VALUES
-(3, 'sarah.johnson1', 'sarah.johnson@abc.com', 'Sarah Johnson', '$2a$12$tYPNyK3XOeM7Ths0qhSAo.dnukrSVTcLeaKF7EwkHh6dryZfDrQE6', 'Team Lead', NULL, 'Active', '2025-09-25 07:57:41', '2025-09-24 10:04:29', '2025-09-25 07:57:41'),
-(1, 'admin', 'info@bylinelearning.com', 'Byline Admin', '$2a$12$rRcjHI1rA/rj0eaK0Y/4XOG07Nz66/UUqrDZL0WUF67AqoOOHP8K.', 'Admin', NULL, 'Active', '2025-09-25 07:50:39', '2025-09-24 09:38:14', '2025-09-25 07:50:39');
+(3, 'sarah.johnson1', 'sarah.johnson@abc.com', 'Sarah Johnson', '$2a$12$tYPNyK3XOeM7Ths0qhSAo.dnukrSVTcLeaKF7EwkHh6dryZfDrQE6', 'HR Manager', NULL, 'Active', '2025-09-26 05:59:32', '2025-09-24 10:04:29', '2025-09-26 07:44:36'),
+(1, 'admin', 'info@bylinelearning.com', 'Byline Admin', '$2a$12$rRcjHI1rA/rj0eaK0Y/4XOG07Nz66/UUqrDZL0WUF67AqoOOHP8K.', 'Admin', NULL, 'Active', '2025-09-26 07:31:10', '2025-09-24 09:38:14', '2025-09-26 07:31:10'),
+(4, 'john.smith', 'john.smith@gmail.com', 'John Smith', '$2a$12$uSzd7HI3Xqs5aPo68Des..2eYR2rZwlFQN2ibyAlJiRM1.5xhiNL.', 'Interviewer', NULL, 'Active', '2025-09-25 14:19:50', '2025-09-25 14:19:36', '2025-09-25 14:19:50'),
+(5, 'recruiter', 'recruiter@gmail.com', 'recruiter', '$2a$12$wgEMDPm4JF0Dq829LTPY8OAVIJVaT54cNvXrHdiwXpSIGLefGM3ce', 'Recruiter', NULL, 'Active', '2025-09-26 07:43:41', '2025-09-26 06:00:11', '2025-09-26 07:43:41');
 
 -- --------------------------------------------------------
 

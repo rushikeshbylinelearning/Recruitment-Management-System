@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart3, TrendingUp, Users, Calendar, Filter, Download, RefreshCw, X, Search } from 'lucide-react';
 import { Candidate } from '../types';
+import { candidateRatingsAPI } from '../services/api';
 
 interface CandidateAnalyticsProps {
   candidates: Candidate[];
@@ -47,12 +48,47 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
   });
 
   const [activeChart, setActiveChart] = useState<'stages' | 'sources' | 'timeline' | 'scores'>('stages');
+  const [candidateScores, setCandidateScores] = useState<Record<number, number>>({});
+  const [loadingScores, setLoadingScores] = useState(false);
 
   // Extract unique values for filters
   const uniqueSources = [...new Set(candidates.map(c => c.source))];
   const uniquePositions = [...new Set(candidates.map(c => c.position))];
-  const uniqueDepartments = [...new Set(candidates.map(c => c.position.split(' ')[0]))]; // Simple department extraction
   const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+
+  // Load aggregated scores for all candidates
+  const loadCandidateScores = async () => {
+    if (loadingScores) return;
+    
+    setLoadingScores(true);
+    const scores: Record<number, number> = {};
+    
+    try {
+      for (const candidate of candidates) {
+        try {
+          const response = await candidateRatingsAPI.getAggregatedScores(candidate.id);
+          if (response.data?.overallAverage) {
+            scores[candidate.id] = response.data.overallAverage.overall_average;
+          }
+        } catch (error) {
+          console.warn(`No ratings found for candidate ${candidate.id}`);
+          scores[candidate.id] = 0; // Default score if no ratings
+        }
+      }
+      setCandidateScores(scores);
+    } catch (error) {
+      console.error('Failed to load candidate scores:', error);
+    } finally {
+      setLoadingScores(false);
+    }
+  };
+
+  // Load scores when component mounts or candidates change
+  React.useEffect(() => {
+    if (candidates.length > 0) {
+      loadCandidateScores();
+    }
+  }, [candidates]);
 
   // Apply filters to candidates
   const filteredCandidates = useMemo(() => {
@@ -70,8 +106,9 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
       // Position filter
       if (filters.positions.length > 0 && !filters.positions.includes(candidate.position)) return false;
       
-      // Score range filter
-      if (candidate.score < filters.scoreRange.min || candidate.score > filters.scoreRange.max) return false;
+      // Score range filter (using aggregated scores)
+      const candidateScore = candidateScores[candidate.id] || 0;
+      if (candidateScore < filters.scoreRange.min || candidateScore > filters.scoreRange.max) return false;
       
       // Experience filter (simplified)
       const expYears = parseInt(candidate.experience) || 0;
@@ -128,10 +165,10 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
       });
     }
 
-    // Score distribution
+    // Score distribution (using aggregated scores)
     const scoreDistribution = [1, 2, 3, 4, 5].map(score => ({
       score,
-      count: filteredCandidates.filter(c => Math.floor(c.score) === score).length
+      count: filteredCandidates.filter(c => Math.floor(candidateScores[c.id] || 0) === score).length
     }));
 
     // Conversion rates
@@ -150,9 +187,9 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
       scoreDistribution,
       conversionRates,
       totalCandidates: filteredCandidates.length,
-      averageScore: Math.round((filteredCandidates.reduce((sum, c) => sum + c.score, 0) / filteredCandidates.length) * 10) / 10 || 0
+      averageScore: Math.round((filteredCandidates.reduce((sum, c) => sum + (candidateScores[c.id] || 0), 0) / filteredCandidates.length) * 10) / 10 || 0
     };
-  }, [filteredCandidates, uniqueSources, uniquePositions, stages]);
+  }, [filteredCandidates, uniqueSources, uniquePositions, stages, candidateScores]);
 
   if (!isOpen) return null;
 
@@ -194,7 +231,7 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
         c.stage,
         c.source,
         new Date(c.appliedDate).toLocaleDateString(),
-        c.score,
+        candidateScores[c.id] || 0,
         c.experience,
         c.salary?.expected || 'N/A'
       ])
@@ -483,11 +520,11 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
                                   <div
                                     key={star}
                                     className={`w-3 h-3 rounded-full ${
-                                      star <= candidate.score ? 'bg-yellow-400' : 'bg-gray-200'
+                                      star <= (candidateScores[candidate.id] || 0) ? 'bg-yellow-400' : 'bg-gray-200'
                                     }`}
                                   />
                                 ))}
-                                <span className="text-sm text-gray-600 ml-2">{candidate.score}/5</span>
+                                <span className="text-sm text-gray-600 ml-2">{(candidateScores[candidate.id] || 0).toFixed(1)}/5</span>
                               </div>
                               {candidate.salary?.expected && (
                                 <p className="text-xs text-green-600 mt-1">₹{candidate.salary.expected}</p>
@@ -593,7 +630,7 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Source Analysis</h3>
                   <div className="space-y-4">
-                    {analyticsData.sourceDistribution.slice(0, 8).map((item, index) => (
+                    {analyticsData.sourceDistribution.slice(0, 8).map((item) => (
                       <div key={item.source} className="flex items-center">
                         <div className="w-32 text-sm text-gray-600 truncate">{item.source}</div>
                         <div className="flex-1 mx-4">

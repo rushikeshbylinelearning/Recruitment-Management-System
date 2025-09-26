@@ -1,6 +1,9 @@
-import { X, Mail, Phone, MapPin, Star, Download, FileText, User } from 'lucide-react';
+import { X, Mail, Phone, MapPin, Download, FileText, User, MessageSquare, BarChart3 } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI } from '../services/api';
+import { useState } from 'react';
+import CandidateNotes from './CandidateNotes';
+import CandidateRatings from './CandidateRatings';
 
 interface CandidateViewModalProps {
   isOpen: boolean;
@@ -9,6 +12,8 @@ interface CandidateViewModalProps {
 }
 
 export default function CandidateViewModal({ isOpen, onClose, candidate }: CandidateViewModalProps) {
+  const [activeTab, setActiveTab] = useState<'details' | 'notes' | 'ratings'>('details');
+  
   if (!isOpen || !candidate) return null;
 
   const handleDownloadResume = async () => {
@@ -57,9 +62,48 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
           </button>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'details'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Details
+            </button>
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                activeTab === 'notes'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <MessageSquare size={16} />
+              <span>Notes & Feedback</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('ratings')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                activeTab === 'ratings'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <BarChart3 size={16} />
+              <span>Ratings & Scores</span>
+            </button>
+          </nav>
+        </div>
+
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {activeTab === 'details' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Column - Basic Info */}
             <div className="space-y-6">
               <div className="bg-gray-50 rounded-lg p-4">
@@ -163,22 +207,8 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                       {candidate.stage}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Score:</span>
-                    <div className="flex items-center space-x-1">
-                      <Star size={16} className="text-yellow-500" />
-                      <span className="text-gray-900">{candidate.score}/5</span>
-                    </div>
-                  </div>
                 </div>
               </div>
-
-               {candidate.notes && (
-                 <div className="bg-gray-50 rounded-lg p-4">
-                   <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
-                   <p className="text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
-                 </div>
-               )}
 
             </div>
 
@@ -328,6 +358,21 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
 
             </div>
           </div>
+          )}
+
+          {activeTab === 'notes' && (
+            <CandidateNotes 
+              candidateId={candidate.id} 
+              candidateName={candidate.name} 
+            />
+          )}
+
+          {activeTab === 'ratings' && (
+            <CandidateRatings 
+              candidateId={candidate.id} 
+              candidateName={candidate.name} 
+            />
+          )}
         </div>
 
         {/* Footer */}

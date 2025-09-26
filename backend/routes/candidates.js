@@ -330,8 +330,6 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     appliedDate,
     resumePath,
     resumeFileId,
-    notes,
-    score,
     assignedTo,
     skills = [],
     experience,
@@ -380,11 +378,11 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
 
   // Create candidate
   const result = await query(
-    `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, notes, score, 
+    `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, 
      assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
      location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
      interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       jobId || null,
       name, 
@@ -396,8 +394,6 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
       appliedDate, 
       resumePath || null, 
       resumeFileId || null, 
-      notes || null, 
-      score || 0, 
       assignedUserId,
       JSON.stringify(skills), 
       experience || null, 
@@ -445,8 +441,6 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
     source,
     appliedDate,
     resumePath,
-    notes,
-    score,
     assignedTo,
     skills = [],
     experience,
@@ -490,8 +484,6 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
 
   // Convert undefined values to null to avoid SQL binding errors
   const safeResumePath = resumePath === undefined ? null : resumePath;
-  const safeNotes = notes === undefined ? null : notes;
-  const safeScore = score === undefined ? null : score;
   const safeExperience = experience === undefined ? null : experience;
   const safeSalaryExpected = salaryExpected === undefined ? null : salaryExpected;
   const safeSalaryOffered = salaryOffered === undefined ? null : salaryOffered;
@@ -517,13 +509,13 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   // Update candidate
   await query(
     `UPDATE candidates SET name = ?, email = ?, phone = ?, position = ?, stage = ?, source = ?, applied_date = ?, 
-     resume_path = ?, notes = ?, score = ?, assigned_to = ?, skills = ?, experience = ?, salary_expected = ?, 
+     resume_path = ?, assigned_to = ?, skills = ?, experience = ?, salary_expected = ?, 
      salary_offered = ?, salary_negotiable = ?, joining_time = ?, notice_period = ?, immediate_joiner = ?,
      location = ?, expertise = ?, willing_alternate_saturday = ?, work_preference = ?, current_ctc = ?, 
      ctc_frequency = ?, in_house_assignment_status = ?, interview_date = ?, interviewer_id = ?, 
      in_office_assignment = ?, assignment_location = ?, resume_location = ?, updated_at = NOW() 
      WHERE id = ?`,
-    [name, email, phone, position, stage, source, appliedDate, safeResumePath, safeNotes, safeScore, assignedUserId,
+    [name, email, phone, position, stage, source, appliedDate, safeResumePath, assignedUserId,
      JSON.stringify(skills), safeExperience, safeSalaryExpected, safeSalaryOffered, safeSalaryNegotiable, safeJoiningTime, safeNoticePeriod, safeImmediateJoiner,
      safeLocation, safeExpertise, safeWillingAlternateSaturday, safeWorkPreference, safeCurrentCtc, safeCtcFrequency, 
      safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, 
@@ -577,8 +569,8 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
 
   // Update stage and notes
   await query(
-    'UPDATE candidates SET stage = ?, notes = ?, updated_at = NOW() WHERE id = ?',
-    [stage, notes || null, candidateId]
+  'UPDATE candidates SET stage = ?, updated_at = NOW() WHERE id = ?',
+  [stage, candidateId]
   );
 
   res.json({
@@ -689,14 +681,14 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
 
       // Create candidate with all new fields
       const result = await query(
-        `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, notes, score, 
+        `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, 
          assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
          location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
          interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
          candidate.source || 'Bulk Import', candidate.appliedDate || new Date().toISOString().split('T')[0],
-         candidate.resumePath || null, candidate.notes || '', candidate.score || 0, assignedTo,
+         candidate.resumePath || null, assignedTo,
          JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.expectedSalary || '', 
          candidate.salaryOffered || '', candidate.salaryNegotiable !== undefined ? candidate.salaryNegotiable : true,
          candidate.joiningTime || '', candidate.noticePeriod || '', candidate.immediateJoiner || false,

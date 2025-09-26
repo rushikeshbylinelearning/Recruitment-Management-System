@@ -22,6 +22,9 @@ import analyticsRoutes from './routes/analytics.js';
 import settingsRoutes from './routes/settings.js';
 import fileRoutes from './routes/files.js';
 import dashboardRoutes from './routes/dashboard.js';
+import candidateNotesRoutes from './routes/candidate-notes.js';
+import candidateRatingsRoutes from './routes/candidate-ratings.js';
+import interviewAssignmentsRoutes from './routes/interview-assignments.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,6 +101,9 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/candidate-notes', candidateNotesRoutes);
+app.use('/api/candidate-ratings', candidateRatingsRoutes);
+app.use('/api/interview-assignments', interviewAssignmentsRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
