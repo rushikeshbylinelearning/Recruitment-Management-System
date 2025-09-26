@@ -71,7 +71,6 @@ export default function Tasks({}: TasksProps) {
         console.log('Users response:', usersResponse);
         console.log('Jobs response:', jobsResponse);
         console.log('Candidates response:', candidatesResponse);
-
         if (tasksResponse.success && tasksResponse.data) {
           const tasks = tasksResponse.data.tasks || [];
           setTasks(tasks);
@@ -122,7 +121,6 @@ export default function Tasks({}: TasksProps) {
             setError('Failed to load tasks: ' + (tasksResponse.message || 'Unknown error'));
           }
         }
-
         // Users already loaded above
 
         if (jobsResponse.success && jobsResponse.data) {
@@ -578,32 +576,38 @@ export default function Tasks({}: TasksProps) {
                 </div>
                 
                 <div className="mt-6 flex justify-end space-x-3">
-                  <button 
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors flex items-center space-x-2"
-                  >
-                    <Trash2 size={16} />
-                    <span>Delete</span>
-                  </button>
-                  <button 
-                    onClick={() => handleEditTask(task)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
-                  >
-                    <Edit size={16} />
-                    <span>Edit Task</span>
-                  </button>
-                  <button 
-                    onClick={() => handleMarkComplete(task.id)}
-                    disabled={task.status === 'Completed'}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                      task.status === 'Completed' 
-                        ? 'bg-gray-400 text-white cursor-not-allowed' 
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    <CheckCircle size={16} />
-                    <span>Mark Complete</span>
-                  </button>
+                  {hasPermission('tasks', 'delete') && (
+                    <button 
+                      onClick={() => handleDeleteTask(task.id)}
+                      className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors flex items-center space-x-2"
+                    >
+                      <Trash2 size={16} />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                  {hasPermission('tasks', 'edit') && (
+                    <button 
+                      onClick={() => handleEditTask(task)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
+                    >
+                      <Edit size={16} />
+                      <span>Edit Task</span>
+                    </button>
+                  )}
+                  {hasPermission('tasks', 'edit') && (
+                    <button 
+                      onClick={() => handleMarkComplete(task.id)}
+                      disabled={task.status === 'Completed'}
+                      className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                        task.status === 'Completed' 
+                          ? 'bg-gray-400 text-white cursor-not-allowed' 
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                    >
+                      <CheckCircle size={16} />
+                      <span>Mark Complete</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

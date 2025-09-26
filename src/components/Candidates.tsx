@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download, FileText, Users, DollarSign, CheckCircle, XCircle, Briefcase } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
 import BulkImportModal from './BulkImportModal';
 import CandidateViewModal from './CandidateViewModal';
@@ -534,22 +535,28 @@ export default function Candidates() {
             <Search size={20} />
             <span>Advanced Search</span>
           </button> */}
-          <button
-            onClick={() => setViewMode('kanban')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            Kanban
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            List
-          </button>
+          <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 shadow-inner">
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ease-in-out transform ${
+                viewMode === 'kanban' 
+                  ? 'bg-white text-blue-600 shadow-md border border-blue-200 scale-105' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ease-in-out transform ${
+                viewMode === 'list' 
+                  ? 'bg-white text-blue-600 shadow-md border border-blue-200 scale-105' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              List
+            </button>
+          </div>
         </div>
       </div>
 
