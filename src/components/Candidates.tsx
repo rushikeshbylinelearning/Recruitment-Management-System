@@ -6,8 +6,6 @@ import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
 import BulkImportModal from './BulkImportModal';
 import CandidateViewModal from './CandidateViewModal';
-import ProtectedComponent from './ProtectedComponent';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function Candidates() {
   const { hasPermission } = useAuth();
@@ -419,17 +417,17 @@ export default function Candidates() {
         </div>
         
         {/* Action buttons overlay */}
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="flex space-x-1">
+        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200">
+          <div className="flex space-x-1.5">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleViewCandidate(candidate);
               }}
-              className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+              className="p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-md border border-slate-200 hover:bg-sky-50 hover:border-sky-300 transition-all duration-200 hover:scale-110"
               title="View Details"
             >
-              <Eye size={12} className="text-gray-600" />
+              <Eye size={14} className="text-slate-600" />
             </button>
             {hasPermission('candidates', 'edit') && (
               <button
@@ -437,22 +435,22 @@ export default function Candidates() {
                   e.stopPropagation();
                   handleEditCandidate(candidate);
                 }}
-                className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-green-50 hover:border-green-200 transition-colors"
+                className="p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-md border border-slate-200 hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-200 hover:scale-110"
                 title="Edit Candidate"
               >
-                <Edit size={12} className="text-gray-600" />
+                <Edit size={14} className="text-slate-600" />
               </button>
             )}
-            {(candidate as any).resumeFileId && hasPermission('candidates', 'view') && (
+            {(candidate as any).resumeFileId && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDownloadResume(candidate.id);
                 }}
-                className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-purple-50 hover:border-purple-200 transition-colors"
+                className="p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-md border border-slate-200 hover:bg-violet-50 hover:border-violet-300 transition-all duration-200 hover:scale-110"
                 title="Download Resume"
               >
-                <Download size={12} className="text-gray-600" />
+                <Download size={14} className="text-slate-600" />
               </button>
             )}
             {hasPermission('candidates', 'delete') && (
@@ -461,10 +459,10 @@ export default function Candidates() {
                   e.stopPropagation();
                   handleDeleteCandidate(candidate.id);
                 }}
-                className="p-1.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
+                className="p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-md border border-slate-200 hover:bg-rose-50 hover:border-rose-300 transition-all duration-200 hover:scale-110"
                 title="Delete Candidate"
               >
-                <Trash2 size={12} className="text-gray-600" />
+                <Trash2 size={14} className="text-slate-600" />
               </button>
             )}
           </div>
@@ -485,73 +483,70 @@ export default function Candidates() {
   }
 
   return (
-    <ProtectedComponent module="candidates" action="view">
-      <div className="space-y-6">
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            {error}
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
 
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
-            <p className="text-gray-600 mt-1">Track and manage all your job applicants</p>
-          </div>
-          <div className="flex space-x-3">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
+          <p className="text-gray-600 mt-1">Track and manage all your job applicants</p>
+        </div>
+        <div className="flex items-center space-x-4">
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-3">
             {hasPermission('candidates', 'create') && (
               <button
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                className="flex items-center space-x-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2.5 rounded-xl hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-200 shadow-sm hover:shadow-md"
               >
-                <UserPlus size={20} />
-                <span>Add Candidate</span>
+                <UserPlus size={18} />
+                <span className="font-medium">Add Candidate</span>
               </button>
             )}
             {hasPermission('candidates', 'create') && (
               <button
                 onClick={handleShowResumeParser}
-                className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                className="flex items-center space-x-2 bg-violet-50 text-violet-700 border border-violet-200 px-4 py-2.5 rounded-xl hover:bg-violet-100 hover:border-violet-300 transition-all duration-200 shadow-sm hover:shadow-md"
               >
-                <Upload size={20} />
-                <span>Parse Resume</span>
+                <Upload size={18} />
+                <span className="font-medium">Parse Resume</span>
               </button>
             )}
             {hasPermission('candidates', 'create') && (
               <button
                 onClick={() => setShowBulkImportModal(true)}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center space-x-2 bg-sky-50 text-sky-700 border border-sky-200 px-4 py-2.5 rounded-xl hover:bg-sky-100 hover:border-sky-300 transition-all duration-200 shadow-sm hover:shadow-md"
               >
-                <Upload size={20} />
-                <span>Bulk Import</span>
+                <Upload size={18} />
+                <span className="font-medium">Bulk Import</span>
               </button>
             )}
-          {/* <button
-            onClick={handleShowAdvancedSearch}
-            className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
-          >
-            <Search size={20} />
-            <span>Advanced Search</span>
-          </button> */}
-          <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 shadow-inner">
+          </div>
+          
+          {/* View Toggle */}
+          <div className="flex bg-slate-50 rounded-xl p-1.5 border border-slate-200 shadow-sm">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ease-in-out transform ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ease-in-out ${
                 viewMode === 'kanban' 
-                  ? 'bg-white text-blue-600 shadow-md border border-blue-200 scale-105' 
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  ? 'bg-white text-indigo-600 shadow-md border border-indigo-200 scale-105' 
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
               Kanban
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ease-in-out transform ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ease-in-out ${
                 viewMode === 'list' 
-                  ? 'bg-white text-blue-600 shadow-md border border-blue-200 scale-105' 
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  ? 'bg-white text-indigo-600 shadow-md border border-indigo-200 scale-105' 
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
               List
@@ -563,19 +558,19 @@ export default function Candidates() {
       {/* Filters */}
       <div className="flex space-x-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
             placeholder="Search candidates..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200"
           />
         </div>
         <select
           value={stageFilter}
           onChange={(e) => setStageFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200 min-w-[140px]"
         >
           <option value="All">All Stages</option>
           {stages.map(stage => (
@@ -721,9 +716,9 @@ export default function Candidates() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => onCandidateSelect(candidate)}
-                        className="text-blue-600 hover:text-blue-900 flex items-center space-x-1"
+                        className="text-indigo-600 hover:text-indigo-900 flex items-center space-x-2 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-all duration-200"
                       >
-                        <span>View</span>
+                        <span className="font-medium">View</span>
                         <ArrowRight size={14} />
                       </button>
                     </td>
@@ -773,7 +768,6 @@ export default function Candidates() {
         candidate={selectedCandidate}
       />
 
-      </div>
-    </ProtectedComponent>
+    </div>
   );
 }
