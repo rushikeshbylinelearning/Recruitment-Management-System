@@ -222,6 +222,185 @@ export const usersAPI = {
   },
 };
 
+// Communications API
+export const communicationsAPI = {
+  getCommunications: async (params?: {
+    page?: number;
+    limit?: number;
+    type?: string;
+    status?: string;
+    candidateId?: number;
+  }): Promise<ApiResponse<{
+    communications: Array<{
+      id: number;
+      candidateId: number;
+      candidateName: string;
+      candidatePosition: string;
+      type: string;
+      content: string;
+      status: string;
+      date: string;
+      createdBy: number;
+      createdByName: string;
+      followUpDate?: string;
+      followUpNotes?: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const response = await api.get('/communications', { params });
+    return response.data;
+  },
+
+  getCommunicationById: async (id: number): Promise<ApiResponse<{
+    communication: any;
+  }>> => {
+    const response = await api.get(`/communications/${id}`);
+    return response.data;
+  },
+
+  createCommunication: async (communicationData: {
+    candidateId: number;
+    type: string;
+    content: string;
+    status?: string;
+    followUpDate?: string;
+    followUpNotes?: string;
+  }): Promise<ApiResponse<{ communicationId: number }>> => {
+    const response = await api.post('/communications', communicationData);
+    return response.data;
+  },
+
+  updateCommunication: async (id: number, communicationData: Partial<{
+    type: string;
+    content: string;
+    status: string;
+    followUpDate?: string;
+    followUpNotes?: string;
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/communications/${id}`, communicationData);
+    return response.data;
+  },
+
+  deleteCommunication: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/communications/${id}`);
+    return response.data;
+  },
+
+  getCommunicationStats: async (): Promise<ApiResponse<{
+    total: number;
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+    recent: number;
+  }>> => {
+    const response = await api.get('/communications/stats');
+    return response.data;
+  },
+};
+
+// Email Templates API
+export const emailTemplatesAPI = {
+  getEmailTemplates: async (params?: {
+    page?: number;
+    limit?: number;
+    category?: string;
+  }): Promise<ApiResponse<{
+    templates: Array<{
+      id: number;
+      name: string;
+      subject: string;
+      content: string;
+      category: string;
+      isActive: boolean;
+      createdBy: number;
+      createdByName: string;
+      createdAt: string;
+      updatedAt: string;
+      variables: string[];
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const response = await api.get('/email-templates', { params });
+    return response.data;
+  },
+
+  getEmailTemplateById: async (id: number): Promise<ApiResponse<{
+    template: any;
+  }>> => {
+    const response = await api.get(`/email-templates/${id}`);
+    return response.data;
+  },
+
+  createEmailTemplate: async (templateData: {
+    name: string;
+    subject: string;
+    content: string;
+    category: string;
+    variables?: string[];
+  }): Promise<ApiResponse<{ templateId: number }>> => {
+    const response = await api.post('/email-templates', templateData);
+    return response.data;
+  },
+
+  updateEmailTemplate: async (id: number, templateData: Partial<{
+    name: string;
+    subject: string;
+    content: string;
+    category: string;
+    isActive: boolean;
+    variables: string[];
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/email-templates/${id}`, templateData);
+    return response.data;
+  },
+
+  deleteEmailTemplate: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/email-templates/${id}`);
+    return response.data;
+  },
+
+  sendEmailTemplate: async (templateId: number, candidateIds: number[], customData?: Record<string, any>): Promise<ApiResponse<{
+    sent: number;
+    failed: number;
+    results: Array<{
+      candidateId: number;
+      candidateName: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }>> => {
+    const response = await api.post(`/email-templates/${templateId}/send`, {
+      candidateIds,
+      customData
+    });
+    return response.data;
+  },
+
+  getTemplateCategories: async (): Promise<ApiResponse<{
+    categories: Array<{
+      name: string;
+      count: number;
+    }>;
+  }>> => {
+    const response = await api.get('/email-templates/categories');
+    return response.data;
+  },
+
+  getTemplateVariables: async (): Promise<ApiResponse<{
+    variables: Array<{
+      name: string;
+      description: string;
+      example: string;
+    }>;
+  }>> => {
+    const response = await api.get('/email-templates/variables');
+    return response.data;
+  },
+};
+
 // Jobs API
 export interface JobPosting {
   id: number;

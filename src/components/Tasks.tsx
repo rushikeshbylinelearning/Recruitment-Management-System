@@ -22,6 +22,7 @@ export default function Tasks({}: TasksProps) {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [usersWarning, setUsersWarning] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
@@ -49,15 +50,27 @@ export default function Tasks({}: TasksProps) {
         
         console.log('Loading tasks data...');
         
-        // Load users first to ensure we have user data for task assignment
-        const usersResponse = await usersAPI.getUsers();
-        if (usersResponse.success && usersResponse.data) {
-          setUsers(usersResponse.data.users || []);
-          console.log('Users loaded:', usersResponse.data.users?.length || 0);
-        } else {
-          console.error('Users API failed:', usersResponse);
-          setError('Failed to load users: ' + (usersResponse.message || 'Unknown error'));
-          return;
+        // Try to load users, but don't block other data if forbidden/unavailable
+        try {
+          const usersResponse = await usersAPI.getUsers();
+          if (usersResponse.success && usersResponse.data) {
+            setUsers(usersResponse.data.users || []);
+            console.log('Users loaded:', usersResponse.data.users?.length || 0);
+          } else {
+            console.warn('Users API failed:', usersResponse);
+            setUsers([]);
+            setUsersWarning('Some data could not be loaded (users). You can still view tasks.');
+          }
+        } catch (usersErr: any) {
+          console.warn('Users API error (non-blocking):', usersErr);
+          setUsers([]);
+          // If 403, show a friendly warning instead of failing the page
+          const status = usersErr?.response?.status;
+          if (status === 403) {
+            setUsersWarning('You do not have permission to view users. Task list is still available.');
+          } else {
+            setUsersWarning('Could not load users. Task list is still available.');
+          }
         }
         
         // Load other data in parallel
@@ -68,7 +81,6 @@ export default function Tasks({}: TasksProps) {
         ]);
 
         console.log('Tasks response:', tasksResponse);
-        console.log('Users response:', usersResponse);
         console.log('Jobs response:', jobsResponse);
         console.log('Candidates response:', candidatesResponse);
         if (tasksResponse.success && tasksResponse.data) {
@@ -371,6 +383,16 @@ export default function Tasks({}: TasksProps) {
             >
               Retry
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Non-blocking warning if users couldn't load */}
+      {!error && usersWarning && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <AlertCircle size={16} className="text-yellow-600" />
+            <p className="text-sm">{usersWarning}</p>
           </div>
         </div>
       )}

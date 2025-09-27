@@ -7,7 +7,6 @@ import AddCandidateModal from './AddCandidateModal';
 import BulkImportModal from './BulkImportModal';
 import CandidateViewModal from './CandidateViewModal';
 import ProtectedComponent from './ProtectedComponent';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function Candidates() {
   const { hasPermission } = useAuth();
