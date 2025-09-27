@@ -69,6 +69,8 @@ export const mockCandidates: Candidate[] = [
     source: 'LinkedIn',
     appliedDate: '2024-01-20',
     resume: 'alice-cooper-resume.pdf',
+    notes: 'Strong React skills, good communication',
+    score: 4.5,
     assignedTo: 'Sarah Johnson',
     communications: [
       {
@@ -92,7 +94,7 @@ export const mockCandidates: Candidate[] = [
     },
     interviews: [
       {
-        id: 1,
+        id: 'int-1',
         candidateId: '1',
         interviewerId: '6',
         interviewerName: 'John Smith',
@@ -139,20 +141,8 @@ export const mockCandidates: Candidate[] = [
         comments: 'Good cultural fit based on initial screening'
       },
       overallRecommendation: 'Proceed',
-      notes: 'Strong candidate with good technical background and cultural fit',
+      notes: 'Strong candidate, proceed with technical interview',
       submittedAt: '2024-01-21T09:00:00Z'
-    },
-    workPreferences: {
-      workPreference: 'Hybrid',
-      willingAlternateSaturday: true,
-      currentCtc: '10 LPA',
-      ctcFrequency: 'Annual'
-    },
-    assignmentDetails: {
-      inHouseAssignmentStatus: 'Shortlisted',
-      interviewDate: '2024-01-25',
-      interviewerId: 6,
-      inOfficeAssignment: 'React component development'
     }
   },
   {
@@ -165,6 +155,8 @@ export const mockCandidates: Candidate[] = [
     source: 'Indeed',
     appliedDate: '2024-01-18',
     resume: 'bob-smith-resume.pdf',
+    notes: 'Good product sense, needs technical evaluation',
+    score: 4.0,
     assignedTo: 'Emma Wilson',
     communications: [
       {
@@ -186,18 +178,6 @@ export const mockCandidates: Candidate[] = [
       noticePeriod: '60 days',
       immediateJoiner: false
     },
-    workPreferences: {
-      workPreference: 'Onsite',
-      willingAlternateSaturday: false,
-      currentCtc: '12 LPA',
-      ctcFrequency: 'Annual'
-    },
-    assignmentDetails: {
-      inHouseAssignmentStatus: 'Pending',
-      interviewDate: '2024-01-30',
-      interviewerId: 7,
-      inOfficeAssignment: 'Product strategy analysis'
-    },
     interviews: []
   },
   {
@@ -210,6 +190,8 @@ export const mockCandidates: Candidate[] = [
     source: 'Dribbble',
     appliedDate: '2024-01-19',
     resume: 'carol-davis-portfolio.pdf',
+    notes: 'Impressive portfolio, creative approach',
+    score: 4.2,
     assignedTo: 'David Kim',
     communications: [],
     skills: ['Figma', 'User Research', 'Prototyping', 'Design Systems'],
@@ -223,18 +205,6 @@ export const mockCandidates: Candidate[] = [
       noticePeriod: '30 days',
       immediateJoiner: false
     },
-    workPreferences: {
-      workPreference: 'Hybrid',
-      willingAlternateSaturday: true,
-      currentCtc: '14 LPA',
-      ctcFrequency: 'Annual'
-    },
-    assignmentDetails: {
-      inHouseAssignmentStatus: 'Shortlisted',
-      interviewDate: '2024-01-20',
-      interviewerId: 9,
-      inOfficeAssignment: 'Frontend development task'
-    },
     interviews: []
   },
   {
@@ -247,6 +217,8 @@ export const mockCandidates: Candidate[] = [
     source: 'LinkedIn',
     appliedDate: '2024-01-15',
     resume: 'daniel-johnson-resume.pdf',
+    notes: 'Excellent technical skills, culture fit',
+    score: 4.8,
     assignedTo: 'Sarah Johnson',
     communications: [
       {
@@ -269,18 +241,6 @@ export const mockCandidates: Candidate[] = [
       noticePeriod: '45 days',
       immediateJoiner: false
     },
-    workPreferences: {
-      workPreference: 'WFH',
-      willingAlternateSaturday: true,
-      currentCtc: '9 LPA',
-      ctcFrequency: 'Annual'
-    },
-    assignmentDetails: {
-      inHouseAssignmentStatus: 'Pending',
-      interviewDate: '2024-02-05',
-      interviewerId: 8,
-      inOfficeAssignment: 'UX design challenge'
-    },
     interviews: []
   },
   {
@@ -293,6 +253,8 @@ export const mockCandidates: Candidate[] = [
     source: 'Referral',
     appliedDate: '2024-01-12',
     resume: 'eva-martinez-resume.pdf',
+    notes: 'Outstanding candidate, start date confirmed',
+    score: 5.0,
     assignedTo: 'Emma Wilson',
     communications: [
       {
@@ -314,18 +276,6 @@ export const mockCandidates: Candidate[] = [
       joiningTime: 'Immediate',
       noticePeriod: 'Completed',
       immediateJoiner: true
-    },
-    workPreferences: {
-      workPreference: 'Onsite',
-      willingAlternateSaturday: false,
-      currentCtc: '16 LPA',
-      ctcFrequency: 'Annual'
-    },
-    assignmentDetails: {
-      inHouseAssignmentStatus: 'Shortlisted',
-      interviewDate: '2024-01-15',
-      interviewerId: 10,
-      inOfficeAssignment: 'Product management case study'
     },
     interviews: []
   }
@@ -454,7 +404,7 @@ export const mockTeam: TeamMember[] = [
     createdDate: '2024-01-10T00:00:00Z'
   },
   {
-    id: 6,
+    id: '6',
     username: 'john.smith',
     password: 'john123',
     name: 'John Smith',
@@ -487,68 +437,58 @@ export const mockTasks: Task[] = [
     id: 1,
     title: 'Review Frontend Developer Applications',
     description: 'Screen and evaluate new applications for Senior Frontend Developer position',
-    assignedTo: 1,
-    assignedToName: 'Sarah Johnson',
-    jobId: 1,
+    assignedTo: 'Sarah Johnson',
+    jobId: '1',
     priority: 'High',
     status: 'In Progress',
     dueDate: '2024-02-01',
-    createdBy: 1,
     createdDate: '2024-01-28'
   },
   {
     id: 2,
     title: 'Schedule Interviews for Product Manager Role',
     description: 'Coordinate interview schedules for shortlisted Product Manager candidates',
-    assignedTo: 2,
-    assignedToName: 'Emma Wilson',
-    jobId: 2,
-    candidateId: 2,
+    assignedTo: 'Emma Wilson',
+    jobId: '2',
+    candidateId: '2',
     priority: 'High',
     status: 'Pending',
     dueDate: '2024-01-31',
-    createdBy: 2,
     createdDate: '2024-01-26'
   },
   {
     id: 3,
     title: 'Prepare Offer Letter',
     description: 'Draft and prepare offer letter for Daniel Johnson',
-    assignedTo: 1,
-    assignedToName: 'Sarah Johnson',
-    jobId: 1,
-    candidateId: 4,
+    assignedTo: 'Sarah Johnson',
+    jobId: '1',
+    candidateId: '4',
     priority: 'Medium',
     status: 'Completed',
     dueDate: '2024-01-25',
-    createdBy: 1,
     createdDate: '2024-01-23'
   },
   {
     id: 4,
     title: 'Update Job Posting on Indeed',
     description: 'Refresh job posting description and requirements',
-    assignedTo: 3,
-    assignedToName: 'Mike Chen',
-    jobId: 1,
+    assignedTo: 'Mike Chen',
+    jobId: '1',
     priority: 'Low',
     status: 'Pending',
     dueDate: '2024-02-05',
-    createdBy: 3,
     createdDate: '2024-01-27'
   },
   {
     id: 5,
     title: 'Conduct Reference Checks',
     description: 'Complete reference verification for Eva Martinez',
-    assignedTo: 2,
-    assignedToName: 'Emma Wilson',
-    jobId: 2,
-    candidateId: 5,
+    assignedTo: 'Emma Wilson',
+    jobId: '2',
+    candidateId: '5',
     priority: 'Medium',
     status: 'Completed',
     dueDate: '2024-01-27',
-    createdBy: 2,
     createdDate: '2024-01-25'
   }
 ];

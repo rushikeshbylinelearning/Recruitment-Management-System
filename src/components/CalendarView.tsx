@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Clock, User, MapPin, Video, Plus } from 'lucide-react';
 import { Interview } from '../types';
 
@@ -190,7 +190,7 @@ export default function CalendarView({ interviews, onScheduleInterview, onEditIn
                         })}
                       </div>
                       <div className="truncate opacity-75">
-                        {interview.type} - Candidate {interview.candidateId}
+                        {interview.type} - {interview.candidateName || interview.candidateId}
                       </div>
                     </div>
                   ))}
@@ -230,7 +230,7 @@ export default function CalendarView({ interviews, onScheduleInterview, onEditIn
                   </div>
                   <div className="flex items-center space-x-2">
                     <User size={16} className="text-gray-400" />
-                    <span className="text-gray-700">Candidate {interview.candidateId}</span>
+                    <span className="text-gray-700">{interview.candidateName || interview.candidateId}</span>
                   </div>
                   <span className="text-sm text-gray-500">{interview.type}</span>
                 </div>

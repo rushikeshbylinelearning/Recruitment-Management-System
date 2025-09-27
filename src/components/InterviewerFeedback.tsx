@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Star, MessageSquare, Send, User, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Star, MessageSquare, Send, User, Calendar, Clock } from 'lucide-react';
 import { candidatesAPI } from '../services/api';
 
 interface Candidate {
@@ -117,14 +117,10 @@ Recommendation: ${feedbackForm.recommendation}
 Additional Notes: ${feedbackForm.additionalNotes}
       `.trim();
 
-      // Note: Feedback is now handled through the new multi-user notes system
-      // This would need to be updated to use candidateNotesAPI.addNote()
-      console.log('Feedback submitted:', feedbackText);
+      const response = await candidatesAPI.updateCandidate(selectedCandidate.id, {
+        notes: feedbackText
+      });
 
-      // For now, just show success message
-      // TODO: Integrate with candidateNotesAPI.addNote()
-      const response = { success: true };
-      
       if (response.success) {
         // Reset form
         setFeedbackForm({

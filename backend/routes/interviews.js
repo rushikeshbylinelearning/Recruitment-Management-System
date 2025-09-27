@@ -15,41 +15,43 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
   const type = req.query.type || '';
   const interviewerId = req.query.interviewerId || '';
 
-  let whereClause = 'WHERE 1=1';
+  let whereClause = '';
   let params = [];
 
   if (status) {
-    whereClause += ' AND i.status = ?';
+    whereClause += ' WHERE i.status = ?';
     params.push(status);
   }
 
   if (type) {
-    whereClause += ' AND i.type = ?';
+    whereClause += whereClause ? ' AND i.type = ?' : ' WHERE i.type = ?';
     params.push(type);
   }
 
   if (interviewerId) {
-    whereClause += ' AND i.interviewer_id = ?';
+    whereClause += whereClause ? ' AND i.interviewer_id = ?' : ' WHERE i.interviewer_id = ?';
     params.push(interviewerId);
   }
 
   // Get total count
   const countResult = await query(
-    `SELECT COUNT(*) as total FROM interviews i ${whereClause}`,
+    `SELECT COUNT(*) as total FROM interviews i${whereClause}`,
     params
   );
   const total = countResult[0].total;
 
   // Get interviews
   const interviews = await query(
-    `SELECT i.*, c.name as candidate_name, c.position as candidate_position, u.name as interviewer_name 
+    `SELECT i.id, i.candidate_id as candidateId, i.interviewer_id as interviewerId, 
+     i.scheduled_date as scheduledDate, i.duration, i.type, i.status, 
+     i.meeting_link as meetingLink, i.location, i.round, i.created_at as createdAt, i.updated_at as updatedAt,
+     c.name as candidate_name, c.position as candidate_position, u.name as interviewer_name 
      FROM interviews i
      LEFT JOIN candidates c ON i.candidate_id = c.id
-     LEFT JOIN users u ON i.interviewer_id = u.id
-     ${whereClause}
+     LEFT JOIN users u ON i.interviewer_id = u.id${whereClause}
      ORDER BY i.scheduled_date DESC 
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
 
   // Get feedback for each interview
@@ -80,7 +82,10 @@ router.get('/:id', authenticateToken, checkPermission('interviews', 'view'), val
   const interviewId = req.params.id;
 
   const interviews = await query(
-    `SELECT i.*, c.name as candidate_name, c.position as candidate_position, u.name as interviewer_name 
+    `SELECT i.id, i.candidate_id as candidateId, i.interviewer_id as interviewerId, 
+     i.scheduled_date as scheduledDate, i.duration, i.type, i.status, 
+     i.meeting_link as meetingLink, i.location, i.round, i.created_at as createdAt, i.updated_at as updatedAt,
+     c.name as candidate_name, c.position as candidate_position, u.name as interviewer_name 
      FROM interviews i
      LEFT JOIN candidates c ON i.candidate_id = c.id
      LEFT JOIN users u ON i.interviewer_id = u.id

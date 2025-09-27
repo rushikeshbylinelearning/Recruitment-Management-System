@@ -289,6 +289,8 @@ export interface Candidate {
   source: string;
   appliedDate: string;
   resume: string;
+  notes: string;
+  score: number;
   assignedTo: string;
   communications: Communication[];
   skills: string[];
@@ -748,159 +750,71 @@ export const healthAPI = {
   },
 };
 
-// Candidate Notes API
-export const candidateNotesAPI = {
-  getNotes: (candidateId: number, filters?: { noteType?: string; userRole?: string }): Promise<ApiResponse<{ notes: CandidateNote[] }>> => 
-    api.get(`/candidate-notes/candidate/${candidateId}`, { params: filters }),
-  addNote: (candidateId: number, note: CreateCandidateNote): Promise<ApiResponse<{ noteId: number }>> => 
-    api.post(`/candidate-notes/candidate/${candidateId}`, note),
-  updateNote: (noteId: number, note: UpdateCandidateNote): Promise<ApiResponse> => 
-    api.put(`/candidate-notes/${noteId}`, note),
-  deleteNote: (noteId: number): Promise<ApiResponse> => 
-    api.delete(`/candidate-notes/${noteId}`),
-  getNote: (noteId: number): Promise<ApiResponse<{ note: CandidateNote }>> => 
-    api.get(`/candidate-notes/${noteId}`),
+// Interview API
+export const interviewsAPI = {
+  getInterviews: async (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    interviewerId?: string;
+  }): Promise<ApiResponse<{
+    interviews: Interview[];
+    pagination: PaginationInfo;
+  }>> => {
+    const response = await api.get('/interviews', { params });
+    return response.data;
+  },
+
+  getInterview: async (id: string): Promise<ApiResponse<{ interview: Interview }>> => {
+    const response = await api.get(`/interviews/${id}`);
+    return response.data;
+  },
+
+  createInterview: async (interviewData: {
+    candidateId: string;
+    interviewerId: string;
+    scheduledDate: string;
+    duration: number;
+    type: 'Technical' | 'HR' | 'Managerial' | 'Final';
+    status?: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+    meetingLink?: string;
+    location?: string;
+    round: number;
+  }): Promise<ApiResponse<{ interviewId: number }>> => {
+    const response = await api.post('/interviews', interviewData);
+    return response.data;
+  },
+
+  updateInterview: async (id: string, interviewData: {
+    candidateId?: string;
+    interviewerId?: string;
+    scheduledDate?: string;
+    duration?: number;
+    type?: 'Technical' | 'HR' | 'Managerial' | 'Final';
+    status?: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+    meetingLink?: string;
+    location?: string;
+    round?: number;
+  }): Promise<ApiResponse> => {
+    const response = await api.put(`/interviews/${id}`, interviewData);
+    return response.data;
+  },
+
+  deleteInterview: async (id: string): Promise<ApiResponse> => {
+    const response = await api.delete(`/interviews/${id}`);
+    return response.data;
+  },
+
+  getInterviewerInterviews: async (interviewerId: string): Promise<ApiResponse<{ interviews: Interview[] }>> => {
+    const response = await api.get(`/interviews/interviewer/${interviewerId}`);
+    return response.data;
+  },
+
+  getUpcomingInterviews: async (): Promise<ApiResponse<{ interviews: Interview[] }>> => {
+    const response = await api.get('/interviews/upcoming/list');
+    return response.data;
+  },
 };
-
-// Candidate Ratings API
-export const candidateRatingsAPI = {
-  getRatings: (candidateId: number, filters?: { ratingType?: string; userRole?: string }): Promise<ApiResponse<{ ratings: CandidateRating[] }>> => 
-    api.get(`/candidate-ratings/candidate/${candidateId}`, { params: filters }),
-  addRating: (candidateId: number, rating: CreateCandidateRating): Promise<ApiResponse<{ ratingId: number }>> => 
-    api.post(`/candidate-ratings/candidate/${candidateId}`, rating),
-  updateRating: (ratingId: number, rating: UpdateCandidateRating): Promise<ApiResponse> => 
-    api.put(`/candidate-ratings/${ratingId}`, rating),
-  deleteRating: (ratingId: number): Promise<ApiResponse> => 
-    api.delete(`/candidate-ratings/${ratingId}`),
-  getRating: (ratingId: number): Promise<ApiResponse<{ rating: CandidateRating }>> => 
-    api.get(`/candidate-ratings/${ratingId}`),
-  getAggregatedScores: (candidateId: number): Promise<ApiResponse<{ aggregatedScores: AggregatedScore[]; overallAverage: { overall_average: number; total_ratings: number } }>> => 
-    api.get(`/candidate-ratings/candidate/${candidateId}/aggregated`),
-};
-
-// Interview Assignments Types
-export interface InterviewAssignment {
-  id: number;
-  candidate_id: number;
-  assigned_to: number;
-  interview_type: 'Technical' | 'HR' | 'Managerial' | 'Final' | 'Screening';
-  scheduled_date: string;
-  duration: number;
-  location?: string;
-  meeting_link?: string;
-  notes?: string;
-  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
-  status: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled' | 'Rescheduled';
-  created_by: number;
-  created_at: string;
-  updated_at: string;
-  candidate_name?: string;
-  candidate_email?: string;
-  candidate_phone?: string;
-  interviewer_name?: string;
-  interviewer_email?: string;
-  interviewer_role?: string;
-  job_title?: string;
-}
-
-export interface CreateInterviewAssignment {
-  candidateId: number;
-  assignedTo: number;
-  interviewType: 'Technical' | 'HR' | 'Managerial' | 'Final' | 'Screening';
-  scheduledDate?: string;
-  duration?: number;
-  location?: string;
-  meetingLink?: string;
-  notes?: string;
-  priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
-}
-
-export interface UpdateInterviewAssignment {
-  assignedTo?: number;
-  interviewType?: 'Technical' | 'HR' | 'Managerial' | 'Final' | 'Screening';
-  scheduledDate?: string;
-  duration?: number;
-  location?: string;
-  meetingLink?: string;
-  notes?: string;
-  priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
-  status?: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled' | 'Rescheduled';
-}
-
-// Interview Assignments API
-export const interviewAssignmentsAPI = {
-  getAssignments: (): Promise<ApiResponse<{ assignments: InterviewAssignment[] }>> => 
-    api.get('/interview-assignments'),
-  getAssignmentsByUser: (userId: number): Promise<ApiResponse<{ assignments: InterviewAssignment[] }>> => 
-    api.get(`/interview-assignments/user/${userId}`),
-  createAssignment: (assignment: CreateInterviewAssignment): Promise<ApiResponse<{ assignmentId: number }>> => 
-    api.post('/interview-assignments', assignment),
-  updateAssignment: (id: number, assignment: UpdateInterviewAssignment): Promise<ApiResponse> => 
-    api.put(`/interview-assignments/${id}`, assignment),
-  deleteAssignment: (id: number): Promise<ApiResponse> => 
-    api.delete(`/interview-assignments/${id}`),
-  getAvailableInterviewers: (candidateId?: number, interviewType?: string): Promise<ApiResponse<{ interviewers: any[] }>> => 
-    api.get('/interview-assignments/available-interviewers', { params: { candidateId, interviewType } }),
-};
-
-// Candidate Notes Types
-export interface CandidateNote {
-  id: number;
-  candidate_id: number;
-  user_id: number;
-  user_role: 'Recruiter' | 'Interviewer' | 'HR Manager' | 'Admin';
-  note_type: 'Pre-Interview' | 'Interview' | 'Post-Interview' | 'General';
-  content: string;
-  is_private: boolean;
-  created_at: string;
-  updated_at: string;
-  user_name?: string;
-  user_role_name?: string;
-}
-
-export interface CreateCandidateNote {
-  noteType: 'Pre-Interview' | 'Interview' | 'Post-Interview' | 'General';
-  content: string;
-  isPrivate?: boolean;
-}
-
-export interface UpdateCandidateNote {
-  content: string;
-  isPrivate?: boolean;
-}
-
-// Candidate Ratings Types
-export interface CandidateRating {
-  id: number;
-  candidate_id: number;
-  user_id: number;
-  user_role: 'Recruiter' | 'Interviewer' | 'HR Manager' | 'Admin';
-  rating_type: 'Technical' | 'Communication' | 'Cultural Fit' | 'Overall';
-  score: number;
-  comments?: string;
-  created_at: string;
-  updated_at: string;
-  user_name?: string;
-  user_role_name?: string;
-}
-
-export interface CreateCandidateRating {
-  ratingType: 'Technical' | 'Communication' | 'Cultural Fit' | 'Overall';
-  score: number;
-  comments?: string;
-}
-
-export interface UpdateCandidateRating {
-  score: number;
-  comments?: string;
-}
-
-export interface AggregatedScore {
-  rating_type: string;
-  average_score: number;
-  total_ratings: number;
-  min_score: number;
-  max_score: number;
-}
 
 export default api;

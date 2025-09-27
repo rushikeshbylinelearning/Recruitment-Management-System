@@ -11,6 +11,7 @@ import InterviewerJobs from './components/InterviewerJobs';
 import Candidates from './components/Candidates';
 import InterviewerCandidates from './components/InterviewerCandidates';
 import InterviewerFeedback from './components/InterviewerFeedback';
+import InterviewManagement from './components/InterviewManagement';
 import Team from './components/Team';
 import Tasks from './components/Tasks';
 import Communications from './components/Communications';
@@ -68,6 +69,7 @@ function AppContent() {
         <Route path="interviewer-jobs" element={<InterviewerJobs />} />
         <Route path="interviewer-candidates" element={<InterviewerCandidates />} />
         <Route path="interviewer-feedback" element={<InterviewerFeedback />} />
+        <Route path="interviews" element={<InterviewManagement showAllInterviews={true} />} />
         <Route path="team" element={<Team />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="communications" element={<Communications />} />

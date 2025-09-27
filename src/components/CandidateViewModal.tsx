@@ -1,9 +1,6 @@
-import { X, Mail, Phone, MapPin, Download, FileText, User, MessageSquare, BarChart3 } from 'lucide-react';
+import { X, Mail, Phone, MapPin, Star, Download, FileText, User } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI } from '../services/api';
-import { useState } from 'react';
-import CandidateNotes from './CandidateNotes';
-import CandidateRatings from './CandidateRatings';
 
 interface CandidateViewModalProps {
   isOpen: boolean;
@@ -12,8 +9,6 @@ interface CandidateViewModalProps {
 }
 
 export default function CandidateViewModal({ isOpen, onClose, candidate }: CandidateViewModalProps) {
-  const [activeTab, setActiveTab] = useState<'details' | 'notes' | 'ratings'>('details');
-  
   if (!isOpen || !candidate) return null;
 
   const handleDownloadResume = async () => {
@@ -62,48 +57,9 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
-            <button
-              onClick={() => setActiveTab('details')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'details'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Details
-            </button>
-            <button
-              onClick={() => setActiveTab('notes')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                activeTab === 'notes'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <MessageSquare size={16} />
-              <span>Notes & Feedback</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('ratings')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                activeTab === 'ratings'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <BarChart3 size={16} />
-              <span>Ratings & Scores</span>
-            </button>
-          </nav>
-        </div>
-
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          {activeTab === 'details' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Column - Basic Info */}
             <div className="space-y-6">
               <div className="bg-gray-50 rounded-lg p-4">
@@ -207,8 +163,60 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                       {candidate.stage}
                     </span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Score:</span>
+                    <div className="flex items-center space-x-1">
+                      <Star size={16} className="text-yellow-500" />
+                      <span className="text-gray-900">{candidate.score}/5</span>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+               {candidate.notes && Array.isArray(candidate.notes) && candidate.notes.length > 0 && (
+                 <div className="bg-gray-50 rounded-lg p-4">
+                   <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
+                   <div className="space-y-3">
+                     {candidate.notes.map((note: any, index: number) => (
+                       <div key={note.id || index} className="border-l-4 border-blue-200 pl-4 py-2 bg-white rounded">
+                         <div className="flex items-center justify-between mb-2">
+                           <div className="flex items-center space-x-2">
+                             <span className="text-sm font-medium text-gray-900">{note.user_name}</span>
+                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                               {note.user_role}
+                             </span>
+                           </div>
+                           <span className="text-xs text-gray-500">
+                             {new Date(note.created_at).toLocaleDateString()}
+                           </span>
+                         </div>
+                         {note.notes && (
+                           <p className="text-gray-700 text-sm whitespace-pre-wrap">{note.notes}</p>
+                         )}
+                         {note.rating && (
+                           <div className="mt-2 flex items-center space-x-2">
+                             <span className="text-sm text-gray-600">Rating:</span>
+                             <div className="flex items-center space-x-1">
+                               {[1, 2, 3, 4, 5].map((star) => (
+                                 <span
+                                   key={star}
+                                   className={`text-sm ${star <= note.rating ? 'text-yellow-500' : 'text-gray-300'}`}
+                                 >
+                                   ★
+                                 </span>
+                               ))}
+                               <span className="text-sm text-gray-600 ml-1">({note.rating}/5)</span>
+                             </div>
+                           </div>
+                         )}
+                         {note.rating_comments && (
+                           <p className="text-gray-600 text-sm mt-1 italic">"{note.rating_comments}"</p>
+                         )}
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
 
             </div>
 
@@ -358,21 +366,6 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
 
             </div>
           </div>
-          )}
-
-          {activeTab === 'notes' && (
-            <CandidateNotes 
-              candidateId={candidate.id} 
-              candidateName={candidate.name} 
-            />
-          )}
-
-          {activeTab === 'ratings' && (
-            <CandidateRatings 
-              candidateId={candidate.id} 
-              candidateName={candidate.name} 
-            />
-          )}
         </div>
 
         {/* Footer */}

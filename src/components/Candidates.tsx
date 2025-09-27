@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, User, Mail, Phone, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download, XCircle, MessageSquare, BarChart3 } from 'lucide-react';
+import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download, FileText, Users, DollarSign, CheckCircle, XCircle, Briefcase } from 'lucide-react';
+import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
 import BulkImportModal from './BulkImportModal';
 import CandidateViewModal from './CandidateViewModal';
-import CandidateNotes from './CandidateNotes';
-import CandidateRatings from './CandidateRatings';
 
 export default function Candidates() {
   const { hasPermission } = useAuth();
@@ -22,8 +21,6 @@ export default function Candidates() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ApiCandidate | null>(null);
   const [editingCandidate, setEditingCandidate] = useState<ApiCandidate | null>(null);
-  const [showNotesModal, setShowNotesModal] = useState(false);
-  const [showRatingsModal, setShowRatingsModal] = useState(false);
 
   const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
 
@@ -105,11 +102,22 @@ export default function Candidates() {
     }
   };
 
+  const getStageIcon = (stage: string) => {
+    switch (stage) {
+      case 'Applied': return <FileText size={20} className="text-blue-600" />;
+      case 'Screening': return <Search size={20} className="text-yellow-600" />;
+      case 'Interview': return <Users size={20} className="text-orange-600" />;
+      case 'Offer': return <DollarSign size={20} className="text-purple-600" />;
+      case 'Hired': return <CheckCircle size={20} className="text-green-600" />;
+      case 'Rejected': return <XCircle size={20} className="text-red-600" />;
+      default: return <Briefcase size={20} className="text-gray-600" />;
+    }
+  };
 
   const candidatesByStage = stages.reduce((acc, stage) => {
     acc[stage] = filteredCandidates.filter(candidate => candidate.stage === stage);
     return acc;
-  }, {} as Record<string, ApiCandidate[]>);
+  }, {} as Record<string, Candidate[]>);
 
   // Handler functions
 
@@ -347,27 +355,9 @@ export default function Candidates() {
                 <p className="text-xs text-gray-600 truncate max-w-32">{candidate.position}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => {
-                  setSelectedCandidate(candidate);
-                  setShowNotesModal(true);
-                }}
-                className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-600 hover:text-sky-700 rounded-full transition-all duration-200 hover:scale-110"
-                title="View Notes"
-              >
-                <MessageSquare size={12} />
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedCandidate(candidate);
-                  setShowRatingsModal(true);
-                }}
-                className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-700 rounded-full transition-all duration-200 hover:scale-110"
-                title="View Ratings"
-              >
-                <BarChart3 size={12} />
-              </button>
+            <div className="flex items-center space-x-1 bg-yellow-50 px-2 py-1 rounded-full">
+              <Star size={12} className="text-yellow-500 fill-current" />
+              <span className="text-xs font-medium text-yellow-700">{candidate.score}/5</span>
             </div>
           </div>
           
@@ -718,27 +708,9 @@ export default function Candidates() {
                       {new Date(candidate.appliedDate).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => {
-                            setSelectedCandidate(candidate);
-                            setShowNotesModal(true);
-                          }}
-                          className="flex items-center space-x-1 text-sky-600 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 px-2 py-1 rounded-lg border border-sky-200 hover:border-sky-300 transition-all duration-200"
-                        >
-                          <MessageSquare size={14} />
-                          <span className="text-xs">Notes</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedCandidate(candidate);
-                            setShowRatingsModal(true);
-                          }}
-                          className="flex items-center space-x-1 text-emerald-600 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-200 hover:border-emerald-300 transition-all duration-200"
-                        >
-                          <BarChart3 size={14} />
-                          <span className="text-xs">Ratings</span>
-                        </button>
+                      <div className="flex items-center">
+                        <Star size={14} className="text-yellow-500 mr-1" />
+                        <span className="text-sm text-gray-900">{candidate.score}/5</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -795,58 +767,6 @@ export default function Candidates() {
         }}
         candidate={selectedCandidate}
       />
-
-      {/* Notes Modal */}
-      {showNotesModal && selectedCandidate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Notes & Feedback</h3>
-              <button
-                onClick={() => {
-                  setShowNotesModal(false);
-                  setSelectedCandidate(null);
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <XCircle size={24} />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-              <CandidateNotes 
-                candidateId={selectedCandidate.id} 
-                candidateName={selectedCandidate.name} 
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Ratings Modal */}
-      {showRatingsModal && selectedCandidate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Ratings & Scores</h3>
-              <button
-                onClick={() => {
-                  setShowRatingsModal(false);
-                  setSelectedCandidate(null);
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <XCircle size={24} />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-              <CandidateRatings 
-                candidateId={selectedCandidate.id} 
-                candidateName={selectedCandidate.name} 
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

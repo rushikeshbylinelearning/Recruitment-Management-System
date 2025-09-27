@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { Interview, Candidate, TeamMember } from '../types';
 
@@ -20,15 +20,43 @@ export default function InterviewScheduler({
   editingInterview 
 }: InterviewSchedulerProps) {
   const [formData, setFormData] = useState({
-    candidateId: editingInterview?.candidateId || '',
-    interviewerId: editingInterview?.interviewerId || '',
-    scheduledDate: editingInterview?.scheduledDate?.slice(0, 16) || '',
-    duration: editingInterview?.duration || 60,
-    type: editingInterview?.type || 'Technical',
-    location: editingInterview?.location || '',
-    meetingLink: editingInterview?.meetingLink || '',
+    candidateId: '',
+    interviewerId: '',
+    scheduledDate: '',
+    duration: 60,
+    type: 'Technical',
+    location: '',
+    meetingLink: '',
     notes: ''
   });
+
+  // Update form data when editingInterview changes
+  useEffect(() => {
+    if (editingInterview) {
+      setFormData({
+        candidateId: editingInterview.candidateId?.toString() || '',
+        interviewerId: editingInterview.interviewerId?.toString() || '',
+        scheduledDate: editingInterview.scheduledDate ? new Date(editingInterview.scheduledDate).toISOString().slice(0, 16) : '',
+        duration: editingInterview.duration || 60,
+        type: editingInterview.type || 'Technical',
+        location: editingInterview.location || '',
+        meetingLink: editingInterview.meetingLink || '',
+        notes: ''
+      });
+    } else {
+      // Reset form when not editing
+      setFormData({
+        candidateId: '',
+        interviewerId: '',
+        scheduledDate: '',
+        duration: 60,
+        type: 'Technical',
+        location: '',
+        meetingLink: '',
+        notes: ''
+      });
+    }
+  }, [editingInterview]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   if (!isOpen) return null;

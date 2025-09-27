@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Sep 26, 2025 at 08:03 AM
+-- Generation Time: Sep 26, 2025 at 11:13 AM
 -- Server version: 9.1.0
 -- PHP Version: 8.1.31
 
@@ -114,8 +114,6 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `source` varchar(100) COLLATE utf8mb4_general_ci NOT NULL,
   `applied_date` date NOT NULL,
   `resume_path` text COLLATE utf8mb4_general_ci,
-  `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT 'HR remarks and notes about the candidate',
-  `score` decimal(3,2) DEFAULT '0.00',
   `assigned_to` int DEFAULT NULL,
   `skills` json DEFAULT NULL,
   `experience` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Years of experience',
@@ -140,13 +138,14 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `in_office_assignment` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT 'Details/description about in-office assignment',
   `assignment_location` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'File path or URL to the assignment file',
   `resume_location` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'File path or URL to the resume file',
+  `notes` text COLLATE utf8mb4_general_ci,
+  `score` decimal(3,2) DEFAULT '0.00',
   PRIMARY KEY (`id`),
   KEY `idx_stage` (`stage`),
   KEY `idx_source` (`source`),
   KEY `idx_applied_date` (`applied_date`),
   KEY `idx_assigned_to` (`assigned_to`),
   KEY `idx_email` (`email`),
-  KEY `idx_score` (`score`),
   KEY `idx_candidates_stage_assigned` (`stage`,`assigned_to`),
   KEY `idx_resume_file_id` (`resume_file_id`),
   KEY `idx_job_id` (`job_id`),
@@ -157,14 +156,14 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   KEY `idx_interviewer_id` (`interviewer_id`),
   KEY `idx_assignment_location` (`assignment_location`(250)),
   KEY `idx_resume_location` (`resume_location`(250))
-) ENGINE=MyISAM AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
+) ENGINE=MyISAM AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Candidate information with optional resume file reference';
 
 --
 -- Dumping data for table `candidates`
 --
 
-INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, `stage`, `source`, `applied_date`, `resume_path`, `notes`, `score`, `assigned_to`, `skills`, `experience`, `salary_expected`, `salary_offered`, `salary_negotiable`, `joining_time`, `notice_period`, `immediate_joiner`, `created_at`, `updated_at`, `resume_file_id`, `location`, `expertise`, `willing_alternate_saturday`, `work_preference`, `current_ctc`, `ctc_frequency`, `in_house_assignment_status`, `interview_date`, `interviewer_id`, `in_office_assignment`, `assignment_location`, `resume_location`) VALUES
-(4, 1, 'Jane Smith', 'jane@example.com', '8888888888', 'Senior Full Stack Developer', 'Screening', 'Indeed', '2025-01-23', NULL, 'Good problem-solving skills, works well in team environments. Has experience with Python and Django.', 0.00, 1, '[\"Python\", \"Django\", \"PostgreSQL\", \"REST APIs\"]', '3 years', '9LPA', '', 0, '', '1 month', 0, '2025-09-25 11:53:02', '2025-09-25 14:26:29', NULL, 'San Francisco', 'Backend Development', NULL, 'Onsite', '7LPA', 'Annual', 'Shortlisted', '0000-00-00', 3, 'Design and implement a REST API with authentication, database integration, and unit tests.', 'https://example.com/assignments/backend_assignment.pdf', 'https://example.com/resumes/jane_smith_resume.pdf');
+INSERT INTO `candidates` (`id`, `job_id`, `name`, `email`, `phone`, `position`, `stage`, `source`, `applied_date`, `resume_path`, `assigned_to`, `skills`, `experience`, `salary_expected`, `salary_offered`, `salary_negotiable`, `joining_time`, `notice_period`, `immediate_joiner`, `created_at`, `updated_at`, `resume_file_id`, `location`, `expertise`, `willing_alternate_saturday`, `work_preference`, `current_ctc`, `ctc_frequency`, `in_house_assignment_status`, `interview_date`, `interviewer_id`, `in_office_assignment`, `assignment_location`, `resume_location`, `notes`, `score`) VALUES
+(5, 1, 'New Candidate', 'new@candidate.com', '8987196787', 'Senior Full Stack Developer', 'Interview', 'Indeed', '2025-09-25', NULL, NULL, '[]', '2', '6', '', 1, '1 Week', '10', 1, '2025-09-26 10:08:20', '2025-09-26 10:17:15', NULL, 'Pune', 'Backend Developer', 1, 'Onsite', '5LPA', 'Annual', 'Pending', '2025-09-26', NULL, 'Some Assignment related information to be added here', 'Link: C:\\Users\\ADMIN\\Downloads', 'Link: C:\\Users\\ADMIN\\Downloads', NULL, 0.00);
 
 -- --------------------------------------------------------
 
@@ -185,6 +184,37 @@ CREATE TABLE IF NOT EXISTS `candidate_files` (
 ,`uploaded_at` timestamp
 ,`uploaded_by_name` varchar(100)
 );
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `candidate_notes_ratings`
+--
+
+DROP TABLE IF EXISTS `candidate_notes_ratings`;
+CREATE TABLE IF NOT EXISTS `candidate_notes_ratings` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `candidate_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+  `rating` decimal(3,2) DEFAULT NULL,
+  `rating_comments` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_candidate_id` (`candidate_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_candidate_user` (`candidate_id`,`user_id`)
+) ENGINE=MyISAM AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Multi-user notes and ratings for candidates';
+
+--
+-- Dumping data for table `candidate_notes_ratings`
+--
+
+INSERT INTO `candidate_notes_ratings` (`id`, `candidate_id`, `user_id`, `notes`, `rating`, `rating_comments`, `created_at`, `updated_at`) VALUES
+(1, 5, 1, 'Additional Notes about the user', NULL, NULL, '2025-09-26 10:08:20', '2025-09-26 10:08:20'),
+(2, 5, 5, 'A Note By recruiter', NULL, NULL, '2025-09-26 10:17:15', '2025-09-26 10:17:15');
 
 -- --------------------------------------------------------
 
@@ -699,9 +729,9 @@ CREATE TABLE IF NOT EXISTS `users` (
 
 INSERT INTO `users` (`id`, `username`, `email`, `name`, `password_hash`, `role`, `avatar`, `status`, `last_login`, `created_at`, `updated_at`) VALUES
 (3, 'sarah.johnson1', 'sarah.johnson@abc.com', 'Sarah Johnson', '$2a$12$tYPNyK3XOeM7Ths0qhSAo.dnukrSVTcLeaKF7EwkHh6dryZfDrQE6', 'HR Manager', NULL, 'Active', '2025-09-26 05:59:32', '2025-09-24 10:04:29', '2025-09-26 07:44:36'),
-(1, 'admin', 'info@bylinelearning.com', 'Byline Admin', '$2a$12$rRcjHI1rA/rj0eaK0Y/4XOG07Nz66/UUqrDZL0WUF67AqoOOHP8K.', 'Admin', NULL, 'Active', '2025-09-26 07:31:10', '2025-09-24 09:38:14', '2025-09-26 07:31:10'),
+(1, 'admin', 'info@bylinelearning.com', 'Byline Admin', '$2a$12$rRcjHI1rA/rj0eaK0Y/4XOG07Nz66/UUqrDZL0WUF67AqoOOHP8K.', 'Admin', NULL, 'Active', '2025-09-26 09:13:06', '2025-09-24 09:38:14', '2025-09-26 09:13:06'),
 (4, 'john.smith', 'john.smith@gmail.com', 'John Smith', '$2a$12$uSzd7HI3Xqs5aPo68Des..2eYR2rZwlFQN2ibyAlJiRM1.5xhiNL.', 'Interviewer', NULL, 'Active', '2025-09-25 14:19:50', '2025-09-25 14:19:36', '2025-09-25 14:19:50'),
-(5, 'recruiter', 'recruiter@gmail.com', 'recruiter', '$2a$12$wgEMDPm4JF0Dq829LTPY8OAVIJVaT54cNvXrHdiwXpSIGLefGM3ce', 'Recruiter', NULL, 'Active', '2025-09-26 07:43:41', '2025-09-26 06:00:11', '2025-09-26 07:43:41');
+(5, 'recruiter', 'recruiter@gmail.com', 'recruiter', '$2a$12$wgEMDPm4JF0Dq829LTPY8OAVIJVaT54cNvXrHdiwXpSIGLefGM3ce', 'Recruiter', NULL, 'Active', '2025-09-26 10:16:34', '2025-09-26 06:00:11', '2025-09-26 10:16:34');
 
 -- --------------------------------------------------------
 
