@@ -18,10 +18,12 @@ import candidateRoutes from './routes/candidates.js';
 import interviewRoutes from './routes/interviews.js';
 import taskRoutes from './routes/tasks.js';
 import communicationRoutes from './routes/communications.js';
+import emailTemplateRoutes from './routes/emailTemplates.js';
 import analyticsRoutes from './routes/analytics.js';
 import settingsRoutes from './routes/settings.js';
 import fileRoutes from './routes/files.js';
 import dashboardRoutes from './routes/dashboard.js';
+import emailService from './services/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -94,6 +96,7 @@ app.use('/api/candidates', candidateRoutes);
 app.use('/api/interviews', interviewRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/communications', communicationRoutes);
+app.use('/api/email-templates', emailTemplateRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/files', fileRoutes);
@@ -119,6 +122,47 @@ app.get('/api', (req, res) => {
     },
     documentation: 'https://github.com/your-repo/api-docs'
   });
+});
+
+// Email test endpoint
+app.post('/api/send-email', async (req, res) => {
+  try {
+    const { to, subject, text, html } = req.body;
+    
+    // Default values for testing
+    const testTo = to || 'test@example.com';
+    const testSubject = subject || 'Test Email from HR Workflow';
+    const testText = text || 'This is a test email from the HR Workflow Management system.';
+    const testHtml = html || '<h2>Test Email</h2><p>This is a test email from the HR Workflow Management system.</p>';
+
+    console.log('Sending test email...');
+    const result = await emailService.sendEmail(testTo, testSubject, testText, testHtml);
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        message: 'Email sent successfully',
+        data: {
+          to: testTo,
+          subject: testSubject,
+          messageId: result.messageId
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send email',
+        error: result.error
+      });
+    }
+  } catch (error) {
+    console.error('Email test error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
 });
 
 // 404 handler for undefined routes

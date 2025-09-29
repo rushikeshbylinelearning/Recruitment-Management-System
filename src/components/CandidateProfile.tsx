@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare, FileText, Video, MapPin } from 'lucide-react';
-import { Candidate, Interview } from '../types';
+import { useState } from 'react';
+import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare, FileText } from 'lucide-react';
+import { Candidate } from '../types';
+import InterviewManagement from './InterviewManagement';
 
 interface CandidateProfileProps {
   candidate: Candidate;
@@ -8,7 +9,7 @@ interface CandidateProfileProps {
   onUpdateCandidate: (candidate: Candidate) => void;
 }
 
-export default function CandidateProfile({ candidate, onClose, onUpdateCandidate }: CandidateProfileProps) {
+export default function CandidateProfile({ candidate, onClose }: CandidateProfileProps) {
   const [activeTab, setActiveTab] = useState('overview');
 
   const tabs = [
@@ -30,15 +31,6 @@ export default function CandidateProfile({ candidate, onClose, onUpdateCandidate
     }
   };
 
-  const getInterviewStatusColor = (status: string) => {
-    switch (status) {
-      case 'Scheduled': return 'bg-blue-100 text-blue-800';
-      case 'Completed': return 'bg-green-100 text-green-800';
-      case 'Cancelled': return 'bg-red-100 text-red-800';
-      case 'Rescheduled': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
 
   const renderStarRating = (rating: number) => {
     return (
@@ -179,10 +171,48 @@ export default function CandidateProfile({ candidate, onClose, onUpdateCandidate
       </div>
 
       {/* Notes */}
-      {candidate.notes && (
+      {candidate.notes && Array.isArray(candidate.notes) && candidate.notes.length > 0 && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
-          <p className="text-gray-700">{candidate.notes}</p>
+          <div className="space-y-4">
+            {candidate.notes.map((note: any, index: number) => (
+              <div key={note.id || index} className="border-l-4 border-blue-200 pl-4 py-2">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-900">{note.user_name}</span>
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                      {note.user_role}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {new Date(note.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                {note.notes && (
+                  <p className="text-gray-700 text-sm">{note.notes}</p>
+                )}
+                {note.rating && (
+                  <div className="mt-2 flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">Rating:</span>
+                    <div className="flex items-center space-x-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <span
+                          key={star}
+                          className={`text-sm ${star <= note.rating ? 'text-yellow-500' : 'text-gray-300'}`}
+                        >
+                          ★
+                        </span>
+                      ))}
+                      <span className="text-sm text-gray-600 ml-1">({note.rating}/5)</span>
+                    </div>
+                  </div>
+                )}
+                {note.rating_comments && (
+                  <p className="text-gray-600 text-sm mt-1 italic">"{note.rating_comments}"</p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -190,82 +220,7 @@ export default function CandidateProfile({ candidate, onClose, onUpdateCandidate
 
   const InterviewsTab = () => (
     <div className="space-y-4">
-      {candidate.interviews && candidate.interviews.length > 0 ? (
-        candidate.interviews.map((interview) => (
-          <div key={interview.id} className="bg-white p-6 rounded-lg border border-gray-200">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h4 className="font-semibold text-gray-900">Round {interview.round} - {interview.type} Interview</h4>
-                <p className="text-sm text-gray-600">with {interview.interviewerName}</p>
-              </div>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getInterviewStatusColor(interview.status)}`}>
-                {interview.status}
-              </span>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="flex items-center space-x-2">
-                <Calendar size={16} className="text-gray-400" />
-                <span className="text-sm text-gray-600">
-                  {new Date(interview.scheduledDate).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Clock size={16} className="text-gray-400" />
-                <span className="text-sm text-gray-600">{interview.duration} minutes</span>
-              </div>
-              {interview.meetingLink && (
-                <div className="flex items-center space-x-2">
-                  <Video size={16} className="text-gray-400" />
-                  <a href={interview.meetingLink} className="text-sm text-blue-600 hover:underline">
-                    Join Meeting
-                  </a>
-                </div>
-              )}
-              {interview.location && (
-                <div className="flex items-center space-x-2">
-                  <MapPin size={16} className="text-gray-400" />
-                  <span className="text-sm text-gray-600">{interview.location}</span>
-                </div>
-              )}
-            </div>
-
-            {interview.feedback && (
-              <div className="border-t pt-4">
-                <h5 className="font-medium text-gray-900 mb-2">Interview Feedback</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Overall Rating</p>
-                    {renderStarRating(interview.feedback.overallRating)}
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Recommendation</p>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      interview.feedback.recommendation === 'Selected' ? 'bg-green-100 text-green-800' :
-                      interview.feedback.recommendation === 'On Hold' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {interview.feedback.recommendation}
-                    </span>
-                  </div>
-                </div>
-                {interview.feedback.comments && (
-                  <div className="mt-3">
-                    <p className="text-sm text-gray-600 mb-1">Comments</p>
-                    <p className="text-sm text-gray-700">{interview.feedback.comments}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))
-      ) : (
-        <div className="text-center py-8">
-          <Video size={48} className="mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No interviews scheduled</h3>
-          <p className="text-gray-600">Interviews will appear here once scheduled.</p>
-        </div>
-      )}
+      <InterviewManagement candidateId={candidate.id.toString()} />
     </div>
   );
 

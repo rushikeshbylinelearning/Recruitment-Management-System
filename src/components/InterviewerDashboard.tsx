@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Briefcase, FileText, Clock, Calendar, Star, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI } from '../services/api';
+import { candidatesAPI } from '../services/api';
 
 interface InterviewerDashboardData {
   metrics: {
@@ -33,26 +33,47 @@ export default function InterviewerDashboard() {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await dashboardAPI.getOverview();
-        if (response.success && response.data) {
-          // Filter data for interviewer view
+        
+        // Get candidates data for interviewer
+        const candidatesResponse = await candidatesAPI.getCandidates({ limit: 100 });
+        
+        if (candidatesResponse.success && candidatesResponse.data) {
+          const candidates = candidatesResponse.data.candidates || [];
+          
+          // Calculate metrics for interviewer
+          const totalCandidates = candidates.length;
+          const interviewStageCandidates = candidates.filter(c => c.stage === 'Interview').length;
+          const pendingReviews = candidates.filter(c => c.stage === 'Interview' && (!c.notes || c.notes.trim() === '')).length;
+          
+          // Create mock data for interviewer dashboard
           const interviewerData: InterviewerDashboardData = {
             metrics: {
-              totalJobs: response.data.metrics.totalJobs,
-              activeCandidates: response.data.metrics.activeCandidates,
-              interviewsScheduled: response.data.metrics.interviewsScheduled,
-              pendingReviews: { value: 0, change: 0, trend: 'up' } // Mock pending reviews
+              totalJobs: { value: 5, change: 0, trend: 'stable' }, // Mock value
+              activeCandidates: { value: totalCandidates, change: 0, trend: 'stable' },
+              interviewsScheduled: { value: interviewStageCandidates, change: 0, trend: 'stable' },
+              pendingReviews: { value: pendingReviews, change: 0, trend: 'stable' }
             },
-            pipeline: response.data.pipeline,
-            activities: response.data.activities.filter(activity => 
-              activity.type === 'candidate_update' || 
-              activity.type === 'new_application' ||
-              activity.type === 'task_update'
-            )
+            pipeline: {
+              Applied: candidates.filter(c => c.stage === 'Applied').length,
+              Screening: candidates.filter(c => c.stage === 'Screening').length,
+              Interview: candidates.filter(c => c.stage === 'Interview').length,
+              Offer: candidates.filter(c => c.stage === 'Offer').length,
+              Hired: candidates.filter(c => c.stage === 'Hired').length
+            },
+            activities: candidates.slice(0, 5).map((candidate, index) => ({
+              id: index + 1,
+              type: 'candidate_update',
+              description: `Candidate ${candidate.name} is in ${candidate.stage} stage`,
+              timestamp: candidate.appliedDate,
+              user: null,
+              candidate_name: candidate.name,
+              position: candidate.position
+            }))
           };
+          
           setDashboardData(interviewerData);
         } else {
-          setError('Failed to load dashboard data');
+          setError('Failed to load candidates data');
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);

@@ -208,7 +208,7 @@ export const validateCommunication = [
     .trim(),
   
   body('status')
-    .isIn(['Sent', 'Received', 'Pending'])
+    .isIn(['Sent', 'Received', 'Pending', 'Delivered', 'Read', 'Replied', 'Failed'])
     .withMessage('Invalid status')
 ];
 

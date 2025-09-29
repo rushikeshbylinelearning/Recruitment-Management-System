@@ -99,7 +99,7 @@ export interface User {
   username: string;
   email: string;
   name: string;
-  role: 'Admin' | 'HR Manager' | 'Recruiter' | 'Interviewer';
+  role: 'Admin' | 'HR Manager' | 'Recruiter' | 'Interviewer' | 'Team Lead';
   avatar?: string | null;
   status: 'Active' | 'Away' | 'Busy';
   last_login?: string | null;
@@ -218,6 +218,185 @@ export const usersAPI = {
     actions: string[];
   }>>): Promise<ApiResponse> => {
     const response = await api.put('/settings/role-permissions', { rolePermissions });
+    return response.data;
+  },
+};
+
+// Communications API
+export const communicationsAPI = {
+  getCommunications: async (params?: {
+    page?: number;
+    limit?: number;
+    type?: string;
+    status?: string;
+    candidateId?: number;
+  }): Promise<ApiResponse<{
+    communications: Array<{
+      id: number;
+      candidateId: number;
+      candidateName: string;
+      candidatePosition: string;
+      type: string;
+      content: string;
+      status: string;
+      date: string;
+      createdBy: number;
+      createdByName: string;
+      followUpDate?: string;
+      followUpNotes?: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const response = await api.get('/communications', { params });
+    return response.data;
+  },
+
+  getCommunicationById: async (id: number): Promise<ApiResponse<{
+    communication: any;
+  }>> => {
+    const response = await api.get(`/communications/${id}`);
+    return response.data;
+  },
+
+  createCommunication: async (communicationData: {
+    candidateId: number;
+    type: string;
+    content: string;
+    status?: string;
+    followUpDate?: string;
+    followUpNotes?: string;
+  }): Promise<ApiResponse<{ communicationId: number }>> => {
+    const response = await api.post('/communications', communicationData);
+    return response.data;
+  },
+
+  updateCommunication: async (id: number, communicationData: Partial<{
+    type: string;
+    content: string;
+    status: string;
+    followUpDate?: string;
+    followUpNotes?: string;
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/communications/${id}`, communicationData);
+    return response.data;
+  },
+
+  deleteCommunication: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/communications/${id}`);
+    return response.data;
+  },
+
+  getCommunicationStats: async (): Promise<ApiResponse<{
+    total: number;
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+    recent: number;
+  }>> => {
+    const response = await api.get('/communications/stats');
+    return response.data;
+  },
+};
+
+// Email Templates API
+export const emailTemplatesAPI = {
+  getEmailTemplates: async (params?: {
+    page?: number;
+    limit?: number;
+    category?: string;
+  }): Promise<ApiResponse<{
+    templates: Array<{
+      id: number;
+      name: string;
+      subject: string;
+      content: string;
+      category: string;
+      isActive: boolean;
+      createdBy: number;
+      createdByName: string;
+      createdAt: string;
+      updatedAt: string;
+      variables: string[];
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const response = await api.get('/email-templates', { params });
+    return response.data;
+  },
+
+  getEmailTemplateById: async (id: number): Promise<ApiResponse<{
+    template: any;
+  }>> => {
+    const response = await api.get(`/email-templates/${id}`);
+    return response.data;
+  },
+
+  createEmailTemplate: async (templateData: {
+    name: string;
+    subject: string;
+    content: string;
+    category: string;
+    variables?: string[];
+  }): Promise<ApiResponse<{ templateId: number }>> => {
+    const response = await api.post('/email-templates', templateData);
+    return response.data;
+  },
+
+  updateEmailTemplate: async (id: number, templateData: Partial<{
+    name: string;
+    subject: string;
+    content: string;
+    category: string;
+    isActive: boolean;
+    variables: string[];
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/email-templates/${id}`, templateData);
+    return response.data;
+  },
+
+  deleteEmailTemplate: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/email-templates/${id}`);
+    return response.data;
+  },
+
+  sendEmailTemplate: async (templateId: number, candidateIds: number[], customData?: Record<string, any>): Promise<ApiResponse<{
+    sent: number;
+    failed: number;
+    results: Array<{
+      candidateId: number;
+      candidateName: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }>> => {
+    const response = await api.post(`/email-templates/${templateId}/send`, {
+      candidateIds,
+      customData
+    });
+    return response.data;
+  },
+
+  getTemplateCategories: async (): Promise<ApiResponse<{
+    categories: Array<{
+      name: string;
+      count: number;
+    }>;
+  }>> => {
+    const response = await api.get('/email-templates/categories');
+    return response.data;
+  },
+
+  getTemplateVariables: async (): Promise<ApiResponse<{
+    variables: Array<{
+      name: string;
+      description: string;
+      example: string;
+    }>;
+  }>> => {
+    const response = await api.get('/email-templates/variables');
     return response.data;
   },
 };
@@ -746,6 +925,73 @@ export const analyticsAPI = {
 export const healthAPI = {
   check: async (): Promise<ApiResponse> => {
     const response = await api.get('/health');
+    return response.data;
+  },
+};
+
+// Interview API
+export const interviewsAPI = {
+  getInterviews: async (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    interviewerId?: string;
+  }): Promise<ApiResponse<{
+    interviews: Interview[];
+    pagination: PaginationInfo;
+  }>> => {
+    const response = await api.get('/interviews', { params });
+    return response.data;
+  },
+
+  getInterview: async (id: string): Promise<ApiResponse<{ interview: Interview }>> => {
+    const response = await api.get(`/interviews/${id}`);
+    return response.data;
+  },
+
+  createInterview: async (interviewData: {
+    candidateId: string;
+    interviewerId: string;
+    scheduledDate: string;
+    duration: number;
+    type: 'Technical' | 'HR' | 'Managerial' | 'Final';
+    status?: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+    meetingLink?: string;
+    location?: string;
+    round: number;
+  }): Promise<ApiResponse<{ interviewId: number }>> => {
+    const response = await api.post('/interviews', interviewData);
+    return response.data;
+  },
+
+  updateInterview: async (id: string, interviewData: {
+    candidateId?: string;
+    interviewerId?: string;
+    scheduledDate?: string;
+    duration?: number;
+    type?: 'Technical' | 'HR' | 'Managerial' | 'Final';
+    status?: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+    meetingLink?: string;
+    location?: string;
+    round?: number;
+  }): Promise<ApiResponse> => {
+    const response = await api.put(`/interviews/${id}`, interviewData);
+    return response.data;
+  },
+
+  deleteInterview: async (id: string): Promise<ApiResponse> => {
+    const response = await api.delete(`/interviews/${id}`);
+    return response.data;
+  },
+
+  getInterviewerInterviews: async (interviewerId: string): Promise<ApiResponse<{ interviews: Interview[] }>> => {
+    const response = await api.get(`/interviews/interviewer/${interviewerId}`);
+    return response.data;
+  },
+
+  getUpcomingInterviews: async (): Promise<ApiResponse<{ interviews: Interview[] }>> => {
+    const response = await api.get('/interviews/upcoming/list');
     return response.data;
   },
 };

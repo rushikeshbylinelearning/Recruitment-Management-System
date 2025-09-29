@@ -1,4 +1,3 @@
-import React from 'react';
 import { X, Mail, Phone, MapPin, Calendar, FileText, Star, DollarSign, Clock, Download } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI } from '../services/api';
@@ -176,11 +175,47 @@ export default function ApplicantDetailsModal({ isOpen, onClose, applicant }: Ap
           </div>
 
           {/* Notes */}
-          {applicant.notes && (
+          {applicant.notes && Array.isArray(applicant.notes) && applicant.notes.length > 0 && (
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-3">Notes</h3>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-gray-700">{applicant.notes}</p>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                {applicant.notes.map((note: any, index: number) => (
+                  <div key={note.id || index} className="border-l-4 border-blue-200 pl-4 py-2 bg-white rounded">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-medium text-gray-900">{note.user_name}</span>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                          {note.user_role}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(note.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {note.notes && (
+                      <p className="text-gray-700 text-sm">{note.notes}</p>
+                    )}
+                    {note.rating && (
+                      <div className="mt-2 flex items-center space-x-2">
+                        <span className="text-sm text-gray-600">Rating:</span>
+                        <div className="flex items-center space-x-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <span
+                              key={star}
+                              className={`text-sm ${star <= note.rating ? 'text-yellow-500' : 'text-gray-300'}`}
+                            >
+                              ★
+                            </span>
+                          ))}
+                          <span className="text-sm text-gray-600 ml-1">({note.rating}/5)</span>
+                        </div>
+                      </div>
+                    )}
+                    {note.rating_comments && (
+                      <p className="text-gray-600 text-sm mt-1 italic">"{note.rating_comments}"</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -53,6 +53,19 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     params
   );
 
+  // Get notes for each candidate from candidate_notes_ratings table
+  for (let candidate of candidates) {
+    const notes = await query(
+      `SELECT cnr.*, u.name as user_name, u.role as user_role 
+       FROM candidate_notes_ratings cnr
+       LEFT JOIN users u ON cnr.user_id = u.id
+       WHERE cnr.candidate_id = ?
+       ORDER BY cnr.created_at DESC`,
+      [candidate.id]
+    );
+    candidate.notes = notes;
+  }
+
   // Parse JSON fields and add additional data
   for (let candidate of candidates) {
     try {
@@ -175,6 +188,17 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   }
 
   const candidate = candidates[0];
+
+  // Get notes for this candidate from candidate_notes_ratings table
+  const notes = await query(
+    `SELECT cnr.*, u.name as user_name, u.role as user_role 
+     FROM candidate_notes_ratings cnr
+     LEFT JOIN users u ON cnr.user_id = u.id
+     WHERE cnr.candidate_id = ?
+     ORDER BY cnr.created_at DESC`,
+    [candidateId]
+  );
+  candidate.notes = notes;
 
   // Parse JSON fields and structure data
   try {
@@ -378,13 +402,13 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     throw new ConflictError('Candidate already exists for this position');
   }
 
-  // Create candidate
+  // Create candidate (without notes field)
   const result = await query(
-    `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, notes, score, 
+    `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, score, 
      assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
      location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
      interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       jobId || null,
       name, 
@@ -396,7 +420,6 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
       appliedDate, 
       resumePath || null, 
       resumeFileId || null, 
-      notes || null, 
       score || 0, 
       assignedUserId,
       JSON.stringify(skills), 
@@ -423,6 +446,14 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
       resumeLocation || null
     ]
   );
+
+  // If notes are provided, add them to candidate_notes_ratings table
+  if (notes && notes.trim()) {
+    await query(
+      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
+      [result.insertId, req.user.id, notes.trim()]
+    );
+  }
 
   res.status(201).json({
     success: true,
@@ -514,21 +545,29 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   const safeAssignmentLocation = assignmentLocation === undefined ? null : assignmentLocation;
   const safeResumeLocation = resumeLocation === undefined ? null : resumeLocation;
 
-  // Update candidate
+  // Update candidate (without notes field)
   await query(
     `UPDATE candidates SET name = ?, email = ?, phone = ?, position = ?, stage = ?, source = ?, applied_date = ?, 
-     resume_path = ?, notes = ?, score = ?, assigned_to = ?, skills = ?, experience = ?, salary_expected = ?, 
+     resume_path = ?, score = ?, assigned_to = ?, skills = ?, experience = ?, salary_expected = ?, 
      salary_offered = ?, salary_negotiable = ?, joining_time = ?, notice_period = ?, immediate_joiner = ?,
      location = ?, expertise = ?, willing_alternate_saturday = ?, work_preference = ?, current_ctc = ?, 
      ctc_frequency = ?, in_house_assignment_status = ?, interview_date = ?, interviewer_id = ?, 
      in_office_assignment = ?, assignment_location = ?, resume_location = ?, updated_at = NOW() 
      WHERE id = ?`,
-    [name, email, phone, position, stage, source, appliedDate, safeResumePath, safeNotes, safeScore, assignedUserId,
+    [name, email, phone, position, stage, source, appliedDate, safeResumePath, safeScore, assignedUserId,
      JSON.stringify(skills), safeExperience, safeSalaryExpected, safeSalaryOffered, safeSalaryNegotiable, safeJoiningTime, safeNoticePeriod, safeImmediateJoiner,
      safeLocation, safeExpertise, safeWillingAlternateSaturday, safeWorkPreference, safeCurrentCtc, safeCtcFrequency, 
      safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, 
      safeAssignmentLocation, safeResumeLocation, candidateId]
   );
+
+  // If notes are provided, add them to candidate_notes_ratings table
+  if (notes && notes.trim()) {
+    await query(
+      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
+      [candidateId, req.user.id, notes.trim()]
+    );
+  }
 
   res.json({
     success: true,
@@ -575,11 +614,19 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
     throw new NotFoundError('Candidate not found');
   }
 
-  // Update stage and notes
+  // Update stage
   await query(
-    'UPDATE candidates SET stage = ?, notes = ?, updated_at = NOW() WHERE id = ?',
-    [stage, notes || null, candidateId]
+    'UPDATE candidates SET stage = ?, updated_at = NOW() WHERE id = ?',
+    [stage, candidateId]
   );
+
+  // If notes are provided, add them to candidate_notes_ratings table
+  if (notes && notes.trim()) {
+    await query(
+      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
+      [candidateId, req.user.id, notes.trim()]
+    );
+  }
 
   res.json({
     success: true,
@@ -687,16 +734,16 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
         }
       }
 
-      // Create candidate with all new fields
+      // Create candidate with all new fields (without notes field)
       const result = await query(
-        `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, notes, score, 
+        `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, score, 
          assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
          location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
          interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
          candidate.source || 'Bulk Import', candidate.appliedDate || new Date().toISOString().split('T')[0],
-         candidate.resumePath || null, candidate.notes || '', candidate.score || 0, assignedTo,
+         candidate.resumePath || null, candidate.score || 0, assignedTo,
          JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.expectedSalary || '', 
          candidate.salaryOffered || '', candidate.salaryNegotiable !== undefined ? candidate.salaryNegotiable : true,
          candidate.joiningTime || '', candidate.noticePeriod || '', candidate.immediateJoiner || false,
@@ -706,6 +753,14 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
          candidate.inHouseAssignmentStatus || 'Pending', candidate.interviewDate || null, interviewerId,
          candidate.inOfficeAssignment || null, candidate.assignmentLocation || null, candidate.resumeLocation || null]
       );
+
+      // If notes are provided, add them to candidate_notes_ratings table
+      if (candidate.notes && candidate.notes.trim()) {
+        await query(
+          `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
+          [result.insertId, req.user.id, candidate.notes.trim()]
+        );
+      }
 
       results.push({ row: i + 1, candidateId: result.insertId });
     } catch (error) {
@@ -799,6 +854,58 @@ router.get('/:id/resume/metadata', authenticateToken, checkPermission('candidate
       uploadedAt: candidate.uploaded_at,
       uploadedBy: candidate.uploaded_by_name
     }
+  });
+}));
+
+// Add note to candidate
+router.post('/:id/notes', authenticateToken, checkPermission('candidates', 'edit'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const { notes, rating, ratingComments } = req.body;
+
+  // Check if candidate exists
+  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  if (existingCandidates.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  // Add note/rating to candidate_notes_ratings table
+  const result = await query(
+    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, rating, rating_comments) VALUES (?, ?, ?, ?, ?)`,
+    [candidateId, req.user.id, notes || null, rating || null, ratingComments || null]
+  );
+
+  res.json({
+    success: true,
+    message: 'Note/rating added successfully',
+    data: {
+      id: result.insertId
+    }
+  });
+}));
+
+// Get candidate notes and ratings
+router.get('/:id/notes', authenticateToken, checkPermission('candidates', 'view'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+
+  // Check if candidate exists
+  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  if (existingCandidates.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  // Get notes and ratings for this candidate
+  const notes = await query(
+    `SELECT cnr.*, u.name as user_name, u.role as user_role 
+     FROM candidate_notes_ratings cnr
+     LEFT JOIN users u ON cnr.user_id = u.id
+     WHERE cnr.candidate_id = ?
+     ORDER BY cnr.created_at DESC`,
+    [candidateId]
+  );
+
+  res.json({
+    success: true,
+    data: notes
   });
 }));
 

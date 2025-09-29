@@ -1,6 +1,5 @@
-import React from 'react';
-import { Users, Briefcase, FileText, MessageSquare, BarChart3, Settings, Home, LogOut } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Users, Briefcase, FileText, MessageSquare, BarChart3, Settings, Home, LogOut, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -11,12 +10,12 @@ interface SidebarProps {
 export default function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'jobs', label: 'Jobs', icon: Briefcase },
     { id: 'candidates', label: 'Candidates', icon: Users },
+    { id: 'interviews', label: 'Interviews', icon: Calendar },
     { id: 'interviewer-feedback', label: 'Feedback', icon: MessageSquare },
     { id: 'team', label: 'Team', icon: Users },
     { id: 'tasks', label: 'Tasks', icon: FileText },
