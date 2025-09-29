@@ -28,7 +28,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token && storedUser) {
           // Verify token with backend
           const response = await authAPI.verifyToken();
+          console.log('AuthContext - verifyToken response:', response);
           if (response.success && response.data) {
+            console.log('AuthContext - setting user:', response.data.user);
             setUser(response.data.user);
             setIsAuthenticated(true);
           } else {
@@ -57,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (response.success && response.data) {
         const { user: userData, token } = response.data;
+        console.log('AuthContext - login userData:', userData);
         
         // Store token and user data
         localStorage.setItem('authToken', token);

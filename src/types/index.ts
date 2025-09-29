@@ -83,6 +83,7 @@ export interface Interview {
   candidateId: string;
   interviewerId: string;
   interviewerName: string;
+  interviewer_name?: string; // API response field
   candidate_name?: string;
   candidate_position?: string;
   scheduledDate: string;
@@ -154,7 +155,7 @@ export interface PostInterviewFeedback {
 export interface TeamMember {
   id: number;
   name: string;
-  role: 'Recruiter' | 'HR Manager' | 'Admin' | 'Interviewer';
+  role: 'Recruiter' | 'HR Manager' | 'Admin' | 'Interviewer' | 'Team Lead';
   email: string;
   username: string;
   password: string;

@@ -185,7 +185,7 @@ export default function InterviewManagement({ candidateId, showAllInterviews = f
                     </div>
                     <div className="flex items-center space-x-2">
                       <User size={16} className="text-gray-400" />
-                      <span className="text-sm text-gray-600">{interview.interviewerName}</span>
+                      <span className="text-sm text-gray-600">{(interview as any).interviewer_name || interview.interviewerName}</span>
                     </div>
                     {interview.meetingLink && (
                       <div className="flex items-center space-x-2">

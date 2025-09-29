@@ -56,7 +56,7 @@ router.put('/system', authenticateToken, requireAdmin, handleValidationErrors, a
 router.get('/email-templates', authenticateToken, checkPermission('settings', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
+  const offset = parseInt((page - 1) * limit);
   const type = req.query.type || '';
 
   let whereClause = 'WHERE 1=1';
@@ -81,8 +81,8 @@ router.get('/email-templates', authenticateToken, checkPermission('settings', 'v
      LEFT JOIN users u ON et.created_by = u.id
      ${whereClause}
      ORDER BY et.created_at DESC 
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
+    params
   );
 
   res.json({

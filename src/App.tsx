@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
+import InterviewerLayout from './components/InterviewerLayout';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import InterviewerDashboard from './components/InterviewerDashboard';
@@ -11,6 +12,7 @@ import InterviewerJobs from './components/InterviewerJobs';
 import Candidates from './components/Candidates';
 import InterviewerCandidates from './components/InterviewerCandidates';
 import InterviewerFeedback from './components/InterviewerFeedback';
+import InterviewerTest from './components/InterviewerTest';
 import InterviewManagement from './components/InterviewManagement';
 import Team from './components/Team';
 import Tasks from './components/Tasks';
@@ -42,7 +44,7 @@ function RoleBasedJobs() {
 function RoleBasedCandidates() {
   const { user } = useAuth();
   
-    if (user?.role === 'Interviewer') {
+  if (user?.role === 'Interviewer') {
     return <InterviewerCandidates />;
   }
   
@@ -50,7 +52,12 @@ function RoleBasedCandidates() {
 }
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+
+  // Debug logging
+  console.log('AppContent - isAuthenticated:', isAuthenticated);
+  console.log('AppContent - user:', user);
+  console.log('AppContent - user role:', user?.role);
 
   return (
     <Routes>
@@ -60,22 +67,32 @@ function AppContent() {
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
       />
       
-      {/* Protected Routes */}
-      <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<RoleBasedDashboard />} />
-        <Route path="jobs" element={<RoleBasedJobs />} />
-        <Route path="candidates" element={<RoleBasedCandidates />} />
-        <Route path="interviewer-jobs" element={<InterviewerJobs />} />
-        <Route path="interviewer-candidates" element={<InterviewerCandidates />} />
-        <Route path="interviewer-feedback" element={<InterviewerFeedback />} />
-        <Route path="interviews" element={<InterviewManagement showAllInterviews={true} />} />
-        <Route path="team" element={<Team />} />
-        <Route path="tasks" element={<Tasks />} />
-        <Route path="communications" element={<Communications />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="settings" element={<Settings />} />
-      </Route>
+      {/* Interviewer Routes */}
+      {user?.role === 'Interviewer' ? (
+        <Route path="/" element={<ProtectedRoute><InterviewerLayout /></ProtectedRoute>}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<InterviewerTest />} />
+          <Route path="candidates" element={<InterviewerTest />} />
+          <Route path="interviewer-feedback" element={<InterviewerTest />} />
+        </Route>
+      ) : (
+        /* Regular User Routes */
+        <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<RoleBasedDashboard />} />
+          <Route path="jobs" element={<RoleBasedJobs />} />
+          <Route path="candidates" element={<RoleBasedCandidates />} />
+          <Route path="interviewer-jobs" element={<InterviewerJobs />} />
+          <Route path="interviewer-candidates" element={<InterviewerCandidates />} />
+          <Route path="interviewer-feedback" element={<InterviewerFeedback />} />
+          <Route path="interviews" element={<InterviewManagement showAllInterviews={true} />} />
+          <Route path="team" element={<Team />} />
+          <Route path="tasks" element={<Tasks />} />
+          <Route path="communications" element={<Communications />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+      )}
       
       {/* Catch all route - redirect to dashboard */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

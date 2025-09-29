@@ -10,7 +10,7 @@ const router = express.Router();
 router.get('/', authenticateToken, checkPermission('communications', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
+  const offset = parseInt((page - 1) * limit);
   const type = req.query.type || '';
   const status = req.query.status || '';
   const candidateId = req.query.candidateId || '';
@@ -48,8 +48,8 @@ router.get('/', authenticateToken, checkPermission('communications', 'view'), va
      LEFT JOIN users u ON c.created_by = u.id
      ${whereClause}
      ORDER BY c.date DESC 
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
+    params
   );
 
   res.json({
@@ -265,7 +265,11 @@ router.get('/stats/overview', authenticateToken, checkPermission('communications
        (SELECT COUNT(*) FROM communications WHERE type = 'LinkedIn') as linkedin_messages,
        (SELECT COUNT(*) FROM communications WHERE status = 'Sent') as sent,
        (SELECT COUNT(*) FROM communications WHERE status = 'Received') as received,
-       (SELECT COUNT(*) FROM communications WHERE status = 'Pending') as pending`,
+       (SELECT COUNT(*) FROM communications WHERE status = 'Pending') as pending,
+       (SELECT COUNT(*) FROM communications WHERE status = 'Delivered') as delivered,
+       (SELECT COUNT(*) FROM communications WHERE status = 'Read') as read,
+       (SELECT COUNT(*) FROM communications WHERE status = 'Replied') as replied,
+       (SELECT COUNT(*) FROM communications WHERE status = 'Failed') as failed`,
     []
   );
 
