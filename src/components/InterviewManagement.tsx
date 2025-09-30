@@ -79,7 +79,7 @@ export default function InterviewManagement() {
       // Fetch interviewers (users with Interviewer role)
       const usersResponse = await usersAPI.getUsers();
       if (usersResponse.success && usersResponse.data) {
-        const interviewerUsers = usersResponse.data.filter((u: any) => u.role === 'Interviewer');
+        const interviewerUsers = usersResponse.data.users.filter((u: any) => u.role === 'Interviewer');
         setInterviewers(interviewerUsers);
       }
     } catch (err) {

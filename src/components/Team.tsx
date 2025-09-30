@@ -341,12 +341,12 @@ export default function Team() {
             <div className="border-t pt-4">
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
-                  <p className="text-2xl font-bold text-blue-600">{member.statistics?.assigned_jobs || 0}</p>
-                  <p className="text-xs text-gray-600">Jobs Assigned</p>
+                  <p className="text-2xl font-bold text-blue-600">{member.assignedJobs?.length || 0}</p>
+                  <p className="text-xs text-gray-600">Tasks Assigned</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-green-600">{member.statistics?.tasks_completed || 0}</p>
-                  <p className="text-xs text-gray-600">Tasks Done</p>
+                  <p className="text-2xl font-bold text-green-600">{member.tasksCompleted || 0}</p>
+                  <p className="text-xs text-gray-600">Tasks Completed</p>
                 </div>
               </div>
             </div>
@@ -623,12 +623,12 @@ export default function Team() {
                 <h4 className="font-medium text-blue-900 mb-2">Current Statistics</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-blue-700">Jobs Assigned</p>
-                    <p className="font-semibold text-blue-900">{editingMember.statistics?.assigned_jobs || 0}</p>
+                    <p className="text-blue-700">Tasks Assigned</p>
+                    <p className="font-semibold text-blue-900">{editingMember.assignedJobs?.length || 0}</p>
                   </div>
                   <div>
                     <p className="text-blue-700">Tasks Completed</p>
-                    <p className="font-semibold text-blue-900">{editingMember.statistics?.tasks_completed || 0}</p>
+                    <p className="font-semibold text-blue-900">{editingMember.tasksCompleted || 0}</p>
                   </div>
                 </div>
               </div>
