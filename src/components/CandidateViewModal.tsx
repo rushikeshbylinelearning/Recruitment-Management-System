@@ -1,6 +1,7 @@
-import { X, Mail, Phone, MapPin, Star, Download, FileText, User } from 'lucide-react';
+import { X, Mail, Phone, MapPin, Star, Download, FileText, User, Calendar, Clock } from 'lucide-react';
 import { Candidate } from '../types';
-import { candidatesAPI } from '../services/api';
+import { candidatesAPI, assignmentsAPI, Assignment } from '../services/api';
+import { useState, useEffect } from 'react';
 
 interface CandidateViewModalProps {
   isOpen: boolean;
@@ -9,7 +10,52 @@ interface CandidateViewModalProps {
 }
 
 export default function CandidateViewModal({ isOpen, onClose, candidate }: CandidateViewModalProps) {
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && candidate) {
+      fetchAssignments();
+    }
+  }, [isOpen, candidate]);
+
+  const fetchAssignments = async () => {
+    if (!candidate) return;
+    
+    setAssignmentsLoading(true);
+    try {
+      console.log('Fetching assignments for candidate ID:', candidate.id);
+      const response = await assignmentsAPI.getCandidateAssignments(Number(candidate.id));
+      console.log('Assignments API response:', response);
+      if (response.success && response.data) {
+        setAssignments(response.data);
+        console.log('Set assignments:', response.data);
+      } else {
+        console.log('No assignments data or API failed');
+        setAssignments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+      setAssignments([]);
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  };
+
   if (!isOpen || !candidate) return null;
+
+  const getAssignmentStatusColor = (status: string) => {
+    switch (status) {
+      case 'Draft': return 'bg-gray-100 text-gray-800';
+      case 'Assigned': return 'bg-blue-100 text-blue-800';
+      case 'In Progress': return 'bg-yellow-100 text-yellow-800';
+      case 'Submitted': return 'bg-purple-100 text-purple-800';
+      case 'Approved': return 'bg-green-100 text-green-800';
+      case 'Rejected': return 'bg-red-100 text-red-800';
+      case 'Cancelled': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
   const handleDownloadResume = async () => {
     try {
@@ -306,63 +352,60 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                 )}
               </div>
 
-              {candidate.assignmentDetails && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Assignment Details</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">In House Assignment:</span>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        candidate.assignmentDetails.inHouseAssignmentStatus === 'Shortlisted'
-                          ? 'bg-green-100 text-green-800'
-                          : candidate.assignmentDetails.inHouseAssignmentStatus === 'Rejected'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {candidate.assignmentDetails.inHouseAssignmentStatus || 'Pending'}
-                      </span>
-                    </div>
-                    {candidate.assignmentDetails.interviewDate && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Interview Date:</span>
-                        <span className="text-gray-900">{new Date(candidate.assignmentDetails.interviewDate).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    {candidate.assignmentDetails.inOfficeAssignment && (
-                      <div>
-                        <span className="text-sm text-gray-600 block mb-2">In Office Assignment:</span>
-                        <p className="text-gray-700 text-sm bg-white p-3 rounded border">{candidate.assignmentDetails.inOfficeAssignment}</p>
-                      </div>
-                    )}
-                    {candidate.assignmentLocation && (
-                      <div>
-                        <span className="text-sm text-gray-600 block mb-2">Assignment Location:</span>
-                        <a 
-                          href={candidate.assignmentLocation} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 text-sm break-all"
-                        >
-                          {candidate.assignmentLocation}
-                        </a>
-                      </div>
-                    )}
-                    {candidate.resumeLocation && (
-                      <div>
-                        <span className="text-sm text-gray-600 block mb-2">Resume Location/Link:</span>
-                        <a 
-                          href={candidate.resumeLocation} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 text-sm break-all"
-                        >
-                          {candidate.resumeLocation}
-                        </a>
-                      </div>
-                    )}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Assignment Details</h3>
+                {assignmentsLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-gray-600">Loading assignments...</span>
                   </div>
-                </div>
-              )}
+                ) : assignments.length > 0 ? (
+                  <div className="space-y-4">
+                    {assignments.map((assignment) => (
+                      <div key={assignment.id} className="border border-gray-200 rounded-lg p-4 bg-white">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-900">{assignment.title}</h4>
+                          <span className={`px-2 py-1 text-xs rounded-full ${getAssignmentStatusColor(assignment.status)}`}>
+                            {assignment.status}
+                          </span>
+                        </div>
+                        {assignment.due_date && (
+                          <div className="flex items-center space-x-2 text-sm text-gray-600 mb-2">
+                            <Calendar size={14} />
+                            <span>Due: {new Date(assignment.due_date).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        {candidate.assignmentDetails?.inOfficeAssignment && (
+                          <div className="mb-2">
+                            <span className="text-sm text-gray-600 block mb-1">Assignment Notes:</span>
+                            <div className="text-sm text-gray-700 bg-white p-2 rounded border">
+                              {candidate.assignmentDetails.inOfficeAssignment}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.assignmentLocation && (
+                          <div>
+                            <span className="text-sm text-gray-600 block mb-1">Assignment Location:</span>
+                            <a 
+                              href={candidate.assignmentLocation} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 text-sm break-all"
+                            >
+                              {candidate.assignmentLocation}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <Clock size={32} className="mx-auto text-gray-400 mb-2" />
+                    <p className="text-gray-500 italic">No assignments assigned</p>
+                  </div>
+                )}
+              </div>
 
             </div>
           </div>

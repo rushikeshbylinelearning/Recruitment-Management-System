@@ -20,6 +20,7 @@ export default function DashboardLayout() {
     else if (path.startsWith('/tasks')) setActiveSection('tasks');
     else if (path.startsWith('/team')) setActiveSection('team');
     else if (path.startsWith('/communications')) setActiveSection('communications');
+    else if (path.startsWith('/assignments')) setActiveSection('assignments');
     else if (path.startsWith('/analytics')) setActiveSection('analytics');
     else if (path.startsWith('/settings')) setActiveSection('settings');
     else setActiveSection('dashboard');

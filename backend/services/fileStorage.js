@@ -167,6 +167,84 @@ class FileStorageService {
       };
     }
   }
+
+  /**
+   * Upload multiple files (for assignments)
+   */
+  async uploadFiles(req, res, options = {}) {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No files uploaded'
+        });
+      }
+
+      const uploadedFiles = [];
+      const errors = [];
+
+      for (const file of req.files) {
+        const result = await this.saveFile(file, options.candidateId || options.assignmentId);
+        
+        if (result.success) {
+          // Save file metadata to database
+          const { query } = await import('../config/database.js');
+          const fileRecord = await query(
+            `INSERT INTO file_uploads (filename, original_name, file_path, file_size, mime_type, candidate_id, assignment_id, uploaded_by, uploaded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [
+              result.filename,
+              result.originalName,
+              result.filepath,
+              result.size,
+              result.mimeType,
+              options.candidateId || null,
+              options.assignmentId || null,
+              req.user.id
+            ]
+          );
+
+          uploadedFiles.push({
+            id: fileRecord.insertId,
+            filename: result.filename,
+            originalName: result.originalName,
+            fileSize: result.size,
+            mimeType: result.mimeType,
+            uploadedAt: result.uploadedAt
+          });
+        } else {
+          errors.push({
+            filename: file.originalname,
+            error: result.error
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: `Successfully uploaded ${uploadedFiles.length} files`,
+        data: {
+          uploadedFiles: uploadedFiles.map(file => ({
+            id: file.id,
+            filename: file.filename,
+            originalName: file.originalName,
+            fileSize: file.fileSize,
+            mimeType: file.mimeType,
+            uploadedAt: file.uploadedAt
+          })),
+          errors: errors.length > 0 ? errors : undefined
+        }
+      });
+
+    } catch (error) {
+      console.error('File upload error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'File upload failed',
+        error: error.message
+      });
+    }
+  }
 }
 
 export default new FileStorageService();

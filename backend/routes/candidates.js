@@ -1,7 +1,7 @@
 import express from 'express';
 import { query, transaction } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateCandidate, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateCandidate, validateCandidatePartial, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import fileStorageService from '../services/fileStorage.js';
 import fs from 'fs';
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
@@ -408,11 +408,33 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
   );
 
   // If notes are provided, add them to candidate_notes_ratings table
-  if (notes && notes.trim()) {
+  if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
       `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
       [result.insertId, req.user.id, notes.trim()]
     );
+  }
+
+  // Sync assignment status: Update assignments table if inHouseAssignmentStatus is set
+  if (inHouseAssignmentStatus && inHouseAssignmentStatus !== 'Draft') {
+    // Map candidate status to assignment status
+    const statusMapping = {
+      'Assigned': 'Assigned',
+      'In Progress': 'In Progress', 
+      'Submitted': 'Submitted',
+      'Approved': 'Approved',
+      'Rejected': 'Rejected',
+      'Cancelled': 'Cancelled'
+    };
+    
+    const assignmentStatus = statusMapping[inHouseAssignmentStatus];
+    if (assignmentStatus) {
+      // Update all assignments for this candidate to the new status
+      await query(
+        `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
+        [assignmentStatus, result.insertId]
+      );
+    }
   }
 
   res.status(201).json({
@@ -522,10 +544,133 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   );
 
   // If notes are provided, add them to candidate_notes_ratings table
-  if (notes && notes.trim()) {
+  if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
       `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
       [candidateId, req.user.id, notes.trim()]
+    );
+  }
+
+  // Sync assignment status: Update assignments table if inHouseAssignmentStatus changed
+  if (inHouseAssignmentStatus && inHouseAssignmentStatus !== 'Draft') {
+    // Map candidate status to assignment status
+    const statusMapping = {
+      'Assigned': 'Assigned',
+      'In Progress': 'In Progress', 
+      'Submitted': 'Submitted',
+      'Approved': 'Approved',
+      'Rejected': 'Rejected',
+      'Cancelled': 'Cancelled'
+    };
+    
+    const assignmentStatus = statusMapping[inHouseAssignmentStatus];
+    if (assignmentStatus) {
+      // Update all assignments for this candidate to the new status
+      await query(
+        `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
+        [assignmentStatus, candidateId]
+      );
+    }
+  }
+
+  res.json({
+    success: true,
+    message: 'Candidate updated successfully'
+  });
+}));
+
+// Partial update candidate (for assignment updates)
+router.patch('/:id', authenticateToken, checkPermission('candidates', 'edit'), validateId('id'), validateCandidatePartial, handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const updateData = req.body;
+
+  // Check if candidate exists
+  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  if (existingCandidates.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  // Build dynamic update query based on provided fields
+  const updateFields = [];
+  const updateValues = [];
+
+  // Only update fields that are provided in the request
+  if (updateData.name !== undefined) {
+    updateFields.push('name = ?');
+    updateValues.push(updateData.name);
+  }
+  if (updateData.email !== undefined) {
+    updateFields.push('email = ?');
+    updateValues.push(updateData.email);
+  }
+  if (updateData.phone !== undefined) {
+    updateFields.push('phone = ?');
+    updateValues.push(updateData.phone);
+  }
+  if (updateData.position !== undefined) {
+    updateFields.push('position = ?');
+    updateValues.push(updateData.position);
+  }
+  if (updateData.stage !== undefined) {
+    updateFields.push('stage = ?');
+    updateValues.push(updateData.stage);
+  }
+  if (updateData.source !== undefined) {
+    updateFields.push('source = ?');
+    updateValues.push(updateData.source);
+  }
+  if (updateData.appliedDate !== undefined) {
+    updateFields.push('applied_date = ?');
+    updateValues.push(updateData.appliedDate);
+  }
+  if (updateData.resumePath !== undefined) {
+    updateFields.push('resume_path = ?');
+    updateValues.push(updateData.resumePath);
+  }
+  if (updateData.assignedTo !== undefined) {
+    const assignedUserId = updateData.assignedTo === 'Unassigned' ? null : updateData.assignedTo;
+    updateFields.push('assigned_to = ?');
+    updateValues.push(assignedUserId);
+  }
+  if (updateData.score !== undefined) {
+    updateFields.push('score = ?');
+    updateValues.push(updateData.score);
+  }
+  if (updateData.assignmentLocation !== undefined) {
+    updateFields.push('assignment_location = ?');
+    updateValues.push(updateData.assignmentLocation);
+  }
+  if (updateData.inOfficeAssignment !== undefined) {
+    updateFields.push('in_office_assignment = ?');
+    updateValues.push(updateData.inOfficeAssignment);
+  }
+  if (updateData.inHouseAssignmentStatus !== undefined) {
+    updateFields.push('in_house_assignment_status = ?');
+    updateValues.push(updateData.inHouseAssignmentStatus);
+  }
+
+  // Add updated_at timestamp
+  updateFields.push('updated_at = NOW()');
+  updateValues.push(candidateId);
+
+  if (updateFields.length === 1) { // Only updated_at was added
+    return res.json({
+      success: true,
+      message: 'No fields to update'
+    });
+  }
+
+  // Execute the update
+  await query(
+    `UPDATE candidates SET ${updateFields.join(', ')} WHERE id = ?`,
+    updateValues
+  );
+
+  // If notes are provided, add them to candidate_notes_ratings table
+  if (updateData.notes && typeof updateData.notes === 'string' && updateData.notes.trim()) {
+    await query(
+      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
+      [candidateId, req.user.id, updateData.notes.trim()]
     );
   }
 
@@ -581,7 +726,7 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
   );
 
   // If notes are provided, add them to candidate_notes_ratings table
-  if (notes && notes.trim()) {
+  if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
       `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
       [candidateId, req.user.id, notes.trim()]
@@ -714,11 +859,33 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
       );
 
       // If notes are provided, add them to candidate_notes_ratings table
-      if (candidate.notes && candidate.notes.trim()) {
+      if (candidate.notes && typeof candidate.notes === 'string' && candidate.notes.trim()) {
         await query(
           `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
           [result.insertId, req.user.id, candidate.notes.trim()]
         );
+      }
+
+      // Sync assignment status: Update assignments table if inHouseAssignmentStatus is set
+      if (candidate.inHouseAssignmentStatus && candidate.inHouseAssignmentStatus !== 'Draft') {
+        // Map candidate status to assignment status
+        const statusMapping = {
+          'Assigned': 'Assigned',
+          'In Progress': 'In Progress', 
+          'Submitted': 'Submitted',
+          'Approved': 'Approved',
+          'Rejected': 'Rejected',
+          'Cancelled': 'Cancelled'
+        };
+        
+        const assignmentStatus = statusMapping[candidate.inHouseAssignmentStatus];
+        if (assignmentStatus) {
+          // Update all assignments for this candidate to the new status
+          await query(
+            `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
+            [assignmentStatus, result.insertId]
+          );
+        }
       }
 
       results.push({ row: i + 1, candidateId: result.insertId });

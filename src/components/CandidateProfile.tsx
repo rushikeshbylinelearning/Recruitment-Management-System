@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare, ClipboardList, FileText, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Candidate } from '../types';
+import { assignmentsAPI, Assignment } from '../services/api';
 import InterviewManagement from './InterviewManagement';
 
 interface CandidateProfileProps {
@@ -11,12 +12,40 @@ interface CandidateProfileProps {
 
 export default function CandidateProfile({ candidate, onClose }: CandidateProfileProps) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'interviews', label: 'Interviews' },
-    { id: 'communications', label: 'Communications' }
+    { id: 'communications', label: 'Communications' },
+    { id: 'assignments', label: 'Assignments' }
   ];
+
+  useEffect(() => {
+    fetchAssignments();
+  }, [candidate.id]);
+
+  const fetchAssignments = async () => {
+    setAssignmentsLoading(true);
+    try {
+      console.log('Fetching assignments for candidate ID:', candidate.id);
+      const response = await assignmentsAPI.getCandidateAssignments(Number(candidate.id));
+      console.log('Assignments API response:', response);
+      if (response.success && response.data) {
+        setAssignments(response.data);
+        console.log('Set assignments:', response.data);
+      } else {
+        console.log('No assignments data or API failed');
+        setAssignments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+      setAssignments([]);
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  };
 
   const getStageColor = (stage: string) => {
     switch (stage) {
@@ -27,6 +56,32 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
       case 'Hired': return 'bg-green-100 text-green-800';
       case 'Rejected': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getAssignmentStatusColor = (status: string) => {
+    switch (status) {
+      case 'Draft': return 'bg-gray-100 text-gray-800';
+      case 'Assigned': return 'bg-blue-100 text-blue-800';
+      case 'In Progress': return 'bg-yellow-100 text-yellow-800';
+      case 'Submitted': return 'bg-purple-100 text-purple-800';
+      case 'Approved': return 'bg-green-100 text-green-800';
+      case 'Rejected': return 'bg-red-100 text-red-800';
+      case 'Cancelled': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getAssignmentStatusIcon = (status: string) => {
+    switch (status) {
+      case 'Draft': return <FileText size={16} />;
+      case 'Assigned': return <Send size={16} />;
+      case 'In Progress': return <Clock size={16} />;
+      case 'Submitted': return <FileText size={16} />;
+      case 'Approved': return <CheckCircle size={16} />;
+      case 'Rejected': return <XCircle size={16} />;
+      case 'Cancelled': return <AlertCircle size={16} />;
+      default: return <FileText size={16} />;
     }
   };
 
@@ -169,6 +224,44 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
         </div>
       </div>
 
+      {/* Assignment Status */}
+      <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Assignment Status</h3>
+        {assignmentsLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="ml-2 text-gray-600">Loading assignments...</span>
+          </div>
+        ) : assignments.length > 0 ? (
+          <div className="space-y-4">
+            {assignments.map((assignment) => (
+              <div key={assignment.id} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-gray-900">{assignment.title}</h4>
+                  <span className={`px-2 py-1 text-xs rounded-full ${getAssignmentStatusColor(assignment.status)}`}>
+                    {assignment.status}
+                  </span>
+                </div>
+                {assignment.due_date && (
+                  <div className="flex items-center space-x-2 text-sm text-gray-600 mb-2">
+                    <Calendar size={14} />
+                    <span>Due: {new Date(assignment.due_date).toLocaleDateString()}</span>
+                  </div>
+                )}
+                {assignment.description_html && (
+                  <div 
+                    className="text-sm text-gray-700 prose max-w-none"
+                    dangerouslySetInnerHTML={{ __html: assignment.description_html }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500 italic">No assignments assigned</p>
+        )}
+      </div>
+
       {/* Notes */}
       {candidate.notes && Array.isArray(candidate.notes) && candidate.notes.length > 0 && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
@@ -219,7 +312,7 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
 
   const InterviewsTab = () => (
     <div className="space-y-4">
-      <InterviewManagement candidateId={candidate.id.toString()} />
+      <InterviewManagement />
     </div>
   );
 
@@ -251,6 +344,74 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
           <MessageSquare size={48} className="mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No communications</h3>
           <p className="text-gray-600">Communication history will appear here.</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const AssignmentsTab = () => (
+    <div className="space-y-4">
+      {assignmentsLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : assignments.length > 0 ? (
+        assignments.map((assignment) => (
+          <div key={assignment.id} className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex items-center space-x-3">
+                <ClipboardList size={20} className="text-blue-500" />
+                <div>
+                  <h4 className="font-medium text-gray-900">{assignment.title}</h4>
+                  {assignment.job_title && (
+                    <p className="text-sm text-gray-600">{assignment.job_title}</p>
+                  )}
+                </div>
+              </div>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getAssignmentStatusColor(assignment.status)}`}>
+                {getAssignmentStatusIcon(assignment.status)}
+                {assignment.status}
+              </span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">Due Date:</span>
+                <p className="font-medium">{assignment.due_date ? new Date(assignment.due_date).toLocaleDateString() : 'Not set'}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">Assigned By:</span>
+                <p className="font-medium">{assignment.assigned_by_name}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">Attachments:</span>
+                <p className="font-medium">{assignment.attachment_count || 0} files</p>
+              </div>
+            </div>
+
+            {assignment.description_html && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-sm text-gray-500 mb-2">Description:</p>
+                <div 
+                  className="prose prose-sm max-w-none text-gray-700"
+                  dangerouslySetInnerHTML={{ __html: assignment.description_html }}
+                />
+              </div>
+            )}
+
+            <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500">
+              <span>Created: {new Date(assignment.created_at).toLocaleDateString()}</span>
+              {assignment.last_sent && (
+                <span>Last sent: {new Date(assignment.last_sent).toLocaleDateString()}</span>
+              )}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="text-center py-8">
+          <ClipboardList size={48} className="mx-auto text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No assignments</h3>
+          <p className="text-gray-600">Assignment history will appear here.</p>
         </div>
       )}
     </div>
@@ -309,6 +470,7 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
           {activeTab === 'overview' && <OverviewTab />}
           {activeTab === 'interviews' && <InterviewsTab />}
           {activeTab === 'communications' && <CommunicationsTab />}
+          {activeTab === 'assignments' && <AssignmentsTab />}
         </div>
       </div>
     </div>

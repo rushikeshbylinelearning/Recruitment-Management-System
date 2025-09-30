@@ -39,7 +39,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     workPreference: '',
     currentCtc: '',
     ctcFrequency: 'Annual',
-    inHouseAssignmentStatus: 'Pending',
+    inHouseAssignmentStatus: 'Draft',
     interviewDate: '',
     interviewerId: null as number | null,
     inOfficeAssignment: '',
@@ -154,7 +154,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 
                      editingCandidate.ctcFrequency || 'Annual',
         inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 
-                               editingCandidate.inHouseAssignmentStatus || 'Pending',
+                               editingCandidate.inHouseAssignmentStatus || 'Draft',
         interviewDate: editingCandidate.assignmentDetails?.interviewDate ? 
                       new Date(editingCandidate.assignmentDetails.interviewDate).toISOString().split('T')[0] :
                       editingCandidate.interviewDate ? 
@@ -204,7 +204,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         workPreference: '',
         currentCtc: '',
         ctcFrequency: 'Annual',
-        inHouseAssignmentStatus: 'Pending',
+        inHouseAssignmentStatus: 'Draft',
         interviewDate: '',
         interviewerId: null as number | null,
         inOfficeAssignment: '',
@@ -329,7 +329,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       workPreference: '',
       currentCtc: '',
       ctcFrequency: 'Annual',
-      inHouseAssignmentStatus: 'Pending',
+      inHouseAssignmentStatus: 'Draft',
       interviewDate: '',
       interviewerId: null as number | null,
       inOfficeAssignment: '',
@@ -880,9 +880,13 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               onChange={(e) => setFormData(prev => ({ ...prev, inHouseAssignmentStatus: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="Pending">Pending</option>
-              <option value="Shortlisted">Shortlisted</option>
+              <option value="Draft">Draft</option>
+              <option value="Assigned">Assigned</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Submitted">Submitted</option>
+              <option value="Approved">Approved</option>
               <option value="Rejected">Rejected</option>
+              <option value="Cancelled">Cancelled</option>
             </select>
           </div>
 
