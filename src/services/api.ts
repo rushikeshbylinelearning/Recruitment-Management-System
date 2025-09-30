@@ -584,6 +584,7 @@ export const candidatesAPI = {
     notes?: string;
     rating?: number;
     ratingComments?: string;
+    recommendation?: string;
   }): Promise<ApiResponse> => {
     const response = await api.post(`/candidates/${candidateId}/notes`, noteData);
     return response.data;
