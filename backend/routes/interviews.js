@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateInterview, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -99,7 +99,7 @@ router.get('/:id', authenticateToken, checkPermission('interviews', 'view'), val
   if (interviews.length === 0) {
     throw new NotFoundError('Interview not found');
   }
-
+  const interview = interviews[0];
   res.json({
     success: true,
     data: {
@@ -326,6 +326,24 @@ router.patch('/:id/status', authenticateToken, checkPermission('interviews', 'ed
     message: 'Interview status updated successfully'
   });
 }));
+
+// Get interviewer's interviews
+router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('interviews', 'view'), validateId('interviewerId'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const interviewerId = req.params.interviewerId;
+
+  // Check if user can access this data
+  if (req.user.id !== interviewerId && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+    throw new ValidationError('Access denied');
+  }
+
+  const interviews = await query(
+    `SELECT i.*, c.name as candidate_name, c.position as candidate_position 
+     FROM interviews i
+     LEFT JOIN candidates c ON i.candidate_id = c.id
+     WHERE i.interviewer_id = ?
+     ORDER BY i.scheduled_date DESC`,
+    [interviewerId]
+  );
 
 // Get interview statistics
 router.get('/stats/overview', authenticateToken, checkPermission('interviews', 'view'), asyncHandler(async (req, res) => {
