@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare, FileText } from 'lucide-react';
+import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare } from 'lucide-react';
 import { Candidate } from '../types';
 import InterviewManagement from './InterviewManagement';
 
@@ -15,7 +15,6 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'interviews', label: 'Interviews' },
-    { id: 'feedback', label: 'Feedback' },
     { id: 'communications', label: 'Communications' }
   ];
 
@@ -224,95 +223,6 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
     </div>
   );
 
-  const FeedbackTab = () => (
-    <div className="space-y-6">
-      {/* Pre-Interview Feedback */}
-      {candidate.preInterviewFeedback && (
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pre-Interview Assessment</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Resume Review</p>
-              {renderStarRating(candidate.preInterviewFeedback.resumeReview.rating)}
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Skills Assessment</p>
-              {renderStarRating(candidate.preInterviewFeedback.skillsAssessment.rating)}
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Cultural Fit</p>
-              {renderStarRating(candidate.preInterviewFeedback.culturalFit.rating)}
-            </div>
-          </div>
-          <div className="mb-4">
-            <p className="text-sm text-gray-600 mb-1">Recommendation</p>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-              candidate.preInterviewFeedback.overallRecommendation === 'Proceed' ? 'bg-green-100 text-green-800' :
-              candidate.preInterviewFeedback.overallRecommendation === 'Hold' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-red-100 text-red-800'
-            }`}>
-              {candidate.preInterviewFeedback.overallRecommendation}
-            </span>
-          </div>
-          {candidate.preInterviewFeedback.notes && (
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Notes</p>
-              <p className="text-sm text-gray-700">{candidate.preInterviewFeedback.notes}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Post-Interview Feedback */}
-      {candidate.postInterviewFeedback && candidate.postInterviewFeedback.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Post-Interview Feedback</h3>
-          {candidate.postInterviewFeedback.map((feedback, index) => (
-            <div key={feedback.id} className="bg-white p-6 rounded-lg border border-gray-200">
-              <div className="flex justify-between items-start mb-4">
-                <h4 className="font-medium text-gray-900">Feedback #{index + 1}</h4>
-                <span className="text-sm text-gray-500">
-                  {new Date(feedback.submittedAt).toLocaleDateString()}
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Overall Performance</p>
-                  {renderStarRating(feedback.overallPerformance)}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Recommendation</p>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    feedback.recommendation === 'Hire' ? 'bg-green-100 text-green-800' :
-                    feedback.recommendation === 'Maybe' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {feedback.recommendation}
-                  </span>
-                </div>
-              </div>
-
-              {feedback.additionalComments && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Additional Comments</p>
-                  <p className="text-sm text-gray-700">{feedback.additionalComments}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!candidate.preInterviewFeedback && (!candidate.postInterviewFeedback || candidate.postInterviewFeedback.length === 0) && (
-        <div className="text-center py-8">
-          <FileText size={48} className="mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No feedback available</h3>
-          <p className="text-gray-600">Feedback will appear here once submitted.</p>
-        </div>
-      )}
-    </div>
-  );
 
   const CommunicationsTab = () => (
     <div className="space-y-4">
@@ -398,7 +308,6 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
           {activeTab === 'overview' && <OverviewTab />}
           {activeTab === 'interviews' && <InterviewsTab />}
-          {activeTab === 'feedback' && <FeedbackTab />}
           {activeTab === 'communications' && <CommunicationsTab />}
         </div>
       </div>

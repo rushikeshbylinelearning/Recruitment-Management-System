@@ -212,24 +212,6 @@ export const validateCommunication = [
     .withMessage('Invalid status')
 ];
 
-// Interview feedback validation rules
-export const validateInterviewFeedback = [
-  body('interviewId')
-    .isInt({ min: 1 })
-    .withMessage('Interview ID must be a valid integer'),
-  
-  body('overallRating')
-    .isFloat({ min: 1, max: 5 })
-    .withMessage('Overall rating must be between 1 and 5'),
-  
-  body('recommendation')
-    .isIn(['Selected', 'On Hold', 'Rejected'])
-    .withMessage('Invalid recommendation'),
-  
-  body('ratings')
-    .isArray({ min: 1 })
-    .withMessage('At least one skill rating must be provided')
-];
 
 // Email template validation rules
 export const validateEmailTemplate = [

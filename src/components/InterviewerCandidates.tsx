@@ -1,44 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Eye, MessageSquare, UserCheck, UserX, Clock, MapPin, Phone, Mail, Star } from 'lucide-react';
-import { candidatesAPI } from '../services/api';
-
-interface Candidate {
-  id: number;
-  jobId: number | null;
-  name: string;
-  email: string;
-  phone: string;
-  position: string;
-  stage: string;
-  source: string;
-  appliedDate: string;
-  resumePath: string | null;
-  notes: string | null;
-  score: number;
-  assignedTo: string;
-  skills: string[];
-  experience: string;
-  salary: {
-    expected: string;
-    offered: string;
-    negotiable: boolean;
-  };
-  availability: {
-    joiningTime: string;
-    noticePeriod: string;
-    immediateJoiner: boolean;
-  };
-  communications: any[];
-  interviews: any[];
-  communicationsCount: number;
-  interviewsCount: number;
-  location?: string;
-  expertise?: string;
-  workPreference?: string;
-  currentCtc?: string;
-  interviewDate?: string;
-  interviewerId?: number;
-}
+import { Search, MessageSquare, UserCheck, UserX, Clock, MapPin, Phone, Mail, Star, Users } from 'lucide-react';
+import { candidatesAPI, Candidate } from '../services/api';
 
 interface PaginationInfo {
   page: number;
@@ -83,7 +45,7 @@ export default function InterviewerCandidates() {
         setCandidates(response.data.candidates || []);
         setPagination(prev => ({
           ...prev,
-          ...response.data.pagination
+          ...(response.data?.pagination || {})
         }));
       } else {
         setError('Failed to load candidates');
@@ -108,7 +70,14 @@ export default function InterviewerCandidates() {
 
   const handleAddNotes = (candidate: Candidate) => {
     setSelectedCandidate(candidate);
-    setNotes(candidate.notes || '');
+    // Handle new notes format - if it's an array, get the latest note or empty string
+    let existingNotes = '';
+    if (candidate.notes && Array.isArray(candidate.notes) && candidate.notes.length > 0) {
+      existingNotes = candidate.notes[candidate.notes.length - 1].notes || '';
+    } else if (typeof candidate.notes === 'string') {
+      existingNotes = candidate.notes;
+    }
+    setNotes(existingNotes);
     setShowNotesModal(true);
   };
 
@@ -117,15 +86,14 @@ export default function InterviewerCandidates() {
 
     try {
       setUpdatingNotes(true);
-      const response = await candidatesAPI.updateCandidate(selectedCandidate.id, {
+      // Use the new notes endpoint to add notes to candidate_notes_ratings table
+      const response = await candidatesAPI.addCandidateNote(selectedCandidate.id, {
         notes: notes
       });
 
       if (response.success) {
-        // Update the candidate in the list
-        setCandidates(prev => prev.map(c => 
-          c.id === selectedCandidate.id ? { ...c, notes } : c
-        ));
+        // Refresh the candidates list to get updated notes
+        fetchCandidates();
         setShowNotesModal(false);
         setSelectedCandidate(null);
         setNotes('');
@@ -142,15 +110,13 @@ export default function InterviewerCandidates() {
 
   const handleStageUpdate = async (candidateId: number, newStage: string) => {
     try {
-      const response = await candidatesAPI.updateCandidate(candidateId, {
-        stage: newStage
-      });
+      const response = await candidatesAPI.updateCandidateStage(candidateId, newStage);
 
       if (response.success) {
         // Update the candidate in the list
         setCandidates(prev => prev.map(c => 
-          c.id === candidateId ? { ...c, stage: newStage } : c
-        ));
+          c.id === candidateId ? { ...c, stage: newStage as any } : c
+        ) as Candidate[]);
       } else {
         setError('Failed to update candidate stage');
       }
@@ -187,9 +153,10 @@ export default function InterviewerCandidates() {
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 4) return 'text-green-600';
-    if (score >= 3) return 'text-yellow-600';
+  const getScoreColor = (score: number | string) => {
+    const numScore = typeof score === 'string' ? parseFloat(score) : score;
+    if (numScore >= 4) return 'text-green-600';
+    if (numScore >= 3) return 'text-yellow-600';
     return 'text-red-600';
   };
 
@@ -217,7 +184,7 @@ export default function InterviewerCandidates() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
-        <p className="text-gray-600 mt-1">Review candidates and provide interview feedback</p>
+        <p className="text-gray-600 mt-1">Review candidates and manage interview notes</p>
       </div>
 
       {/* Search and Filters */}
@@ -276,7 +243,7 @@ export default function InterviewerCandidates() {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageColor(candidate.stage)}`}>
                         {candidate.stage}
                       </span>
-                      {candidate.score > 0 && (
+                      {parseFloat(String(candidate.score || '0')) > 0 && (
                         <div className="flex items-center ml-2">
                           <Star size={14} className={`mr-1 ${getScoreColor(candidate.score)}`} />
                           <span className={`text-xs font-medium ${getScoreColor(candidate.score)}`}>
@@ -334,9 +301,28 @@ export default function InterviewerCandidates() {
                 {/* Notes Preview */}
                 {candidate.notes && (
                   <div className="mb-4">
-                    <p className="text-gray-700 text-sm line-clamp-2">
-                      {candidate.notes}
-                    </p>
+                    {Array.isArray(candidate.notes) ? (
+                      <div className="space-y-2">
+                        {(candidate.notes as any[]).slice(0, 2).map((note: any, index: number) => (
+                          <div key={note.id || index} className="text-gray-700 text-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-xs text-blue-600">{note.user_name} ({note.user_role})</span>
+                              <span className="text-xs text-gray-500">
+                                {new Date(note.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="line-clamp-1">{note.notes}</p>
+                          </div>
+                        ))}
+                        {(candidate.notes as any[]).length > 2 && (
+                          <p className="text-xs text-gray-500">+{(candidate.notes as any[]).length - 2} more notes</p>
+                        )}
+                      </div>
+                    ) : typeof candidate.notes === 'string' ? (
+                      <p className="text-gray-700 text-sm line-clamp-2">
+                        {candidate.notes}
+                      </p>
+                    ) : null}
                   </div>
                 )}
 
@@ -426,7 +412,7 @@ export default function InterviewerCandidates() {
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add your interview notes and feedback..."
+              placeholder="Add your interview notes..."
               className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             />
             

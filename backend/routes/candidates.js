@@ -292,49 +292,9 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
     [candidateId]
   );
 
-  // Get interview feedback for each interview
-  for (let interview of interviews) {
-    const feedback = await query(
-      'SELECT * FROM interview_feedback WHERE interview_id = ?',
-      [interview.id]
-    );
-    interview.feedback = feedback.length > 0 ? feedback[0] : null;
-  }
 
   candidate.interviews = interviews;
 
-  // Get pre-interview feedback
-  const preFeedback = await query(
-    `SELECT pif.*, u.name as submitted_by_name 
-     FROM pre_interview_feedback pif
-     LEFT JOIN users u ON pif.submitted_by = u.id
-     WHERE pif.candidate_id = ?`,
-    [candidateId]
-  );
-  candidate.preInterviewFeedback = preFeedback.length > 0 ? preFeedback[0] : null;
-
-  // Get post-interview feedback
-  const postFeedback = await query(
-    `SELECT pif.*, u.name as submitted_by_name 
-     FROM post_interview_feedback pif
-     LEFT JOIN users u ON pif.submitted_by = u.id
-     WHERE pif.candidate_id = ?
-     ORDER BY pif.submitted_at DESC`,
-    [candidateId]
-  );
-
-  // Parse JSON fields in post-interview feedback
-  for (let feedback of postFeedback) {
-    try {
-      feedback.technical_skills = JSON.parse(feedback.technical_skills || '[]');
-      feedback.soft_skills = JSON.parse(feedback.soft_skills || '[]');
-    } catch (e) {
-      feedback.technical_skills = [];
-      feedback.soft_skills = [];
-    }
-  }
-
-  candidate.postInterviewFeedback = postFeedback;
 
   res.json({
     success: true,
@@ -652,7 +612,6 @@ router.get('/:id/analytics', authenticateToken, checkPermission('candidates', 'v
        (SELECT COUNT(*) FROM communications WHERE candidate_id = ?) as total_communications,
        (SELECT COUNT(*) FROM interviews WHERE candidate_id = ?) as total_interviews,
        (SELECT COUNT(*) FROM interviews WHERE candidate_id = ? AND status = 'Completed') as completed_interviews,
-       (SELECT AVG(overall_rating) FROM interview_feedback WHERE interview_id IN (SELECT id FROM interviews WHERE candidate_id = ?)) as avg_interview_rating,
        (SELECT DATEDIFF(NOW(), applied_date) FROM candidates WHERE id = ?) as days_in_pipeline`,
     [candidateId, candidateId, candidateId, candidateId, candidateId]
   );

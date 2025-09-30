@@ -153,7 +153,7 @@ export default function AddJobModal({ isOpen, onClose, onSubmit, editingJob }: A
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.title ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="e.g., Senior Frontend Developer"
+                placeholder="e.g., Instructional Designer"
               />
               {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
             </div>
@@ -188,7 +188,7 @@ export default function AddJobModal({ isOpen, onClose, onSubmit, editingJob }: A
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.location ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="e.g., San Francisco, CA or Remote"
+                placeholder="e.g., Baner, Pune or Remote"
               />
               {errors.location && <p className="text-red-500 text-sm mt-1">{errors.location}</p>}
             </div>
@@ -199,7 +199,7 @@ export default function AddJobModal({ isOpen, onClose, onSubmit, editingJob }: A
               </label>
               <select
                 value={formData.jobType}
-                onChange={(e) => setFormData(prev => ({ ...prev, jobType: e.target.value }))}
+                onChange={(e) => setFormData(prev => ({ ...prev, jobType: e.target.value as "Full-time" | "Part-time" | "Contract" | "Internship" }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 {jobTypes.map(type => (
@@ -256,7 +256,7 @@ export default function AddJobModal({ isOpen, onClose, onSubmit, editingJob }: A
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Post to Job Portals
+              Posted on Job Portals
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {availablePortals.map(portal => (
