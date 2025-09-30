@@ -1,7 +1,7 @@
 import express from 'express';
 import { query, transaction } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateInterview, validateInterviewFeedback, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateInterview, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -54,14 +54,6 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
     params
   );
 
-  // Get feedback for each interview
-  for (let interview of interviews) {
-    const feedback = await query(
-      'SELECT * FROM interview_feedback WHERE interview_id = ?',
-      [interview.id]
-    );
-    interview.feedback = feedback.length > 0 ? feedback[0] : null;
-  }
 
   res.json({
     success: true,
@@ -99,25 +91,6 @@ router.get('/:id', authenticateToken, checkPermission('interviews', 'view'), val
 
   const interview = interviews[0];
 
-  // Get feedback
-  const feedback = await query(
-    'SELECT * FROM interview_feedback WHERE interview_id = ?',
-    [interviewId]
-  );
-  interview.feedback = feedback.length > 0 ? feedback[0] : null;
-
-  // Parse JSON fields in feedback
-  if (interview.feedback) {
-    try {
-      interview.feedback.ratings = JSON.parse(interview.feedback.ratings || '[]');
-      interview.feedback.strengths = JSON.parse(interview.feedback.strengths || '[]');
-      interview.feedback.weaknesses = JSON.parse(interview.feedback.weaknesses || '[]');
-    } catch (e) {
-      interview.feedback.ratings = [];
-      interview.feedback.strengths = [];
-      interview.feedback.weaknesses = [];
-    }
-  }
 
   res.json({
     success: true,
@@ -248,7 +221,7 @@ router.delete('/:id', authenticateToken, checkPermission('interviews', 'delete')
     throw new NotFoundError('Interview not found');
   }
 
-  // Delete interview (cascading will handle feedback)
+  // Delete interview
   await query('DELETE FROM interviews WHERE id = ?', [interviewId]);
 
   res.json({
@@ -257,54 +230,6 @@ router.delete('/:id', authenticateToken, checkPermission('interviews', 'delete')
   });
 }));
 
-// Submit interview feedback
-router.post('/:id/feedback', authenticateToken, checkPermission('interviews', 'edit'), validateId('id'), validateInterviewFeedback, handleValidationErrors, asyncHandler(async (req, res) => {
-  const interviewId = req.params.id;
-  const {
-    ratings,
-    overallRating,
-    comments,
-    recommendation,
-    strengths = [],
-    weaknesses = [],
-    additionalNotes
-  } = req.body;
-
-  // Check if interview exists and is completed
-  const interviews = await query('SELECT id, interviewer_id, status FROM interviews WHERE id = ?', [interviewId]);
-  if (interviews.length === 0) {
-    throw new NotFoundError('Interview not found');
-  }
-
-  const interview = interviews[0];
-  if (interview.status !== 'Completed') {
-    throw new ValidationError('Interview must be completed before submitting feedback');
-  }
-
-  // Check if user is the interviewer
-  if (interview.interviewer_id !== req.user.id && req.user.role !== 'Admin') {
-    throw new ValidationError('Only the interviewer can submit feedback');
-  }
-
-  // Check if feedback already exists
-  const existingFeedback = await query('SELECT id FROM interview_feedback WHERE interview_id = ?', [interviewId]);
-  if (existingFeedback.length > 0) {
-    throw new ValidationError('Feedback already submitted for this interview');
-  }
-
-  // Create feedback
-  await query(
-    `INSERT INTO interview_feedback (interview_id, interviewer_id, ratings, overall_rating, comments, recommendation, strengths, weaknesses, additional_notes) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [interviewId, req.user.id, JSON.stringify(ratings), overallRating, comments, recommendation, 
-     JSON.stringify(strengths), JSON.stringify(weaknesses), additionalNotes]
-  );
-
-  res.status(201).json({
-    success: true,
-    message: 'Interview feedback submitted successfully'
-  });
-}));
 
 // Update interview status
 router.patch('/:id/status', authenticateToken, checkPermission('interviews', 'edit'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
@@ -363,14 +288,6 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
     [interviewerId]
   );
 
-  // Get feedback for each interview
-  for (let interview of interviews) {
-    const feedback = await query(
-      'SELECT * FROM interview_feedback WHERE interview_id = ?',
-      [interview.id]
-    );
-    interview.feedback = feedback.length > 0 ? feedback[0] : null;
-  }
 
   res.json({
     success: true,

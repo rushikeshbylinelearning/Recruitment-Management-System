@@ -11,7 +11,6 @@ import Jobs from './components/Jobs';
 import InterviewerJobs from './components/InterviewerJobs';
 import Candidates from './components/Candidates';
 import InterviewerCandidates from './components/InterviewerCandidates';
-import InterviewerFeedback from './components/InterviewerFeedback';
 import InterviewerTest from './components/InterviewerTest';
 import InterviewManagement from './components/InterviewManagement';
 import Team from './components/Team';
@@ -71,9 +70,8 @@ function AppContent() {
       {user?.role === 'Interviewer' ? (
         <Route path="/" element={<ProtectedRoute><InterviewerLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<InterviewerTest />} />
-          <Route path="candidates" element={<InterviewerTest />} />
-          <Route path="interviewer-feedback" element={<InterviewerTest />} />
+          <Route path="dashboard" element={<InterviewerDashboard />} />
+          <Route path="candidates" element={<InterviewerCandidates />} />
         </Route>
       ) : (
         /* Regular User Routes */
@@ -84,7 +82,6 @@ function AppContent() {
           <Route path="candidates" element={<RoleBasedCandidates />} />
           <Route path="interviewer-jobs" element={<InterviewerJobs />} />
           <Route path="interviewer-candidates" element={<InterviewerCandidates />} />
-          <Route path="interviewer-feedback" element={<InterviewerFeedback />} />
           <Route path="interviews" element={<InterviewManagement showAllInterviews={true} />} />
           <Route path="team" element={<Team />} />
           <Route path="tasks" element={<Tasks />} />

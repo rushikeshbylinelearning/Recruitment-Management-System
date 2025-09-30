@@ -65,8 +65,6 @@ export interface Candidate {
   assignmentLocation?: string;
   resumeLocation?: string;
   interviews: Interview[];
-  preInterviewFeedback?: PreInterviewFeedback;
-  postInterviewFeedback?: PostInterviewFeedback[];
 }
 
 export interface Communication {
@@ -92,65 +90,9 @@ export interface Interview {
   status: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
   meetingLink?: string;
   location?: string;
-  feedback?: InterviewFeedback;
   round: number;
 }
 
-export interface InterviewFeedback {
-  id: string;
-  interviewId: string;
-  interviewerId: string;
-  ratings: SkillRating[];
-  overallRating: number;
-  comments: string;
-  recommendation: 'Selected' | 'On Hold' | 'Rejected';
-  strengths: string[];
-  weaknesses: string[];
-  additionalNotes: string;
-  submittedAt: string;
-}
-
-export interface SkillRating {
-  skill: string;
-  rating: number; // 1-5
-  comments?: string;
-}
-
-export interface PreInterviewFeedback {
-  id: string;
-  candidateId: string;
-  submittedBy: string;
-  resumeReview: {
-    rating: number;
-    comments: string;
-  };
-  skillsAssessment: {
-    rating: number;
-    comments: string;
-  };
-  culturalFit: {
-    rating: number;
-    comments: string;
-  };
-  overallRecommendation: 'Proceed' | 'Hold' | 'Reject';
-  notes: string;
-  submittedAt: string;
-}
-
-export interface PostInterviewFeedback {
-  id: string;
-  candidateId: string;
-  interviewId: string;
-  submittedBy: string;
-  technicalSkills: SkillRating[];
-  softSkills: SkillRating[];
-  overallPerformance: number;
-  recommendation: 'Hire' | 'Maybe' | 'No Hire';
-  salaryRecommendation?: string;
-  startDateFlexibility: number;
-  additionalComments: string;
-  submittedAt: string;
-}
 
 export interface TeamMember {
   id: number;

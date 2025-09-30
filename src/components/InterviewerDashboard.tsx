@@ -43,7 +43,7 @@ export default function InterviewerDashboard() {
           // Calculate metrics for interviewer
           const totalCandidates = candidates.length;
           const interviewStageCandidates = candidates.filter(c => c.stage === 'Interview').length;
-          const pendingReviews = candidates.filter(c => c.stage === 'Interview' && (!c.notes || c.notes.trim() === '')).length;
+          const pendingReviews = candidates.filter(c => c.stage === 'Interview' && (!c.notes || !Array.isArray(c.notes) || c.notes.length === 0)).length;
           
           // Create mock data for interviewer dashboard
           const interviewerData: InterviewerDashboardData = {
@@ -185,7 +185,7 @@ export default function InterviewerDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Interviewer Dashboard</h1>
-        <p className="text-gray-600 mt-1">Welcome! Review candidates and provide feedback on your assigned interviews.</p>
+        <p className="text-gray-600 mt-1">Welcome! Review candidates and manage your assigned interviews.</p>
       </div>
 
       {/* Stats Grid */}
@@ -318,16 +318,6 @@ export default function InterviewerDashboard() {
             </div>
           </button>
           
-          <button 
-            onClick={() => navigate('/interviewer-feedback')}
-            className="flex items-center space-x-3 p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
-          >
-            <MessageSquare className="text-purple-600" size={24} />
-            <div className="text-left">
-              <p className="font-medium text-purple-900">Add Feedback</p>
-              <p className="text-sm text-purple-700">Submit interview notes</p>
-            </div>
-          </button>
         </div>
       </div>
     </div>

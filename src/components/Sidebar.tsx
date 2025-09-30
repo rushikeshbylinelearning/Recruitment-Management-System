@@ -16,7 +16,6 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     { id: 'jobs', label: 'Jobs', icon: Briefcase },
     { id: 'candidates', label: 'Candidates', icon: Users },
     { id: 'interviews', label: 'Interviews', icon: Calendar },
-    { id: 'interviewer-feedback', label: 'Feedback', icon: MessageSquare },
     { id: 'team', label: 'Team', icon: Users },
     { id: 'tasks', label: 'Tasks', icon: FileText },
     { id: 'communications', label: 'Communications', icon: MessageSquare },
@@ -27,7 +26,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
   const filteredMenuItems = menuItems.filter(item => {
     // Special handling for interviewer role
     if (user?.role === 'Interviewer') {
-      return ['dashboard', 'jobs', 'candidates', 'interviewer-feedback'].includes(item.id);
+      return ['dashboard', 'jobs', 'candidates'].includes(item.id);
     }
     
     if (item.id === 'dashboard') return true;

@@ -1,13 +1,9 @@
 import { useState } from 'react';
 import { Users, Briefcase, MessageSquare, Home, LogOut, User } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-interface InterviewerLayoutProps {
-  children: React.ReactNode;
-}
-
-export default function InterviewerLayout({ children }: InterviewerLayoutProps) {
+export default function InterviewerLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -15,12 +11,10 @@ export default function InterviewerLayout({ children }: InterviewerLayoutProps) 
   // Debug logging
   console.log('InterviewerLayout - user:', user);
   console.log('InterviewerLayout - location:', location);
-  console.log('InterviewerLayout - children:', children);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/dashboard' },
     { id: 'candidates', label: 'My Candidates', icon: Users, path: '/candidates' },
-    { id: 'feedback', label: 'Submit Feedback', icon: MessageSquare, path: '/interviewer-feedback' },
   ];
 
   const handleLogout = () => {
@@ -91,7 +85,7 @@ export default function InterviewerLayout({ children }: InterviewerLayoutProps) 
 
         {/* Main Content */}
         <main className="flex-1 p-6">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>

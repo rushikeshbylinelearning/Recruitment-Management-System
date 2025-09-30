@@ -501,8 +501,6 @@ export interface Candidate {
   assignmentLocation?: string;
   resumeLocation?: string;
   interviews: Interview[];
-  preInterviewFeedback?: any;
-  postInterviewFeedback?: any[];
 }
 
 export interface Communication {
@@ -525,7 +523,6 @@ export interface Interview {
   status: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
   meetingLink?: string;
   location?: string;
-  feedback?: any;
   round: number;
 }
 
@@ -580,6 +577,33 @@ export const candidatesAPI = {
 
   getResumeMetadata: async (candidateId: number): Promise<ApiResponse<any>> => {
     const response = await api.get(`/candidates/${candidateId}/resume/metadata`);
+    return response.data;
+  },
+
+  addCandidateNote: async (candidateId: number, noteData: {
+    notes?: string;
+    rating?: number;
+    ratingComments?: string;
+  }): Promise<ApiResponse> => {
+    const response = await api.post(`/candidates/${candidateId}/notes`, noteData);
+    return response.data;
+  },
+
+  getCandidateNotes: async (candidateId: number): Promise<ApiResponse<{
+    notes: Array<{
+      id: number;
+      candidate_id: number;
+      user_id: number;
+      notes: string | null;
+      rating: number | null;
+      rating_comments: string | null;
+      created_at: string;
+      updated_at: string;
+      user_name: string;
+      user_role: string;
+    }>;
+  }>> => {
+    const response = await api.get(`/candidates/${candidateId}/notes`);
     return response.data;
   },
 };
