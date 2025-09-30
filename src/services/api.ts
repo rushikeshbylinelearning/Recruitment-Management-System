@@ -584,6 +584,86 @@ export const candidatesAPI = {
   },
 };
 
+// Interviews API
+export const interviewsAPI = {
+  getInterviews: async (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    candidateId?: number;
+    interviewerId?: number;
+  }): Promise<ApiResponse<{
+    interviews: Array<{
+      id: number;
+      candidate_id: number;
+      interviewer_id: number;
+      scheduled_date: string;
+      type: string;
+      status: string;
+      location?: string;
+      meeting_link?: string;
+      notes?: string;
+      created_at: string;
+      updated_at: string;
+      candidate_name?: string;
+      interviewer_name?: string;
+      candidate_position?: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const response = await api.get('/interviews', { params });
+    return response.data;
+  },
+
+  getInterviewById: async (id: number): Promise<ApiResponse<{
+    interview: any;
+  }>> => {
+    const response = await api.get(`/interviews/${id}`);
+    return response.data;
+  },
+
+  createInterview: async (interviewData: {
+    candidate_id: number;
+    interviewer_id: number;
+    scheduled_date: string;
+    type: string;
+    location?: string;
+    meeting_link?: string;
+    notes?: string;
+    status?: string;
+  }): Promise<ApiResponse<{ interviewId: number }>> => {
+    const response = await api.post('/interviews', interviewData);
+    return response.data;
+  },
+
+  updateInterview: async (id: number, interviewData: Partial<{
+    candidate_id: number;
+    interviewer_id: number;
+    scheduled_date: string;
+    type: string;
+    location?: string;
+    meeting_link?: string;
+    notes?: string;
+    status?: string;
+  }>): Promise<ApiResponse<{ message: string }>> => {
+    const response = await api.put(`/interviews/${id}`, interviewData);
+    return response.data;
+  },
+
+  deleteInterview: async (id: number): Promise<ApiResponse<{ message: string }>> => {
+    const response = await api.delete(`/interviews/${id}`);
+    return response.data;
+  },
+
+  updateInterviewStatus: async (id: number, status: string): Promise<ApiResponse<{ message: string }>> => {
+    const response = await api.patch(`/interviews/${id}/status`, { status });
+    return response.data;
+  }
+};
+
 // Analytics API
 export interface Analytics {
   totalJobs: number;
@@ -929,71 +1009,5 @@ export const healthAPI = {
   },
 };
 
-// Interview API
-export const interviewsAPI = {
-  getInterviews: async (params?: {
-    page?: number;
-    limit?: number;
-    status?: string;
-    type?: string;
-    interviewerId?: string;
-  }): Promise<ApiResponse<{
-    interviews: Interview[];
-    pagination: PaginationInfo;
-  }>> => {
-    const response = await api.get('/interviews', { params });
-    return response.data;
-  },
-
-  getInterview: async (id: string): Promise<ApiResponse<{ interview: Interview }>> => {
-    const response = await api.get(`/interviews/${id}`);
-    return response.data;
-  },
-
-  createInterview: async (interviewData: {
-    candidateId: string;
-    interviewerId: string;
-    scheduledDate: string;
-    duration: number;
-    type: 'Technical' | 'HR' | 'Managerial' | 'Final';
-    status?: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
-    meetingLink?: string;
-    location?: string;
-    round: number;
-  }): Promise<ApiResponse<{ interviewId: number }>> => {
-    const response = await api.post('/interviews', interviewData);
-    return response.data;
-  },
-
-  updateInterview: async (id: string, interviewData: {
-    candidateId?: string;
-    interviewerId?: string;
-    scheduledDate?: string;
-    duration?: number;
-    type?: 'Technical' | 'HR' | 'Managerial' | 'Final';
-    status?: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
-    meetingLink?: string;
-    location?: string;
-    round?: number;
-  }): Promise<ApiResponse> => {
-    const response = await api.put(`/interviews/${id}`, interviewData);
-    return response.data;
-  },
-
-  deleteInterview: async (id: string): Promise<ApiResponse> => {
-    const response = await api.delete(`/interviews/${id}`);
-    return response.data;
-  },
-
-  getInterviewerInterviews: async (interviewerId: string): Promise<ApiResponse<{ interviews: Interview[] }>> => {
-    const response = await api.get(`/interviews/interviewer/${interviewerId}`);
-    return response.data;
-  },
-
-  getUpcomingInterviews: async (): Promise<ApiResponse<{ interviews: Interview[] }>> => {
-    const response = await api.get('/interviews/upcoming/list');
-    return response.data;
-  },
-};
 
 export default api;

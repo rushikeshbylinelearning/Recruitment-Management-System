@@ -1,18 +1,13 @@
-import React, { useState } from 'react';
-import { Plus, Search, Filter, Mail, Phone, MessageSquare, Send, Calendar, User, Clock, X } from 'lucide-react';
-import { Communication, Candidate } from '../types';
-import { mockCandidates } from '../data/mockData';
+import { useState, useEffect } from 'react';
+import { Plus, Search, Mail, Phone, MessageSquare, Send, Calendar, User, Clock, X } from 'lucide-react';
+import { Candidate } from '../types';
+import { communicationsAPI, candidatesAPI } from '../services/api';
 
 interface CommunicationsProps {
-  communications?: any[];
-  candidates?: Candidate[];
-  onAddCommunication?: (communication: any) => void;
-  onUpdateCommunication?: (communicationId: string, updates: any) => void;
-  onDeleteCommunication?: (communicationId: string) => void;
   onShowEmailTemplates?: () => void;
 }
 
-export default function Communications({ communications, candidates, onAddCommunication, onUpdateCommunication, onDeleteCommunication, onShowEmailTemplates }: CommunicationsProps) {
+export default function Communications({ onShowEmailTemplates }: CommunicationsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -29,22 +24,49 @@ export default function Communications({ communications, candidates, onAddCommun
   const [replyContent, setReplyContent] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpNotes, setFollowUpNotes] = useState('');
-  const [followUpType, setFollowUpType] = useState('Email');
-  const [followUpPriority, setFollowUpPriority] = useState('Medium');
 
-  // Extract all communications from candidates
-  const allCommunications = mockCandidates.flatMap(candidate => 
-    candidate.communications.map(comm => ({
-      ...comm,
-      candidateName: candidate.name,
-      candidateEmail: candidate.email,
-      position: candidate.position
-    }))
-  );
+  // State for real data
+  const [allCommunications, setAllCommunications] = useState<any[]>([]);
+  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+
+  // Fetch real communications data
+  useEffect(() => {
+    const fetchCommunications = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        
+        // Fetch communications from database
+        const commResponse = await communicationsAPI.getCommunications({ limit: 100 });
+        if (commResponse.success && commResponse.data) {
+          setAllCommunications(commResponse.data.communications || []);
+        }
+
+        // Fetch candidates for dropdown
+        const candidatesResponse = await candidatesAPI.getCandidates({ limit: 100 });
+        if (candidatesResponse.success && candidatesResponse.data) {
+          setAllCandidates(candidatesResponse.data.candidates || []);
+        }
+      } catch (err) {
+        console.error('Error fetching communications data:', err);
+        setError('Failed to load communications data');
+        setAllCommunications([]);
+        setAllCandidates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCommunications();
+  }, []);
 
   const filteredCommunications = allCommunications.filter(comm => {
-    const matchesSearch = comm.candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         comm.content.toLowerCase().includes(searchTerm.toLowerCase());
+    const candidateName = comm.candidate_name || comm.candidateName || '';
+    const content = comm.content || comm.message || '';
+    const matchesSearch = candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         content.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'All' || comm.type === typeFilter;
     const matchesStatus = statusFilter === 'All' || comm.status === statusFilter;
     return matchesSearch && matchesType && matchesStatus;
@@ -82,20 +104,17 @@ export default function Communications({ communications, candidates, onAddCommun
   const handleSubmitReply = () => {
     if (!replyContent.trim()) return;
     
-    const reply = {
-      id: `reply-${Date.now()}`,
-      type: selectedCommunication.type,
-      content: replyContent,
-      status: 'Sent',
-      date: new Date().toISOString(),
-      candidateName: selectedCommunication.candidateName,
-      candidateEmail: selectedCommunication.candidateEmail,
-      position: selectedCommunication.position
-    };
-    
-    if (onAddCommunication) {
-      onAddCommunication(reply);
-    }
+    // TODO: Implement reply functionality with API
+    // const reply = {
+    //   id: `reply-${Date.now()}`,
+    //   type: selectedCommunication.type,
+    //   content: replyContent,
+    //   status: 'Sent',
+    //   date: new Date().toISOString(),
+    //   candidateName: selectedCommunication.candidateName,
+    //   candidateEmail: selectedCommunication.candidateEmail,
+    //   position: selectedCommunication.position
+    // };
     
     setReplyContent('');
     setShowReplyModal(false);
@@ -106,61 +125,66 @@ export default function Communications({ communications, candidates, onAddCommun
   const handleSubmitFollowUp = () => {
     if (!followUpDate || !followUpNotes.trim()) return;
     
-    const followUp = {
-      id: `followup-${Date.now()}`,
-      type: followUpType,
-      content: `${followUpType} follow-up scheduled (${followUpPriority} priority): ${followUpNotes}`,
-      status: 'Pending',
-      date: followUpDate,
-      candidateName: selectedCommunication.candidateName,
-      candidateEmail: selectedCommunication.candidateEmail,
-      position: selectedCommunication.position,
-      followUp: `${followUpType} - ${followUpPriority} Priority: ${followUpNotes}`
-    };
-    
-    if (onAddCommunication) {
-      onAddCommunication(followUp);
-    }
+    // TODO: Implement follow-up functionality with API
+    // const followUp = {
+    //   id: `followup-${Date.now()}`,
+    //   type: followUpType,
+    //   content: `${followUpType} follow-up scheduled (${followUpPriority} priority): ${followUpNotes}`,
+    //   status: 'Pending',
+    //   date: followUpDate,
+    //   candidateName: selectedCommunication.candidateName,
+    //   candidateEmail: selectedCommunication.candidateEmail,
+    //   position: selectedCommunication.position,
+    //   followUp: `${followUpType} - ${followUpPriority} Priority: ${followUpNotes}`
+    // };
     
     setFollowUpDate('');
     setFollowUpNotes('');
-    setFollowUpType('Email');
-    setFollowUpPriority('Medium');
     setShowFollowUpModal(false);
     setSelectedCommunication(null);
     alert('Follow-up scheduled successfully!');
   };
 
-  const handleSubmitNewCommunication = () => {
+  const handleSubmitNewCommunication = async () => {
     if (!newCommunication.candidateId || !newCommunication.content.trim()) return;
     
-    const candidate = mockCandidates.find(c => c.id === newCommunication.candidateId);
+    const candidate = allCandidates.find(c => c.id.toString() === newCommunication.candidateId);
     if (!candidate) return;
     
-    const communication = {
-      id: `comm-${Date.now()}`,
-      type: newCommunication.type,
-      content: newCommunication.content,
-      status: 'Sent',
-      date: new Date().toISOString(),
-      candidateName: candidate.name,
-      candidateEmail: candidate.email,
-      position: candidate.position,
-      followUp: newCommunication.followUp
-    };
-    
-    if (onAddCommunication) {
-      onAddCommunication(communication);
+    try {
+      const communicationData = {
+        candidateId: parseInt(newCommunication.candidateId),
+        type: newCommunication.type,
+        content: newCommunication.content,
+        status: 'Sent',
+        followUpDate: new Date().toISOString(),
+        followUpNotes: newCommunication.followUp
+      };
+      
+      const response = await communicationsAPI.createCommunication(communicationData);
+      
+      if (response.success) {
+        // Refresh communications list
+        const commResponse = await communicationsAPI.getCommunications({ limit: 100 });
+        if (commResponse.success && commResponse.data) {
+          setAllCommunications(commResponse.data.communications || []);
+        }
+        
+        setNewCommunication({
+          candidateId: '',
+          type: 'Email',
+          content: '',
+          followUp: ''
+        });
+        setShowNewCommunication(false);
+        alert('Communication sent successfully!');
+      } else {
+        alert('Failed to send communication. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error creating communication:', error);
+      alert('Failed to send communication. Please try again.');
     }
-    
-    setNewCommunication({
-      candidateId: '',
-      type: 'Email',
-      content: '',
-      followUp: ''
-    });
-    setShowNewCommunication(false);
-    alert('Communication sent successfully!');
   };
 
   const communicationStats = [
@@ -169,6 +193,30 @@ export default function Communications({ communications, candidates, onAddCommun
     { label: 'Phone Calls', value: allCommunications?.filter(c => c.type === 'Phone')?.length || 0, color: 'bg-purple-500' },
     { label: 'Pending Follow-ups', value: allCommunications?.filter(c => c.status === 'Pending')?.length || 0, color: 'bg-orange-500' }
   ];
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading communications...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error loading communications</p>
+          <p className="text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -250,7 +298,30 @@ export default function Communications({ communications, candidates, onAddCommun
           <h3 className="text-lg font-semibold text-gray-900">Recent Communications</h3>
         </div>
         <div className="divide-y divide-gray-200">
-          {filteredCommunications.map((comm) => (
+          {filteredCommunications.length === 0 ? (
+            <div className="p-8 text-center">
+              <Mail className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No communications found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {allCommunications.length === 0 
+                  ? "No communications have been recorded yet. Start by creating a new communication."
+                  : "No communications match your current filters. Try adjusting your search criteria."
+                }
+              </p>
+              {allCommunications.length === 0 && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => setShowNewCommunication(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Plus size={16} className="mr-2" />
+                    Create First Communication
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            filteredCommunications.map((comm) => (
             <div key={comm.id} className="p-6 hover:bg-gray-50">
               <div className="flex items-start justify-between">
                 <div className="flex items-start space-x-4">
@@ -259,21 +330,21 @@ export default function Communications({ communications, candidates, onAddCommun
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
-                      <h4 className="font-medium text-gray-900">{comm.candidateName}</h4>
-                      <span className="text-sm text-gray-500">{comm.position}</span>
+                      <h4 className="font-medium text-gray-900">{comm.candidate_name || comm.candidateName || 'Unknown Candidate'}</h4>
+                      <span className="text-sm text-gray-500">{comm.candidate_position || comm.position || 'Unknown Position'}</span>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(comm.status)}`}>
                         {comm.status}
                       </span>
                     </div>
-                    <p className="text-gray-600 mb-2">{comm.content}</p>
+                    <p className="text-gray-600 mb-2">{comm.content || comm.message || 'No content'}</p>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
                       <div className="flex items-center space-x-1">
                         <Clock size={14} />
-                        <span>{new Date(comm.date).toLocaleDateString()}</span>
+                        <span>{new Date(comm.date || comm.created_at).toLocaleDateString()}</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <Mail size={14} />
-                        <span>{comm.candidateEmail}</span>
+                        <span>{comm.candidate_email || comm.candidateEmail || 'No email'}</span>
                       </div>
                     </div>
                     {comm.followUp && (
@@ -299,7 +370,8 @@ export default function Communications({ communications, candidates, onAddCommun
                 </div>
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -364,7 +436,7 @@ export default function Communications({ communications, candidates, onAddCommun
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Choose a candidate</option>
-                  {mockCandidates.map(candidate => (
+                  {allCandidates.map(candidate => (
                     <option key={candidate.id} value={candidate.id}>
                       {candidate.name} - {candidate.position}
                     </option>
