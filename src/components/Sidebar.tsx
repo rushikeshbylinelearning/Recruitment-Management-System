@@ -29,6 +29,13 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       return ['dashboard', 'jobs', 'candidates'].includes(item.id);
     }
     
+    // Special handling for HR Manager and Recruiter roles - include interviews
+    if (user?.role === 'HR Manager' || user?.role === 'Recruiter') {
+      if (item.id === 'interviews') {
+        return hasPermission('interviews', 'view');
+      }
+    }
+    
     if (item.id === 'dashboard') return true;
     return hasPermission(item.id, 'view');
   });
