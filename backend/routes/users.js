@@ -47,6 +47,7 @@ const getDefaultPermissions = (role) => {
     'Interviewer': [
       { module: 'dashboard', actions: ['view'] },
       { module: 'candidates', actions: ['view'] },
+      { module: 'interviews', actions: ['view', 'create', 'edit'] },
       { module: 'communications', actions: ['view'] },
       { module: 'tasks', actions: ['view', 'edit'] },
     ],

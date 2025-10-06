@@ -1,7 +1,7 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 
 // API Base Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Create axios instance
 const api = axios.create({
@@ -592,6 +592,14 @@ export const candidatesAPI = {
     recommendation?: string;
   }): Promise<ApiResponse> => {
     const response = await api.post(`/candidates/${candidateId}/notes`, noteData);
+    return response.data;
+  },
+
+  addInterviewNote: async (candidateId: number, noteData: {
+    notes?: string;
+    recommendation?: string;
+  }): Promise<ApiResponse> => {
+    const response = await api.post(`/candidates/${candidateId}/interview-notes`, noteData);
     return response.data;
   },
 

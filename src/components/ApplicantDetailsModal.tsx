@@ -22,7 +22,7 @@ export default function ApplicantDetailsModal({ isOpen, onClose, applicant }: Ap
                 {applicant.name.split(' ').map(n => n[0]).join('')}
               </span>
             </div>
-            <div>
+            <div> 
               <h2 className="text-xl font-semibold text-gray-900">{applicant.name}</h2>
               <p className="text-gray-600">{applicant.position}</p>
             </div>

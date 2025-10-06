@@ -609,7 +609,7 @@ export default function Candidates() {
                   </div>
                   
                   {/* Stage Content */}
-                  <div className="bg-gray-50 p-4 rounded-b-xl min-h-96 border-l-4 border-r border-b border-gray-200" style={{borderLeftColor: stageColors.header.includes('blue') ? '#3B82F6' : stageColors.header.includes('yellow') ? '#EAB308' : stageColors.header.includes('orange') ? '#F97316' : stageColors.header.includes('purple') ? '#8B5CF6' : stageColors.header.includes('green') ? '#10B981' : stageColors.header.includes('red') ? '#EF4444' : '#6B7280'}}>
+                  <div className="bg-gray-50 p-4 rounded-b-xl min-h-96 max-h-[600px] overflow-y-auto border-l-4 border-r border-b border-gray-200 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400" style={{borderLeftColor: stageColors.header.includes('blue') ? '#3B82F6' : stageColors.header.includes('yellow') ? '#EAB308' : stageColors.header.includes('orange') ? '#F97316' : stageColors.header.includes('purple') ? '#8B5CF6' : stageColors.header.includes('green') ? '#10B981' : stageColors.header.includes('red') ? '#EF4444' : '#6B7280'}}>
                     {stageCandidates.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                         <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-3">
@@ -619,7 +619,7 @@ export default function Candidates() {
                         <p className="text-xs text-center">Candidates will appear here when they reach this stage</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-3 pr-2">
                         {stageCandidates.map((candidate) => (
                           <CandidateCard key={candidate.id} candidate={candidate} />
                         ))}

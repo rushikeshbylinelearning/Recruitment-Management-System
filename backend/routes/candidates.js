@@ -986,7 +986,7 @@ router.get('/:id/resume/metadata', authenticateToken, checkPermission('candidate
 // Add note to candidate
 router.post('/:id/notes', authenticateToken, checkPermission('candidates', 'edit'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.id;
-  const { notes, rating, ratingComments } = req.body;
+  const { notes, rating, ratingComments, recommendation } = req.body;
 
   // Check if candidate exists
   const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
@@ -994,15 +994,62 @@ router.post('/:id/notes', authenticateToken, checkPermission('candidates', 'edit
     throw new NotFoundError('Candidate not found');
   }
 
-  // Add note/rating to candidate_notes_ratings table
+  // Add note/rating/recommendation to candidate_notes_ratings table
   const result = await query(
-    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, rating, rating_comments) VALUES (?, ?, ?, ?, ?)`,
-    [candidateId, req.user.id, notes || null, rating || null, ratingComments || null]
+    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, rating, rating_comments, recommendation) VALUES (?, ?, ?, ?, ?, ?)`,
+    [candidateId, req.user.id, notes || null, rating || null, ratingComments || null, recommendation || null]
   );
 
   res.json({
     success: true,
     message: 'Note/rating added successfully',
+    data: {
+      id: result.insertId
+    }
+  });
+}));
+
+// Add interview notes and recommendation (for interviewers - limited permission)
+router.post('/:id/interview-notes', authenticateToken, checkPermission('candidates', 'view'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const { notes, recommendation } = req.body;
+
+  // Check if candidate exists
+  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  if (existingCandidates.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  // Validate that the user is an interviewer and has an interview assigned to this candidate
+  if (req.user.role !== 'Interviewer') {
+    return res.status(403).json({
+      success: false,
+      message: 'This endpoint is only available for interviewers'
+    });
+  }
+
+  // Check if the interviewer has an interview assigned to this candidate
+  const interviewCheck = await query(
+    'SELECT id FROM interviews WHERE candidate_id = ? AND interviewer_id = ?',
+    [candidateId, req.user.id]
+  );
+
+  if (interviewCheck.length === 0) {
+    return res.status(403).json({
+      success: false,
+      message: 'You are not assigned to interview this candidate'
+    });
+  }
+
+  // Add interview notes and recommendation to candidate_notes_ratings table
+  const result = await query(
+    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, recommendation) VALUES (?, ?, ?, ?)`,
+    [candidateId, req.user.id, notes || null, recommendation || null]
+  );
+
+  res.json({
+    success: true,
+    message: 'Interview notes and recommendation added successfully',
     data: {
       id: result.insertId
     }

@@ -12,12 +12,32 @@ interface CandidateViewModalProps {
 export default function CandidateViewModal({ isOpen, onClose, candidate }: CandidateViewModalProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [freshCandidate, setFreshCandidate] = useState<Candidate | null>(null);
 
   useEffect(() => {
     if (isOpen && candidate) {
+      console.log('CandidateViewModal - Candidate data:', candidate);
+      console.log('CandidateViewModal - Candidate notes:', candidate.notes);
+      fetchFreshCandidateData();
       fetchAssignments();
     }
   }, [isOpen, candidate]);
+
+  const fetchFreshCandidateData = async () => {
+    if (!candidate) return;
+    
+    try {
+      console.log('Fetching fresh candidate data for ID:', candidate.id);
+      const response = await candidatesAPI.getCandidateById(candidate.id);
+      console.log('Fresh candidate data response:', response);
+      if (response.success && response.data) {
+        setFreshCandidate(response.data.candidate);
+        console.log('Fresh candidate notes:', response.data.candidate.notes);
+      }
+    } catch (error) {
+      console.error('Error fetching fresh candidate data:', error);
+    }
+  };
 
   const fetchAssignments = async () => {
     if (!candidate) return;
@@ -263,6 +283,102 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                    </div>
                  </div>
                )}
+
+              {/* Interview Details */}
+              {(() => {
+                const candidateToUse = freshCandidate || candidate;
+                const notes = candidateToUse?.notes;
+                console.log('Using candidate data:', candidateToUse);
+                console.log('All candidate notes:', notes);
+                
+                if (notes && Array.isArray(notes)) {
+                  const interviewerNotes = notes.filter((note: any) => note.user_role === 'Interviewer');
+                  console.log('Filtered interviewer notes:', interviewerNotes);
+                if (interviewerNotes.length > 0) {
+                  return (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Interview Details</h3>
+                      <div className="space-y-4">
+                        {interviewerNotes.map((note: any, index: number) => (
+                          <div key={note.id || index} className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-sm font-medium text-gray-900">{note.user_name}</span>
+                                <span className="text-xs text-gray-500 bg-blue-100 px-2 py-1 rounded-full">
+                                  Interviewer
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {new Date(note.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            
+                            {/* Recommendation Badge */}
+                            {note.recommendation && (
+                              <div className="mb-3">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                  note.recommendation === 'Recommend' ? 'bg-green-100 text-green-800' :
+                                  note.recommendation === 'Don\'t Recommend' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {note.recommendation === 'Recommend' ? '✓ Recommend for next round' :
+                                   note.recommendation === 'Don\'t Recommend' ? '✗ Don\'t recommend' :
+                                   '○ Neutral'}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {/* Interview Notes */}
+                            {note.notes && (
+                              <div className="text-gray-700 text-sm">
+                                <p className="whitespace-pre-wrap">{note.notes}</p>
+                              </div>
+                            )}
+                            
+                            {/* Rating if available */}
+                            {note.rating && (
+                              <div className="mt-3 flex items-center space-x-2">
+                                <span className="text-sm text-gray-600">Rating:</span>
+                                <div className="flex items-center space-x-1">
+                                  {[1, 2, 3, 4, 5].map((star) => (
+                                    <span
+                                      key={star}
+                                      className={`text-sm ${star <= note.rating ? 'text-yellow-500' : 'text-gray-300'}`}
+                                    >
+                                      ★
+                                    </span>
+                                  ))}
+                                  <span className="text-sm text-gray-600 ml-1">({note.rating}/5)</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                  // Debug: Show all notes if no interviewer notes found
+                  console.log('No interviewer notes found, showing debug info');
+                  return (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <h3 className="text-lg font-medium text-yellow-900 mb-2">Debug: Interview Details</h3>
+                      <p className="text-sm text-yellow-800 mb-2">No interviewer notes found. Available notes:</p>
+                      <div className="text-xs text-yellow-700">
+                        <p>Total notes: {notes.length}</p>
+                        {notes.map((note: any, index: number) => (
+                          <div key={index} className="mt-1 p-2 bg-white rounded border">
+                            <p>User: {note.user_name} (Role: {note.user_role})</p>
+                            <p>Has recommendation: {note.recommendation ? 'Yes' : 'No'}</p>
+                            <p>Recommendation: {note.recommendation || 'None'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
             </div>
 

@@ -18,7 +18,7 @@ const config = {
   
   // JWT Configuration
   jwt: {
-    secret: process.env.JWT_SECRET || 'your_super_secret_jwt_key_here_make_it_long_and_secure',
+    secret: process.env.JWT_SECRET || 'hfdsjhsfuiewhyrfjsdbnfjsdhfjwdhfjsdh8493901nsjnjsan812u120',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h'
   },
   

@@ -3,6 +3,7 @@ import { Plus, Search, MoreVertical, Mail, CheckCircle, Clock, AlertCircle, X, S
 import { TeamMember } from '../types';
 import { usersAPI, User, tasksAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../services/api';
 
 export default function Team() {
   const { hasPermission, user } = useAuth();
@@ -199,7 +200,7 @@ export default function Team() {
           role: memberFormData.role.toLowerCase()
         };
         
-        const response = await fetch('http://localhost:3001/api/auth/register', {
+        const response = await fetch(`${API_BASE_URL}/auth/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

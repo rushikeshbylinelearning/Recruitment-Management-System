@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MessageSquare, Clock, MapPin, Phone, Mail, Star, Users, ChevronDown } from 'lucide-react';
-import { candidatesAPI, Candidate } from '../services/api';
+import { Search, MessageSquare, Clock, MapPin, Phone, Mail, Star, Users, ChevronDown, Calendar, Video, User } from 'lucide-react';
+import { candidatesAPI, interviewsAPI, Candidate } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 interface PaginationInfo {
@@ -10,9 +10,23 @@ interface PaginationInfo {
   pages: number;
 }
 
+interface InterviewData {
+  id: number;
+  candidate_id: number;
+  scheduled_date: string;
+  type: string;
+  status: string;
+  location?: string;
+  meeting_link?: string;
+  notes?: string;
+  candidate_name?: string;
+  candidate_position?: string;
+}
+
 export default function InterviewerCandidates() {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [interviews, setInterviews] = useState<InterviewData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,27 +49,62 @@ export default function InterviewerCandidates() {
   }, [pagination.page, searchTerm, selectedStage]);
 
   const fetchCandidates = async () => {
+    if (!user?.id) return;
+    
     try {
       setLoading(true);
-      const response = await candidatesAPI.getCandidates({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        stage: selectedStage
+      
+      // Get interviews assigned to this interviewer
+      const interviewsResponse = await interviewsAPI.getInterviews({ 
+        interviewerId: user.id,
+        limit: 100 
       });
-
-      if (response.success && response.data) {
-        setCandidates(response.data.candidates || []);
+      
+      if (interviewsResponse.success && interviewsResponse.data) {
+        const allInterviews = interviewsResponse.data.interviews || [];
+        setInterviews(allInterviews);
+        
+        // Get unique candidate IDs from interviews
+        const candidateIds = [...new Set(allInterviews.map(i => i.candidate_id))];
+        
+        // Get candidate details for assigned candidates
+        const candidatesResponse = await candidatesAPI.getCandidates({ limit: 100 });
+        const allCandidates = candidatesResponse.success && candidatesResponse.data ? candidatesResponse.data.candidates || [] : [];
+        
+        // Filter candidates to only show assigned ones
+        let assignedCandidates = allCandidates.filter(c => candidateIds.includes(c.id));
+        
+        // Apply search filter
+        if (searchTerm) {
+          assignedCandidates = assignedCandidates.filter(candidate =>
+            candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            candidate.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            candidate.email.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        }
+        
+        // Apply stage filter
+        if (selectedStage) {
+          assignedCandidates = assignedCandidates.filter(candidate => candidate.stage === selectedStage);
+        }
+        
+        // Apply pagination
+        const startIndex = (pagination.page - 1) * pagination.limit;
+        const endIndex = startIndex + pagination.limit;
+        const paginatedCandidates = assignedCandidates.slice(startIndex, endIndex);
+        
+        setCandidates(paginatedCandidates);
         setPagination(prev => ({
           ...prev,
-          ...(response.data?.pagination || {})
+          total: assignedCandidates.length,
+          pages: Math.ceil(assignedCandidates.length / pagination.limit)
         }));
       } else {
-        setError('Failed to load candidates');
+        setError('Failed to load assigned candidates');
       }
     } catch (err) {
-      console.error('Error fetching candidates:', err);
-      setError('Failed to load candidates');
+      console.error('Error fetching assigned candidates:', err);
+      setError('Failed to load assigned candidates');
     } finally {
       setLoading(false);
     }
@@ -99,8 +148,8 @@ export default function InterviewerCandidates() {
 
     try {
       setUpdatingNotes(true);
-      // Use the new notes endpoint to add notes to candidate_notes_ratings table
-      const response = await candidatesAPI.addCandidateNote(selectedCandidate.id, {
+      // Use the interview-specific notes endpoint for interviewers
+      const response = await candidatesAPI.addInterviewNote(selectedCandidate.id, {
         notes: notes,
         recommendation: recommendation
       });
@@ -158,6 +207,36 @@ export default function InterviewerCandidates() {
     return 'text-red-600';
   };
 
+  const getInterviewForCandidate = (candidateId: number) => {
+    return interviews.find(interview => interview.candidate_id === candidateId);
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      }),
+      time: date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      })
+    };
+  };
+
+  const getInterviewStatusColor = (status: string) => {
+    switch (status) {
+      case 'Scheduled': return 'bg-blue-100 text-blue-800';
+      case 'Completed': return 'bg-green-100 text-green-800';
+      case 'Cancelled': return 'bg-red-100 text-red-800';
+      case 'Rescheduled': return 'bg-yellow-100 text-yellow-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -181,8 +260,8 @@ export default function InterviewerCandidates() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
-        <p className="text-gray-600 mt-1">Review candidates and manage interview notes</p>
+        <h1 className="text-3xl font-bold text-gray-900">Your Assigned Candidates</h1>
+        <p className="text-gray-600 mt-1">Review candidates assigned to you for interviews and manage interview notes</p>
       </div>
 
       {/* Search and Filters */}
@@ -252,6 +331,49 @@ export default function InterviewerCandidates() {
                     </div>
                   </div>
                 </div>
+
+                {/* Interview Details */}
+                {(() => {
+                  const interview = getInterviewForCandidate(candidate.id);
+                  if (interview) {
+                    const { date, time } = formatDateTime(interview.scheduled_date);
+                    return (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium text-blue-900">Interview Details</h4>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getInterviewStatusColor(interview.status)}`}>
+                            {interview.status}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center text-blue-700 text-sm">
+                            <Calendar size={14} className="mr-2" />
+                            <span>{date} at {time}</span>
+                          </div>
+                          <div className="flex items-center text-blue-700 text-sm">
+                            <User size={14} className="mr-2" />
+                            <span>{interview.type}</span>
+                          </div>
+                          {interview.location && (
+                            <div className="flex items-center text-blue-700 text-sm">
+                              <MapPin size={14} className="mr-2" />
+                              <span>{interview.location}</span>
+                            </div>
+                          )}
+                          {interview.meeting_link && (
+                            <div className="flex items-center text-blue-700 text-sm">
+                              <Video size={14} className="mr-2" />
+                              <a href={interview.meeting_link} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-800">
+                                Join Meeting
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Candidate Details */}
                 <div className="space-y-2 mb-4">
@@ -357,8 +479,8 @@ export default function InterviewerCandidates() {
             <div className="text-gray-400 mb-4">
               <Users size={48} className="mx-auto" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates found</h3>
-            <p className="text-gray-600">Try adjusting your search criteria or filters.</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No assigned candidates found</h3>
+            <p className="text-gray-600">You don't have any candidates assigned for interviews yet. Contact your HR team to get assigned interviews.</p>
           </div>
         )}
       </div>
