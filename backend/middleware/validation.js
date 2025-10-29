@@ -137,6 +137,75 @@ export const validateCandidate = [
     .withMessage('Score must be between 0 and 5')
 ];
 
+// Partial candidate validation rules (for assignment updates)
+export const validateCandidatePartial = [
+  body('name')
+    .optional()
+    .trim(),
+  
+  body('email')
+    .optional()
+    .isEmail()
+    .withMessage('Please provide a valid email address')
+    .normalizeEmail(),
+  
+  body('phone')
+    .optional(),
+  
+  body('position')
+    .optional()
+    .trim(),
+  
+  body('stage')
+    .optional()
+    .isIn(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'])
+    .withMessage('Invalid stage'),
+  
+  body('source')
+    .optional()
+    .trim(),
+  
+  body('appliedDate')
+    .optional()
+    .isISO8601()
+    .withMessage('Applied date must be a valid date'),
+  
+  body('resumePath')
+    .optional()
+    .trim(),
+  
+  body('notes')
+    .optional()
+    .trim(),
+  
+  body('assignedTo')
+    .optional()
+    .custom((value) => {
+      if (value === 'Unassigned') return true;
+      if (Number.isInteger(Number(value)) && Number(value) > 0) return true;
+      throw new Error('Assigned user ID must be a valid integer or "Unassigned"');
+    }),
+  
+  body('score')
+    .optional()
+    .isFloat({ min: 0, max: 5 })
+    .withMessage('Score must be between 0 and 5'),
+  
+  // Assignment-specific fields
+  body('assignmentLocation')
+    .optional()
+    .trim(),
+  
+  body('inOfficeAssignment')
+    .optional()
+    .trim(),
+  
+  body('inHouseAssignmentStatus')
+    .optional()
+    .isIn(['Draft', 'Assigned', 'In Progress', 'Submitted', 'Approved', 'Rejected', 'Cancelled'])
+    .withMessage('Invalid assignment status')
+];
+
 // Interview validation rules
 export const validateInterview = [
   body('candidate_id')

@@ -40,13 +40,14 @@ class EmailService {
 
   /**
    * Send email using Gmail SMTP
-   * @param {string} to - Recipient email address
+   * @param {string|Object} to - Recipient email address or email options object
    * @param {string} subject - Email subject
    * @param {string} text - Plain text content
    * @param {string} html - HTML content (optional)
+   * @param {Array} attachments - Array of attachment objects {filename, path} (optional)
    * @returns {Promise<Object>} - Result object with success status and message
    */
-  async sendEmail(to, subject, text, html = null) {
+  async sendEmail(to, subject, text, html = null, attachments = null) {
     try {
       if (!this.transporter) {
         throw new Error('Email transporter not initialized');
@@ -59,23 +60,53 @@ class EmailService {
         throw new Error('Email credentials not configured. Please check email-config.js or .env file');
       }
 
+      // Handle both string and object parameters
+      let emailTo, emailSubject, emailText, emailHtml, emailAttachments;
+      
+      if (typeof to === 'object') {
+        // New format: sendEmail({to, subject, text, html, attachments})
+        emailTo = to.to;
+        emailSubject = to.subject;
+        emailText = to.text;
+        emailHtml = to.html;
+        emailAttachments = to.attachments;
+      } else {
+        // Legacy format: sendEmail(to, subject, text, html, attachments)
+        emailTo = to;
+        emailSubject = subject;
+        emailText = text;
+        emailHtml = html;
+        emailAttachments = attachments;
+      }
+
       const mailOptions = {
         from: emailUser,
-        to: to,
-        subject: subject,
-        text: text,
-        html: html || text // Use HTML if provided, otherwise use text
+        to: emailTo,
+        subject: emailSubject,
+        text: emailText,
+        html: emailHtml || emailText // Use HTML if provided, otherwise use text
       };
 
-      console.log(`Attempting to send email to: ${to}`);
-      console.log(`Subject: ${subject}`);
+      // Add attachments if provided
+      if (emailAttachments && Array.isArray(emailAttachments) && emailAttachments.length > 0) {
+        mailOptions.attachments = emailAttachments.map(attachment => ({
+          filename: attachment.filename,
+          path: attachment.path
+        }));
+      }
+
+      console.log(`Attempting to send email to: ${emailTo}`);
+      console.log(`Subject: ${emailSubject}`);
+      if (emailAttachments && emailAttachments.length > 0) {
+        console.log(`Attachments: ${emailAttachments.length} files`);
+      }
 
       const result = await this.transporter.sendMail(mailOptions);
       
       console.log('Email sent successfully:', {
         messageId: result.messageId,
-        to: to,
-        subject: subject
+        to: emailTo,
+        subject: emailSubject
       });
 
       return {
@@ -86,8 +117,8 @@ class EmailService {
 
     } catch (error) {
       console.error('Failed to send email:', {
-        to: to,
-        subject: subject,
+        to: emailTo,
+        subject: emailSubject,
         error: error.message
       });
 

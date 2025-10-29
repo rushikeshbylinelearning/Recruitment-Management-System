@@ -23,6 +23,7 @@ import analyticsRoutes from './routes/analytics.js';
 import settingsRoutes from './routes/settings.js';
 import fileRoutes from './routes/files.js';
 import dashboardRoutes from './routes/dashboard.js';
+import assignmentRoutes from './routes/assignments.js';
 import emailService from './services/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,7 +70,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
+app.get('/api', async (req, res) => {
   try {
     const dbConnected = await testConnection();
     res.json({
@@ -101,9 +102,10 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/assignments', assignmentRoutes);
 
 // API documentation endpoint
-app.get('/api', (req, res) => {
+app.get('/health', (req, res) => {
   res.json({
     success: true,
     message: 'HR Workflow Management API',
@@ -118,9 +120,9 @@ app.get('/api', (req, res) => {
       communications: '/api/communications',
       analytics: '/api/analytics',
       settings: '/api/settings',
-      files: '/api/files'
+      files: '/api/files',
+      assignments: '/api/assignments'
     },
-    documentation: 'https://github.com/your-repo/api-docs'
   });
 });
 

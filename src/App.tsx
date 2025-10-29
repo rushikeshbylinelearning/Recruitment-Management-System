@@ -17,6 +17,7 @@ import RecruiterInterview from './components/RecruiterInterview';
 import Team from './components/Team';
 import Tasks from './components/Tasks';
 import Communications from './components/Communications';
+import Assignments from './components/Assignments';
 import Analytics from './components/Analytics';
 import Settings from './components/Settings';
 
@@ -97,6 +98,7 @@ function AppContent() {
           <Route path="team" element={<Team />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="communications" element={<Communications />} />
+          <Route path="assignments" element={<Assignments />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="settings" element={<Settings />} />
         </Route>

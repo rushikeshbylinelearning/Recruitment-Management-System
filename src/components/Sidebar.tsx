@@ -1,4 +1,4 @@
-import { Users, Briefcase, FileText, MessageSquare, BarChart3, Settings, Home, LogOut, Calendar } from 'lucide-react';
+import { Users, Briefcase, FileText, MessageSquare, BarChart3, Settings, Home, LogOut, Calendar, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -19,6 +19,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
     { id: 'team', label: 'Team', icon: Users },
     { id: 'tasks', label: 'Tasks', icon: FileText },
     { id: 'communications', label: 'Communications', icon: MessageSquare },
+    { id: 'assignments', label: 'Assignments', icon: ClipboardList },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

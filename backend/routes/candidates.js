@@ -1,7 +1,7 @@
 import express from 'express';
 import { query, transaction } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateCandidate, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateCandidate, validateCandidatePartial, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import fileStorageService from '../services/fileStorage.js';
 import fs from 'fs';
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
@@ -9,10 +9,7 @@ import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../
 const router = express.Router();
 
 // Get all candidates
-router.get('/', authenticateToken, checkPermission('candidates', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
+router.get('/', authenticateToken, checkPermission('candidates', 'view'), asyncHandler(async (req, res) => {
   const search = req.query.search || '';
   const stage = req.query.stage || '';
   const source = req.query.source || '';
@@ -21,8 +18,8 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
   let params = [];
 
   if (search) {
-    whereClause += ' AND (c.name LIKE ? OR c.email LIKE ? OR c.position LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    whereClause += ' AND (c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.position LIKE ? OR c.location LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   if (stage) {
@@ -35,21 +32,22 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     params.push(source);
   }
 
-  // Get total count
-  const countResult = await query(
-    `SELECT COUNT(*) as total FROM candidates c ${whereClause}`,
-    params
-  );
-  const total = countResult[0].total;
-
-  // Get candidates
+  // Get candidates with latest interview date for Interview stage sorting
   const candidates = await query(
-    `SELECT c.*, u.name as assigned_to_name 
+    `SELECT c.*, u.name as assigned_to_name,
+       (SELECT MAX(i.scheduled_date) 
+        FROM interviews i 
+        WHERE i.candidate_id = c.id 
+        AND i.status = 'Completed') as latest_interview_date
      FROM candidates c
      LEFT JOIN users u ON c.assigned_to = u.id
      ${whereClause}
-     ORDER BY c.applied_date DESC 
-     LIMIT ${limit} OFFSET ${offset}`,
+     ORDER BY 
+       CASE 
+         WHEN c.stage = 'Interview' AND latest_interview_date IS NOT NULL 
+         THEN latest_interview_date 
+         ELSE c.applied_date 
+       END DESC`,
     params
   );
 
@@ -79,6 +77,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     candidate.resume = candidate.resume_path; // Add resume path for frontend
     candidate.appliedDate = candidate.applied_date;
     candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
+    candidate.assignedToId = candidate.assigned_to || null; // Add user ID for form submission
     
     // Structure salary object
     candidate.salary = {
@@ -109,6 +108,9 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
       interviewerId: candidate.interviewer_id || null,
       inOfficeAssignment: candidate.in_office_assignment || null
     };
+
+    // Add latest interview date for Interview stage candidates
+    candidate.latestInterviewDate = candidate.latest_interview_date || null;
 
     // Add location fields
     candidate.assignmentLocation = candidate.assignment_location || null;
@@ -160,13 +162,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
   res.json({
     success: true,
     data: {
-      candidates,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
+      candidates
     }
   });
 }));
@@ -212,6 +208,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   candidate.resume = candidate.resume_path; // Add resume path for frontend
   candidate.appliedDate = candidate.applied_date;
   candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
+  candidate.assignedToId = candidate.assigned_to || null; // Add user ID for form submission
   
   // Structure salary object
   candidate.salary = {
@@ -408,11 +405,33 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
   );
 
   // If notes are provided, add them to candidate_notes_ratings table
-  if (notes && notes.trim()) {
+  if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
       `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
       [result.insertId, req.user.id, notes.trim()]
     );
+  }
+
+  // Sync assignment status: Update assignments table if inHouseAssignmentStatus is set
+  if (inHouseAssignmentStatus && inHouseAssignmentStatus !== 'Draft') {
+    // Map candidate status to assignment status
+    const statusMapping = {
+      'Assigned': 'Assigned',
+      'In Progress': 'In Progress', 
+      'Submitted': 'Submitted',
+      'Approved': 'Approved',
+      'Rejected': 'Rejected',
+      'Cancelled': 'Cancelled'
+    };
+    
+    const assignmentStatus = statusMapping[inHouseAssignmentStatus];
+    if (assignmentStatus) {
+      // Update all assignments for this candidate to the new status
+      await query(
+        `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
+        [assignmentStatus, result.insertId]
+      );
+    }
   }
 
   res.status(201).json({
@@ -522,10 +541,133 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   );
 
   // If notes are provided, add them to candidate_notes_ratings table
-  if (notes && notes.trim()) {
+  if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
       `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
       [candidateId, req.user.id, notes.trim()]
+    );
+  }
+
+  // Sync assignment status: Update assignments table if inHouseAssignmentStatus changed
+  if (inHouseAssignmentStatus && inHouseAssignmentStatus !== 'Draft') {
+    // Map candidate status to assignment status
+    const statusMapping = {
+      'Assigned': 'Assigned',
+      'In Progress': 'In Progress', 
+      'Submitted': 'Submitted',
+      'Approved': 'Approved',
+      'Rejected': 'Rejected',
+      'Cancelled': 'Cancelled'
+    };
+    
+    const assignmentStatus = statusMapping[inHouseAssignmentStatus];
+    if (assignmentStatus) {
+      // Update all assignments for this candidate to the new status
+      await query(
+        `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
+        [assignmentStatus, candidateId]
+      );
+    }
+  }
+
+  res.json({
+    success: true,
+    message: 'Candidate updated successfully'
+  });
+}));
+
+// Partial update candidate (for assignment updates)
+router.patch('/:id', authenticateToken, checkPermission('candidates', 'edit'), validateId('id'), validateCandidatePartial, handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const updateData = req.body;
+
+  // Check if candidate exists
+  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  if (existingCandidates.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  // Build dynamic update query based on provided fields
+  const updateFields = [];
+  const updateValues = [];
+
+  // Only update fields that are provided in the request
+  if (updateData.name !== undefined) {
+    updateFields.push('name = ?');
+    updateValues.push(updateData.name);
+  }
+  if (updateData.email !== undefined) {
+    updateFields.push('email = ?');
+    updateValues.push(updateData.email);
+  }
+  if (updateData.phone !== undefined) {
+    updateFields.push('phone = ?');
+    updateValues.push(updateData.phone);
+  }
+  if (updateData.position !== undefined) {
+    updateFields.push('position = ?');
+    updateValues.push(updateData.position);
+  }
+  if (updateData.stage !== undefined) {
+    updateFields.push('stage = ?');
+    updateValues.push(updateData.stage);
+  }
+  if (updateData.source !== undefined) {
+    updateFields.push('source = ?');
+    updateValues.push(updateData.source);
+  }
+  if (updateData.appliedDate !== undefined) {
+    updateFields.push('applied_date = ?');
+    updateValues.push(updateData.appliedDate);
+  }
+  if (updateData.resumePath !== undefined) {
+    updateFields.push('resume_path = ?');
+    updateValues.push(updateData.resumePath);
+  }
+  if (updateData.assignedTo !== undefined) {
+    const assignedUserId = updateData.assignedTo === 'Unassigned' ? null : updateData.assignedTo;
+    updateFields.push('assigned_to = ?');
+    updateValues.push(assignedUserId);
+  }
+  if (updateData.score !== undefined) {
+    updateFields.push('score = ?');
+    updateValues.push(updateData.score);
+  }
+  if (updateData.assignmentLocation !== undefined) {
+    updateFields.push('assignment_location = ?');
+    updateValues.push(updateData.assignmentLocation);
+  }
+  if (updateData.inOfficeAssignment !== undefined) {
+    updateFields.push('in_office_assignment = ?');
+    updateValues.push(updateData.inOfficeAssignment);
+  }
+  if (updateData.inHouseAssignmentStatus !== undefined) {
+    updateFields.push('in_house_assignment_status = ?');
+    updateValues.push(updateData.inHouseAssignmentStatus);
+  }
+
+  // Add updated_at timestamp
+  updateFields.push('updated_at = NOW()');
+  updateValues.push(candidateId);
+
+  if (updateFields.length === 1) { // Only updated_at was added
+    return res.json({
+      success: true,
+      message: 'No fields to update'
+    });
+  }
+
+  // Execute the update
+  await query(
+    `UPDATE candidates SET ${updateFields.join(', ')} WHERE id = ?`,
+    updateValues
+  );
+
+  // If notes are provided, add them to candidate_notes_ratings table
+  if (updateData.notes && typeof updateData.notes === 'string' && updateData.notes.trim()) {
+    await query(
+      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
+      [candidateId, req.user.id, updateData.notes.trim()]
     );
   }
 
@@ -581,7 +723,7 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
   );
 
   // If notes are provided, add them to candidate_notes_ratings table
-  if (notes && notes.trim()) {
+  if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
       `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
       [candidateId, req.user.id, notes.trim()]
@@ -645,10 +787,6 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
     throw new ValidationError('Candidates array is required');
   }
 
-  if (candidates.length > 100) {
-    throw new ValidationError('Cannot import more than 100 candidates at once');
-  }
-
   const results = [];
   const errors = [];
 
@@ -656,9 +794,15 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
     try {
       const candidate = candidates[i];
       
-      // Validate required fields
-      if (!candidate.name || !candidate.email || !candidate.position) {
-        errors.push({ row: i + 1, error: 'Missing required fields' });
+      // Skip completely empty rows
+      const hasAnyData = candidate.name || candidate.email || candidate.phone;
+      if (!hasAnyData) {
+        continue;
+      }
+      
+      // Validate required fields (only name and email are required)
+      if (!candidate.name || !candidate.email) {
+        errors.push({ row: i + 1, error: 'Missing required fields (name and email)' });
         continue;
       }
 
@@ -699,8 +843,8 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
          assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
          location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
          interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position || '', candidate.stage || 'Applied',
          candidate.source || 'Bulk Import', candidate.appliedDate || new Date().toISOString().split('T')[0],
          candidate.resumePath || null, candidate.score || 0, assignedTo,
          JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.expectedSalary || '', 
@@ -714,11 +858,33 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
       );
 
       // If notes are provided, add them to candidate_notes_ratings table
-      if (candidate.notes && candidate.notes.trim()) {
+      if (candidate.notes && typeof candidate.notes === 'string' && candidate.notes.trim()) {
         await query(
           `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
           [result.insertId, req.user.id, candidate.notes.trim()]
         );
+      }
+
+      // Sync assignment status: Update assignments table if inHouseAssignmentStatus is set
+      if (candidate.inHouseAssignmentStatus && candidate.inHouseAssignmentStatus !== 'Draft') {
+        // Map candidate status to assignment status
+        const statusMapping = {
+          'Assigned': 'Assigned',
+          'In Progress': 'In Progress', 
+          'Submitted': 'Submitted',
+          'Approved': 'Approved',
+          'Rejected': 'Rejected',
+          'Cancelled': 'Cancelled'
+        };
+        
+        const assignmentStatus = statusMapping[candidate.inHouseAssignmentStatus];
+        if (assignmentStatus) {
+          // Update all assignments for this candidate to the new status
+          await query(
+            `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
+            [assignmentStatus, result.insertId]
+          );
+        }
       }
 
       results.push({ row: i + 1, candidateId: result.insertId });
@@ -819,7 +985,7 @@ router.get('/:id/resume/metadata', authenticateToken, checkPermission('candidate
 // Add note to candidate
 router.post('/:id/notes', authenticateToken, checkPermission('candidates', 'edit'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.id;
-  const { notes, rating, ratingComments } = req.body;
+  const { notes, rating, ratingComments, recommendation } = req.body;
 
   // Check if candidate exists
   const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
@@ -827,15 +993,62 @@ router.post('/:id/notes', authenticateToken, checkPermission('candidates', 'edit
     throw new NotFoundError('Candidate not found');
   }
 
-  // Add note/rating to candidate_notes_ratings table
+  // Add note/rating/recommendation to candidate_notes_ratings table
   const result = await query(
-    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, rating, rating_comments) VALUES (?, ?, ?, ?, ?)`,
-    [candidateId, req.user.id, notes || null, rating || null, ratingComments || null]
+    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, rating, rating_comments, recommendation) VALUES (?, ?, ?, ?, ?, ?)`,
+    [candidateId, req.user.id, notes || null, rating || null, ratingComments || null, recommendation || null]
   );
 
   res.json({
     success: true,
     message: 'Note/rating added successfully',
+    data: {
+      id: result.insertId
+    }
+  });
+}));
+
+// Add interview notes and recommendation (for interviewers - limited permission)
+router.post('/:id/interview-notes', authenticateToken, checkPermission('candidates', 'view'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const { notes, recommendation } = req.body;
+
+  // Check if candidate exists
+  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  if (existingCandidates.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  // Validate that the user is an interviewer and has an interview assigned to this candidate
+  if (req.user.role !== 'Interviewer') {
+    return res.status(403).json({
+      success: false,
+      message: 'This endpoint is only available for interviewers'
+    });
+  }
+
+  // Check if the interviewer has an interview assigned to this candidate
+  const interviewCheck = await query(
+    'SELECT id FROM interviews WHERE candidate_id = ? AND interviewer_id = ?',
+    [candidateId, req.user.id]
+  );
+
+  if (interviewCheck.length === 0) {
+    return res.status(403).json({
+      success: false,
+      message: 'You are not assigned to interview this candidate'
+    });
+  }
+
+  // Add interview notes and recommendation to candidate_notes_ratings table
+  const result = await query(
+    `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes, recommendation) VALUES (?, ?, ?, ?)`,
+    [candidateId, req.user.id, notes || null, recommendation || null]
+  );
+
+  res.json({
+    success: true,
+    message: 'Interview notes and recommendation added successfully',
     data: {
       id: result.insertId
     }

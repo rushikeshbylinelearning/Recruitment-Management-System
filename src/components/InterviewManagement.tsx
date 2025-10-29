@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Calendar, Clock, User, MapPin, Video, Phone, MessageSquare, Edit, Trash2, Eye, Filter, X } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, User, MapPin, Video, Phone, Edit, Trash2, Eye, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { interviewsAPI, candidatesAPI, usersAPI } from '../services/api';
 
@@ -31,7 +31,7 @@ interface InterviewFormData {
 }
 
 export default function InterviewManagement() {
-  const { user, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [interviewers, setInterviewers] = useState<any[]>([]);
@@ -446,6 +446,59 @@ export default function InterviewManagement() {
                       {interview.notes && (
                         <p className="text-sm text-gray-600">{interview.notes}</p>
                       )}
+                      
+                      {/* Interviewer Assessment - Show notes and recommendations */}
+                      {(() => {
+                        const candidate = candidates.find(c => c.id === interview.candidate_id);
+                        if (candidate && candidate.notes && Array.isArray(candidate.notes)) {
+                          const interviewerNotes = candidate.notes.filter((note: any) => note.user_id === interview.interviewer_id);
+                          if (interviewerNotes.length > 0) {
+                            const latestNote = interviewerNotes[interviewerNotes.length - 1];
+                            return (
+                              <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h5 className="text-sm font-medium text-blue-900">Interviewer Assessment</h5>
+                                  <span className="text-xs text-blue-700">
+                                    {new Date(latestNote.created_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                
+                                {/* Recommendation Badge */}
+                                {latestNote.recommendation && (
+                                  <div className="mb-2">
+                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                      latestNote.recommendation === 'Recommend' ? 'bg-green-100 text-green-800' :
+                                      latestNote.recommendation === 'Don\'t Recommend' ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {latestNote.recommendation === 'Recommend' ? '✓ Recommend for next round' :
+                                       latestNote.recommendation === 'Don\'t Recommend' ? '✗ Don\'t recommend' :
+                                       '○ Neutral'}
+                                    </span>
+                                  </div>
+                                )}
+                                
+                                {/* Notes */}
+                                {latestNote.notes && (
+                                  <div className="text-blue-800 text-sm">
+                                    <p className="line-clamp-2">{latestNote.notes}</p>
+                                  </div>
+                                )}
+                                
+                                {/* Show count if multiple assessments */}
+                                {interviewerNotes.length > 1 && (
+                                  <div className="mt-2 pt-2 border-t border-blue-200">
+                                    <p className="text-xs text-blue-600">
+                                      {interviewerNotes.length} assessment{interviewerNotes.length > 1 ? 's' : ''} submitted
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                   <div className="flex space-x-2">
@@ -868,6 +921,56 @@ export default function InterviewManagement() {
                   <p className="text-gray-900">{selectedInterview.notes}</p>
                 </div>
               )}
+
+              {/* Interviewer Assessment */}
+              {(() => {
+                const candidate = candidates.find(c => c.id === selectedInterview.candidate_id);
+                if (candidate && candidate.notes && Array.isArray(candidate.notes)) {
+                  const interviewerNotes = candidate.notes.filter((note: any) => note.user_id === selectedInterview.interviewer_id);
+                  if (interviewerNotes.length > 0) {
+                    return (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Interviewer Assessment</label>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          {interviewerNotes.map((note: any, index: number) => (
+                            <div key={note.id || index} className={index > 0 ? 'mt-4 pt-4 border-t border-blue-200' : ''}>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-blue-900">Assessment #{index + 1}</span>
+                                <span className="text-xs text-blue-700">
+                                  {new Date(note.created_at).toLocaleString()}
+                                </span>
+                              </div>
+                              
+                              {/* Recommendation */}
+                              {note.recommendation && (
+                                <div className="mb-2">
+                                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                    note.recommendation === 'Recommend' ? 'bg-green-100 text-green-800' :
+                                    note.recommendation === 'Don\'t Recommend' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {note.recommendation === 'Recommend' ? '✓ Recommend for next round' :
+                                     note.recommendation === 'Don\'t Recommend' ? '✗ Don\'t recommend' :
+                                     '○ Neutral'}
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {/* Notes */}
+                              {note.notes && (
+                                <div className="text-blue-800 text-sm">
+                                  <p className="whitespace-pre-wrap">{note.notes}</p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                }
+                return null;
+              })()}
             </div>
 
             <div className="p-6 border-t border-gray-200 flex justify-end">

@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateInterview, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -349,9 +349,7 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
 
   res.json({
     success: true,
-    data: {
-      interviews
-    }
+    data: { interviews }
   });
 }));
 

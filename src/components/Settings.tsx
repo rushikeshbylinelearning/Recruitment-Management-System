@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Plus, Edit, Trash2, Users, Shield, Bell, Globe, Database, Key, X, MessageSquare, Mail, Phone, Calendar, Search, Send, Eye } from 'lucide-react';
+import { Save, Plus, Edit, Trash2, Users, Shield, Bell, Globe, Database, X, MessageSquare, Mail, Phone, Calendar, Search, Send, Eye } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TeamMember } from '../types';
 import { mockTeam } from '../data/mockData';
@@ -724,18 +724,31 @@ export default function Settings() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">Role Permissions</h3>
-        <button
-          onClick={handleSaveRolePermissions}
-          disabled={permissionsLoading}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-            permissionsLoading 
-              ? 'bg-gray-400 text-white cursor-not-allowed' 
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
-        >
-          <Save size={16} />
-          <span>{permissionsLoading ? 'Saving...' : 'Save All Role Permissions'}</span>
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={loadRolePermissions}
+            disabled={permissionsLoading}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+              permissionsLoading 
+                ? 'bg-gray-400 text-white cursor-not-allowed' 
+                : 'bg-gray-600 text-white hover:bg-gray-700'
+            }`}
+          >
+            <span>{permissionsLoading ? 'Loading...' : 'Refresh'}</span>
+          </button>
+          <button
+            onClick={handleSaveRolePermissions}
+            disabled={permissionsLoading}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+              permissionsLoading 
+                ? 'bg-gray-400 text-white cursor-not-allowed' 
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            <Save size={16} />
+            <span>{permissionsLoading ? 'Saving...' : 'Save All Role Permissions'}</span>
+          </button>
+        </div>
       </div>
       
       {Object.keys(rolePermissions).length === 0 && !permissionsLoading && (
@@ -794,7 +807,6 @@ export default function Settings() {
       )}
     </div>
   );
-
 
   const NotificationSettings = () => (
     <div className="space-y-6">
@@ -1581,7 +1593,7 @@ export default function Settings() {
         </div>
       )}
 
-
+    
       {/* Add Communication Modal */}
       {showAddCommunication && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

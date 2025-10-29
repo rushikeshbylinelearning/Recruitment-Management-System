@@ -39,7 +39,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     workPreference: '',
     currentCtc: '',
     ctcFrequency: 'Annual',
-    inHouseAssignmentStatus: 'Pending',
+    inHouseAssignmentStatus: 'Draft',
     interviewDate: '',
     interviewerId: null as number | null,
     inOfficeAssignment: '',
@@ -154,7 +154,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         ctcFrequency: editingCandidate.workPreferences?.ctcFrequency || 
                      editingCandidate.ctcFrequency || 'Annual',
         inHouseAssignmentStatus: editingCandidate.assignmentDetails?.inHouseAssignmentStatus || 
-                               editingCandidate.inHouseAssignmentStatus || 'Pending',
+                               editingCandidate.inHouseAssignmentStatus || 'Draft',
         interviewDate: editingCandidate.assignmentDetails?.interviewDate ? 
                       new Date(editingCandidate.assignmentDetails.interviewDate).toISOString().split('T')[0] :
                       editingCandidate.interviewDate ? 
@@ -204,7 +204,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         workPreference: '',
         currentCtc: '',
         ctcFrequency: 'Annual',
-        inHouseAssignmentStatus: 'Pending',
+        inHouseAssignmentStatus: 'Draft',
         interviewDate: '',
         interviewerId: null as number | null,
         inOfficeAssignment: '',
@@ -249,10 +249,17 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     if (!formData.jobId) newErrors.jobId = 'Job position is required';
     if (!formData.experience.trim()) newErrors.experience = 'Experience is required';
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (formData.email && !emailRegex.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+    // Email validation - support multiple emails separated by commas
+    if (formData.email) {
+      const emails = formData.email.split(',').map(email => email.trim()).filter(Boolean);
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      
+      for (const email of emails) {
+        if (!emailRegex.test(email)) {
+          newErrors.email = 'Please enter valid email addresses (separate multiple emails with commas)';
+          break;
+        }
+      }
     }
 
     setErrors(newErrors);
@@ -269,10 +276,14 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     const candidateData = {
       ...formData,
       position: selectedJob?.title || formData.position,
-      skills: formData.skills.split(',').map(skill => skill.trim()).filter(Boolean),
+      skills: typeof formData.skills === 'string' 
+        ? formData.skills.split(',').map(skill => skill.trim()).filter(Boolean)
+        : Array.isArray(formData.skills) 
+        ? formData.skills 
+        : [],
       appliedDate: editingCandidate ? editingCandidate.appliedDate : new Date().toISOString(),
       score: formData.score || 0,
-      assignedTo: editingCandidate ? editingCandidate.assignedTo : (selectedJob?.assignedTo[0] || 'Unassigned'),
+      assignedTo: editingCandidate ? (editingCandidate.assignedToId || 'Unassigned') : (selectedJob?.assignedTo[0] || 'Unassigned'),
       communications: [],
       resumeFileId: uploadedFile?.fileId || null,
       // Send salary fields as flat fields for backend compatibility
@@ -329,7 +340,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       workPreference: '',
       currentCtc: '',
       ctcFrequency: 'Annual',
-      inHouseAssignmentStatus: 'Pending',
+      inHouseAssignmentStatus: 'Draft',
       interviewDate: '',
       interviewerId: null as number | null,
       inOfficeAssignment: '',
@@ -512,7 +523,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.email ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="candidate@email.com"
+                placeholder="candidate@email.com (separate multiple emails with commas)"
               />
               {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
             </div>
@@ -880,9 +891,13 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               onChange={(e) => setFormData(prev => ({ ...prev, inHouseAssignmentStatus: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="Pending">Pending</option>
-              <option value="Shortlisted">Shortlisted</option>
+              <option value="Draft">Draft</option>
+              <option value="Assigned">Assigned</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Submitted">Submitted</option>
+              <option value="Approved">Approved</option>
               <option value="Rejected">Rejected</option>
+              <option value="Cancelled">Cancelled</option>
             </select>
           </div>
 

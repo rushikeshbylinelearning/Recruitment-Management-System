@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Users, Briefcase, Clock, Target, Calendar, ArrowRight } from 'lucide-react';
+import { TrendingUp, Users, Briefcase, Clock, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dashboardAPI } from '../services/api';
 import ProtectedComponent from './ProtectedComponent';

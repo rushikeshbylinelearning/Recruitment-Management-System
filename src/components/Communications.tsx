@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, Mail, Phone, MessageSquare, Send, Calendar, User, Clock, X } from 'lucide-react';
 import { Candidate } from '../types';
 import { communicationsAPI, candidatesAPI } from '../services/api';
+import { formatToDDMMYYYY } from '../utils/dateFormatter';
 
 interface CommunicationsProps {
   onShowEmailTemplates?: () => void;
@@ -340,7 +341,7 @@ export default function Communications({ onShowEmailTemplates }: CommunicationsP
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
                       <div className="flex items-center space-x-1">
                         <Clock size={14} />
-                        <span>{new Date(comm.date || comm.created_at).toLocaleDateString()}</span>
+                        <span>{formatToDDMMYYYY(comm.date || comm.created_at)}</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <Mail size={14} />
