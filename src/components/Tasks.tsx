@@ -30,6 +30,8 @@ export default function Tasks({}: TasksProps) {
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showEditTaskModal, setShowEditTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const [taskFormData, setTaskFormData] = useState({
     title: '',
     description: '',
@@ -286,6 +288,19 @@ export default function Tasks({}: TasksProps) {
       }
 
       if (response.success) {
+        // Show success message
+        if (editingTask) {
+          setSuccessMessage('Task updated successfully!');
+        } else {
+          setSuccessMessage('Task created successfully!');
+        }
+        setShowSuccessPopup(true);
+        
+        // Auto-hide popup after 3 seconds
+        setTimeout(() => {
+          setShowSuccessPopup(false);
+        }, 3000);
+        
         // Refresh tasks list
         const tasksResponse = await tasksAPI.getTasks();
         if (tasksResponse.success && tasksResponse.data) {
@@ -993,6 +1008,27 @@ export default function Tasks({}: TasksProps) {
               >
                 <Save size={16} />
                 <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all duration-300 ease-out scale-100 opacity-100">
+            <div className="p-8 text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-6">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Success!</h3>
+              <p className="text-gray-600 mb-6">{successMessage}</p>
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="w-full bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors font-medium"
+              >
+                Got it!
               </button>
             </div>
           </div>

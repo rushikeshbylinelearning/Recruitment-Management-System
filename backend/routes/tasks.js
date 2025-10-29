@@ -3,6 +3,7 @@ import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
 import { validateTask, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
+import emailService from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -182,6 +183,166 @@ router.post('/', authenticateToken, checkPermission('tasks', 'create'), validate
     [title, description, assignedTo, jobId || null, candidateId || null, priority, status, dueDate, req.user.id]
   );
 
+  // Notify assignee by email when created by Admin/HR Manager
+  try {
+    if ((req.user.role === 'Admin' || req.user.role === 'HR Manager') && assignedTo) {
+      const assigneeRows = await query('SELECT email, name FROM users WHERE id = ?', [assignedTo]);
+      if (assigneeRows.length > 0 && assigneeRows[0].email) {
+        const assigneeEmail = assigneeRows[0].email;
+        const assigneeName = assigneeRows[0].name || 'Recruiter';
+        const creatorName = req.user.name || req.user.username || 'HR Team';
+        const subject = `New Task Assignment: ${title}`;
+        
+        // Create detailed HTML email template
+        const htmlTemplate = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Task Assignment Notification</title>
+            <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
+                .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .content { padding: 30px; }
+                .task-card { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0; border-radius: 8px; }
+                .task-title { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+                .task-description { color: #64748b; line-height: 1.6; margin-bottom: 15px; }
+                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+                .info-item { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+                .info-label { font-weight: 600; color: #374151; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+                .info-value { font-size: 16px; color: #1e293b; font-weight: 500; }
+                .priority-high { border-left-color: #ef4444; }
+                .priority-medium { border-left-color: #f59e0b; }
+                .priority-low { border-left-color: #10b981; }
+                .status-pending { background-color: #fef3c7; color: #92400e; }
+                .status-progress { background-color: #dbeafe; color: #1e40af; }
+                .status-completed { background-color: #d1fae5; color: #065f46; }
+                .due-date { background-color: #fef2f2; border: 1px solid #fecaca; padding: 10px; border-radius: 6px; margin: 15px 0; }
+                .due-date.urgent { background-color: #fef2f2; border-color: #f87171; }
+                .action-button { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; margin: 20px 0; }
+                .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-size: 14px; }
+                .highlight { background-color: #fef3c7; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+                @media (max-width: 600px) {
+                    .info-grid { grid-template-columns: 1fr; }
+                    .content { padding: 20px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>New Task Assignment</h1>
+                    <p style="margin: 10px 0 0 0; opacity: 0.9;">You have been assigned a new task</p>
+                </div>
+                
+                <div class="content">
+                    <p style="font-size: 16px; color: #374151; margin-bottom: 25px;">
+                        Hello <strong>${assigneeName}</strong>,<br>
+                        You have been assigned a new task by <strong>${creatorName}</strong>.
+                    </p>
+                    
+                    <div class="task-card priority-${priority.toLowerCase()}">
+                        <div class="task-title">${title}</div>
+                        ${description ? `<div class="task-description">${description}</div>` : ''}
+                    </div>
+                    
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Priority Level</div>
+                            <div class="info-value priority-${priority.toLowerCase()}">${priority}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Current Status</div>
+                            <div class="info-value status-${status.toLowerCase().replace(' ', '-')}">${status}</div>
+                        </div>
+                    </div>
+                    
+                    ${dueDate ? `
+                    <div class="due-date ${new Date(dueDate) < new Date(Date.now() + 24*60*60*1000) ? 'urgent' : ''}">
+                        <div class="info-label">Due Date</div>
+                        <div class="info-value" style="font-size: 18px; font-weight: 700;">
+                            ${new Date(dueDate).toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                            })}
+                        </div>
+                        <div style="font-size: 14px; margin-top: 5px;">
+                            ${Math.ceil((new Date(dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days remaining
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${jobId ? `
+                    <div class="info-item">
+                        <div class="info-label">Related Job</div>
+                        <div class="info-value">Job ID: ${jobId}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${candidateId ? `
+                    <div class="info-item">
+                        <div class="info-label">Related Candidate</div>
+                        <div class="info-value">Candidate ID: ${candidateId}</div>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 20px; border-radius: 8px; margin: 25px 0;">
+                        <h3 style="margin: 0 0 10px 0; color: #1e40af;">Action Required</h3>
+                        <p style="margin: 0; color: #1e40af;">
+                            Please log in to the HR Workflow Management system to view full details and take action on this task.
+                        </p>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="https://hr.bylinelms.com/" target="_blank" rel="noopener noreferrer" class="action-button">View Task Details</a>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>This is an automated notification from HR Workflow Management System</p>
+                    <p>Please do not reply to this email</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+        
+        // Plain text fallback
+        const textTemplate = `
+Hello ${assigneeName},
+
+You have been assigned a new task by ${creatorName}.
+
+TASK DETAILS:
+==============
+Title: ${title}
+${description ? `Description: ${description}` : ''}
+Priority: ${priority}
+Status: ${status}
+${dueDate ? `Due Date: ${new Date(dueDate).toLocaleDateString()}` : ''}
+${jobId ? `Job ID: ${jobId}` : ''}
+${candidateId ? `Candidate ID: ${candidateId}` : ''}
+
+ACTION REQUIRED:
+================
+Please log in to the HR Workflow Management system to view details and take action.
+
+Best regards,
+HR Team
+        `;
+        
+        await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
+      }
+    }
+  } catch (e) {
+    console.warn('Task assignment email failed:', e?.message || e);
+  }
+
   res.status(201).json({
     success: true,
     message: 'Task created successfully',
@@ -206,10 +367,11 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
   } = req.body;
 
   // Check if task exists
-  const existingTasks = await query('SELECT id FROM tasks WHERE id = ?', [taskId]);
+  const existingTasks = await query('SELECT id, assigned_to FROM tasks WHERE id = ?', [taskId]);
   if (existingTasks.length === 0) {
     throw new NotFoundError('Task not found');
   }
+  const previousAssignee = existingTasks[0].assigned_to;
 
   // Validate assigned user exists
   const users = await query('SELECT id FROM users WHERE id = ?', [assignedTo]);
@@ -240,6 +402,167 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
      WHERE id = ?`,
     [title, description, assignedTo, jobId || null, candidateId || null, priority, status, dueDate, taskId]
   );
+
+  // If assignee changed and action by Admin/HR Manager, notify new assignee
+  try {
+    const assigneeChanged = previousAssignee !== assignedTo;
+    if (assigneeChanged && (req.user.role === 'Admin' || req.user.role === 'HR Manager') && assignedTo) {
+      const assigneeRows = await query('SELECT email, name FROM users WHERE id = ?', [assignedTo]);
+      if (assigneeRows.length > 0 && assigneeRows[0].email) {
+        const assigneeEmail = assigneeRows[0].email;
+        const assigneeName = assigneeRows[0].name || 'Recruiter';
+        const editorName = req.user.name || req.user.username || 'HR Team';
+        const subject = `Task Updated: ${title}`;
+        
+        // Create detailed HTML email template for task update
+        const htmlTemplate = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Task Update Notification</title>
+            <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
+                .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+                .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .content { padding: 30px; }
+                .task-card { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0; border-radius: 8px; }
+                .task-title { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+                .task-description { color: #64748b; line-height: 1.6; margin-bottom: 15px; }
+                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+                .info-item { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+                .info-label { font-weight: 600; color: #374151; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+                .info-value { font-size: 16px; color: #1e293b; font-weight: 500; }
+                .priority-high { border-left-color: #ef4444; }
+                .priority-medium { border-left-color: #f59e0b; }
+                .priority-low { border-left-color: #10b981; }
+                .status-pending { background-color: #fef3c7; color: #92400e; }
+                .status-progress { background-color: #dbeafe; color: #1e40af; }
+                .status-completed { background-color: #d1fae5; color: #065f46; }
+                .due-date { background-color: #fef2f2; border: 1px solid #fecaca; padding: 10px; border-radius: 6px; margin: 15px 0; }
+                .due-date.urgent { background-color: #fef2f2; border-color: #f87171; }
+                .action-button { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; margin: 20px 0; }
+                .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-size: 14px; }
+                .update-badge { background-color: #fef3c7; color: #92400e; padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+                @media (max-width: 600px) {
+                    .info-grid { grid-template-columns: 1fr; }
+                    .content { padding: 20px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Task Updated</h1>
+                    <p style="margin: 10px 0 0 0; opacity: 0.9;">Task has been updated and assigned to you</p>
+                </div>
+                
+                <div class="content">
+                    <p style="font-size: 16px; color: #374151; margin-bottom: 25px;">
+                        Hello <strong>${assigneeName}</strong>,<br>
+                        A task has been updated and assigned to you by <strong>${editorName}</strong>.
+                    </p>
+                    
+                    <div class="task-card priority-${priority.toLowerCase()}">
+                        <div class="task-title">${title} <span class="update-badge">UPDATED</span></div>
+                        ${description ? `<div class="task-description">${description}</div>` : ''}
+                    </div>
+                    
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Priority Level</div>
+                            <div class="info-value priority-${priority.toLowerCase()}">${priority}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Current Status</div>
+                            <div class="info-value status-${status.toLowerCase().replace(' ', '-')}">${status}</div>
+                        </div>
+                    </div>
+                    
+                    ${dueDate ? `
+                    <div class="due-date ${new Date(dueDate) < new Date(Date.now() + 24*60*60*1000) ? 'urgent' : ''}">
+                        <div class="info-label">Due Date</div>
+                        <div class="info-value" style="font-size: 18px; font-weight: 700;">
+                            ${new Date(dueDate).toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                            })}
+                        </div>
+                        <div style="font-size: 14px; margin-top: 5px;">
+                            ${Math.ceil((new Date(dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days remaining
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${jobId ? `
+                    <div class="info-item">
+                        <div class="info-label">Related Job</div>
+                        <div class="info-value">Job ID: ${jobId}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${candidateId ? `
+                    <div class="info-item">
+                        <div class="info-label">Related Candidate</div>
+                        <div class="info-value">Candidate ID: ${candidateId}</div>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 20px; border-radius: 8px; margin: 25px 0;">
+                        <h3 style="margin: 0 0 10px 0; color: #1e40af;">Action Required</h3>
+                        <p style="margin: 0; color: #1e40af;">
+                            Please log in to the HR Workflow Management system to view the updated details and take action on this task.
+                        </p>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="https://hr.bylinelms.com/" target="_blank" rel="noopener noreferrer" class="action-button">View Updated Task</a>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>This is an automated notification from HR Workflow Management System</p>
+                    <p>Please do not reply to this email</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+        
+        // Plain text fallback
+        const textTemplate = `
+Hello ${assigneeName},
+
+A task has been updated and assigned to you by ${editorName}.
+
+UPDATED TASK DETAILS:
+=====================
+Title: ${title}
+${description ? `Description: ${description}` : ''}
+Priority: ${priority}
+Status: ${status}
+${dueDate ? `Due Date: ${new Date(dueDate).toLocaleDateString()}` : ''}
+${jobId ? `Job ID: ${jobId}` : ''}
+${candidateId ? `Candidate ID: ${candidateId}` : ''}
+
+ACTION REQUIRED:
+================
+Please log in to the HR Workflow Management system to view the updated details and take action.
+
+Best regards,
+HR Team
+        `;
+        
+        await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
+      }
+    }
+  } catch (e) {
+    console.warn('Task reassignment email failed:', e?.message || e);
+  }
 
   res.json({
     success: true,
