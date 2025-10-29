@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission, requireAdmin } from '../middleware/auth.js';
-import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateId, validatePagination, validateEmailTemplate, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -122,22 +122,27 @@ router.get('/email-templates/:id', authenticateToken, checkPermission('settings'
 }));
 
 // Create email template
-router.post('/email-templates', authenticateToken, checkPermission('settings', 'edit'), handleValidationErrors, asyncHandler(async (req, res) => {
-  const { name, subject, body, type, isActive = true } = req.body;
+router.post('/email-templates', authenticateToken, checkPermission('settings', 'edit'), validateEmailTemplate, handleValidationErrors, asyncHandler(async (req, res) => {
+  console.log('🔍 DEBUG: Email template creation request received');
+  console.log('Request body:', req.body);
+  console.log('User:', req.user);
+  console.log('Headers:', req.headers);
+  
+  const { name, subject, content, category, variables = [], isActive = true } = req.body;
 
-  if (!name || !subject || !body || !type) {
-    throw new ValidationError('Name, subject, body, and type are required');
+  if (!name || !subject || !content || !category) {
+    throw new ValidationError('Name, subject, content, and category are required');
   }
 
-  const validTypes = ['Interview Invite', 'Rejection', 'Offer', 'Follow-up', 'Custom'];
-  if (!validTypes.includes(type)) {
-    throw new ValidationError('Invalid template type');
+  const validCategories = ['Interview Invite', 'Rejection', 'Offer', 'Follow-up', 'Custom'];
+  if (!validCategories.includes(category)) {
+    throw new ValidationError('Invalid template category');
   }
 
   const result = await query(
-    `INSERT INTO email_templates (name, subject, body, type, is_active, created_by) 
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [name, subject, body, type, isActive, req.user.id]
+    `INSERT INTO email_templates (name, subject, body, type, variables, is_active, created_by) 
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [name, subject, content, category, JSON.stringify(variables), isActive, req.user.id]
   );
 
   res.status(201).json({
@@ -150,9 +155,9 @@ router.post('/email-templates', authenticateToken, checkPermission('settings', '
 }));
 
 // Update email template
-router.put('/email-templates/:id', authenticateToken, checkPermission('settings', 'edit'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+router.put('/email-templates/:id', authenticateToken, checkPermission('settings', 'edit'), validateId('id'), validateEmailTemplate, handleValidationErrors, asyncHandler(async (req, res) => {
   const templateId = req.params.id;
-  const { name, subject, body, type, isActive } = req.body;
+  const { name, subject, content, category, variables = [], isActive } = req.body;
 
   // Check if template exists
   const existingTemplates = await query('SELECT id FROM email_templates WHERE id = ?', [templateId]);
@@ -160,19 +165,19 @@ router.put('/email-templates/:id', authenticateToken, checkPermission('settings'
     throw new NotFoundError('Email template not found');
   }
 
-  if (!name || !subject || !body || !type) {
-    throw new ValidationError('Name, subject, body, and type are required');
+  if (!name || !subject || !content || !category) {
+    throw new ValidationError('Name, subject, content, and category are required');
   }
 
-  const validTypes = ['Interview Invite', 'Rejection', 'Offer', 'Follow-up', 'Custom'];
-  if (!validTypes.includes(type)) {
-    throw new ValidationError('Invalid template type');
+  const validCategories = ['Interview Invite', 'Rejection', 'Offer', 'Follow-up', 'Custom'];
+  if (!validCategories.includes(category)) {
+    throw new ValidationError('Invalid template category');
   }
 
   await query(
-    `UPDATE email_templates SET name = ?, subject = ?, body = ?, type = ?, is_active = ?, updated_at = NOW() 
+    `UPDATE email_templates SET name = ?, subject = ?, body = ?, type = ?, variables = ?, is_active = ?, updated_at = NOW() 
      WHERE id = ?`,
-    [name, subject, body, type, isActive, templateId]
+    [name, subject, content, category, JSON.stringify(variables), isActive, templateId]
   );
 
   res.json({

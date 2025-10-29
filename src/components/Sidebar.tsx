@@ -29,8 +29,15 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
       return ['dashboard', 'jobs', 'candidates'].includes(item.id);
     }
     
-    // Special handling for HR Manager and Recruiter roles - include interviews
-    if (user?.role === 'HR Manager' || user?.role === 'Recruiter') {
+    // Special handling for Recruiter role - show interviews without permission check
+    if (user?.role === 'Recruiter' || user?.role === 'recruiter' || user?.role?.toLowerCase() === 'recruiter') {
+      if (item.id === 'interviews') {
+        return true; // Always show interviews for Recruiters
+      }
+    }
+    
+    // Special handling for HR Manager role - include interviews with permission check
+    if (user?.role === 'HR Manager') {
       if (item.id === 'interviews') {
         return hasPermission('interviews', 'view');
       }

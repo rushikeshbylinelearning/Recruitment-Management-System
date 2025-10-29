@@ -77,10 +77,27 @@ export default function InterviewManagement() {
       }
 
       // Fetch interviewers (users with Interviewer role)
-      const usersResponse = await usersAPI.getUsers();
-      if (usersResponse.success && usersResponse.data) {
-        const interviewerUsers = usersResponse.data.filter((u: any) => u.role === 'Interviewer');
-        setInterviewers(interviewerUsers);
+      try {
+        const usersResponse = await usersAPI.getUsers();
+        console.log('Users API response:', usersResponse);
+        if (usersResponse.success && usersResponse.data) {
+          const users = usersResponse.data.users || usersResponse.data || [];
+          console.log('Users array:', users);
+          if (Array.isArray(users)) {
+            const interviewerUsers = users.filter((u: any) => u.role === 'Interviewer');
+            console.log('Interviewer users:', interviewerUsers);
+            setInterviewers(interviewerUsers);
+          } else {
+            console.warn('Users data is not an array:', users);
+            setInterviewers([]);
+          }
+        } else {
+          console.warn('Failed to fetch users:', usersResponse);
+          setInterviewers([]);
+        }
+      } catch (usersError) {
+        console.warn('Error fetching users (non-blocking):', usersError);
+        setInterviewers([]);
       }
     } catch (err) {
       console.error('Error fetching interview data:', err);

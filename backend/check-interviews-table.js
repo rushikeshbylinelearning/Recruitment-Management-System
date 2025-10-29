@@ -50,3 +50,8 @@ async function checkInterviewsTable() {
 
 checkInterviewsTable();
 
+
+
+
+
+

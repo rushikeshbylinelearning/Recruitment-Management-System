@@ -32,9 +32,6 @@ export default function Settings() {
   ]);
   const [rolePermissions, setRolePermissions] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
   const [permissionsLoading, setPermissionsLoading] = useState(false);
-  const [userPermissionChanges, setUserPermissionChanges] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
-  const [userSaveStatus, setUserSaveStatus] = useState<Record<string, 'saved' | 'unsaved' | 'saving' | 'error'>>({});
-  const [originalUserPermissions, setOriginalUserPermissions] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
   
   // Communications state
   const [communications, setCommunications] = useState<any[]>([]);
@@ -70,7 +67,7 @@ export default function Settings() {
     name: '',
     subject: '',
     content: '',
-    category: 'General',
+    category: 'Custom',
     variables: [] as string[]
   });
   const [templateErrors, setTemplateErrors] = useState<Record<string, string>>({});
@@ -79,10 +76,6 @@ export default function Settings() {
   const [selectedCandidates, setSelectedCandidates] = useState<number[]>([]);
   const [sendingTemplate, setSendingTemplate] = useState(false);
   
-  // User permissions modal state
-  const [showUserPermissions, setShowUserPermissions] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
-  const [userPermissions, setUserPermissions] = useState<Array<{module: string, actions: string[]}>>([]);
 
   // Load role permissions on component mount
   useEffect(() => {
@@ -92,7 +85,6 @@ export default function Settings() {
   const tabs = [
     { id: 'team', label: 'Team Management', icon: Users },
     { id: 'permissions', label: 'Role Permissions', icon: Shield },
-    { id: 'user-permissions', label: 'User Permissions', icon: Key },
     { id: 'communications', label: 'Communications', icon: MessageSquare },
     { id: 'email-templates', label: 'Email Templates', icon: Mail },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -280,7 +272,7 @@ export default function Settings() {
 
   // Load team members on component mount
   useEffect(() => {
-    if (activeTab === 'team' || activeTab === 'user-permissions') {
+    if (activeTab === 'team') {
       loadTeamMembers();
     }
   }, [activeTab]);
@@ -330,7 +322,7 @@ export default function Settings() {
       name: '',
       subject: '',
       content: '',
-      category: 'General',
+      category: 'Custom',
       variables: []
     });
     setTemplateErrors({});
@@ -594,75 +586,7 @@ export default function Settings() {
   };
 
 
-  const handleManageUserPermissions = async (member: TeamMember) => {
-    setSelectedUser(member);
-    setPermissionsLoading(true);
-    try {
-      const response = await usersAPI.getUserById(Number(member.id));
-      if (response.success && response.data) {
-        const permissions = response.data.user.permissions || [];
-        setUserPermissions(permissions);
-        
-        // Store current permissions as changes for this user
-        setUserPermissionChanges(prev => ({
-          ...prev,
-          [member.id]: permissions
-        }));
-        
-        setShowUserPermissions(true);
-      }
-    } catch (error) {
-      console.error('Error loading user permissions:', error);
-      alert('Error loading user permissions');
-    } finally {
-      setPermissionsLoading(false);
-    }
-  };
 
-  const handleSaveUserPermissions = async () => {
-    if (!selectedUser) return;
-    
-    setPermissionsLoading(true);
-    setUserSaveStatus(prev => ({
-      ...prev,
-      [selectedUser.id]: 'saving'
-    }));
-    
-    try {
-      await usersAPI.updateUserPermissions(Number(selectedUser.id), userPermissions);
-      
-      // Update save status to saved
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [selectedUser.id]: 'saved'
-      }));
-      
-      // Update original permissions
-      setOriginalUserPermissions(prev => ({
-        ...prev,
-        [selectedUser.id]: userPermissions
-      }));
-      
-      alert(`Permissions updated successfully for ${selectedUser.name}!`);
-      setShowUserPermissions(false);
-      setSelectedUser(null);
-      // Reload team members to get updated permissions
-      await loadTeamMembers();
-    } catch (error: any) {
-      console.error('Error updating user permissions:', error);
-      const errorMessage = error.response?.data?.message || 'An error occurred while updating permissions';
-      
-      // Update save status to error
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [selectedUser.id]: 'error'
-      }));
-      
-      alert(`Error: ${errorMessage}`);
-    } finally {
-      setPermissionsLoading(false);
-    }
-  };
 
   const handleSaveRolePermissions = async () => {
     setPermissionsLoading(true);
@@ -680,114 +604,9 @@ export default function Settings() {
     }
   };
 
-  const handleSaveIndividualUserPermissions = async (userId: string) => {
-    const userChanges = userPermissionChanges[userId];
-    if (!userChanges) return;
-    
-    setUserSaveStatus(prev => ({
-      ...prev,
-      [userId]: 'saving'
-    }));
-    
-    try {
-      await usersAPI.updateUserPermissions(Number(userId), userChanges);
-      
-      // Update save status to saved
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [userId]: 'saved'
-      }));
-      
-      // Update original permissions
-      setOriginalUserPermissions(prev => ({
-        ...prev,
-        [userId]: userChanges
-      }));
-      
-      // Find user name for success message
-      const user = teamMembers.find(m => m.id.toString() === userId);
-      alert(`Permissions updated successfully for ${user?.name || 'user'}!`);
-      
-      // Reload team members to get updated permissions
-      await loadTeamMembers();
-    } catch (error: any) {
-      console.error('Error updating user permissions:', error);
-      const errorMessage = error.response?.data?.message || 'An error occurred while updating permissions';
-      
-      // Update save status to error
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [userId]: 'error'
-      }));
-      
-      alert(`Error: ${errorMessage}`);
-    }
-  };
 
-  // Helper function to check if user has changes
-  const hasUserChanges = (userId: string) => {
-    const currentChanges = userPermissionChanges[userId];
-    const originalPermissions = originalUserPermissions[userId];
-    if (!currentChanges || !originalPermissions) return false;
-    
-    return JSON.stringify(currentChanges) !== JSON.stringify(originalPermissions);
-  };
 
-  // Handle inline permission toggle
-  const handleInlinePermissionToggle = (userId: number, module: string, action: string) => {
-    const currentChanges = userPermissionChanges[userId.toString()] || [];
-    const moduleIndex = currentChanges.findIndex(p => p.module === module);
-    
-    if (moduleIndex >= 0) {
-      const actions = [...currentChanges[moduleIndex].actions];
-      const actionIndex = actions.indexOf(action);
-      
-      if (actionIndex >= 0) {
-        actions.splice(actionIndex, 1);
-      } else {
-        actions.push(action);
-      }
-      
-      const newChanges = [...currentChanges];
-      newChanges[moduleIndex] = { module, actions };
-      
-      setUserPermissionChanges(prev => ({
-        ...prev,
-        [userId.toString()]: newChanges
-      }));
-    } else {
-      setUserPermissionChanges(prev => ({
-        ...prev,
-        [userId.toString()]: [...currentChanges, { module, actions: [action] }]
-      }));
-    }
-  };
 
-  // Handle user permission toggle in modal
-  const handleUserPermissionToggle = (module: string, action: string) => {
-    setUserPermissions(prev => {
-      const existingModule = prev.find(p => p.module === module);
-      
-      if (existingModule) {
-        const actions = [...existingModule.actions];
-        const actionIndex = actions.indexOf(action);
-        
-        if (actionIndex >= 0) {
-          actions.splice(actionIndex, 1);
-        } else {
-          actions.push(action);
-        }
-        
-        return prev.map(p => 
-          p.module === module 
-            ? { ...p, actions }
-            : p
-        );
-      } else {
-        return [...prev, { module, actions: [action] }];
-      }
-    });
-  };
 
 
 
@@ -976,141 +795,6 @@ export default function Settings() {
     </div>
   );
 
-  const UserPermissionsManagement = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Individual User Permissions</h3>
-        <div className="text-sm text-gray-600">
-          Manage specific permissions for individual users
-        </div>
-      </div>
-      
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-medium text-blue-900 mb-2">ℹ️ Individual User Permissions</h4>
-        <p className="text-sm text-blue-700">
-          Override role-based permissions for specific users. Individual permissions take precedence over role permissions.
-          Use this to grant additional access or restrict certain users from specific actions.
-        </p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <h4 className="font-semibold text-gray-900">Team Members</h4>
-          <p className="text-sm text-gray-600 mt-1">Click on a user to manage their individual permissions</p>
-        </div>
-        
-        <div className="divide-y divide-gray-200">
-          {loading ? (
-            <div className="px-6 py-8 text-center text-gray-500">
-              Loading team members...
-            </div>
-          ) : teamMembers.length === 0 ? (
-            <div className="px-6 py-8 text-center text-gray-500">
-              No team members found.
-            </div>
-          ) : (
-            teamMembers.map((member) => {
-              const userPermissions = userPermissionChanges[member.id] || member.permissions || [];
-              const hasChanges = hasUserChanges(member.id.toString());
-              
-              return (
-                <div key={member.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">
-                          {member.name.split(' ').map(n => n[0]).join('')}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{member.name}</p>
-                        <p className="text-sm text-gray-500">{member.email} • {member.role}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600">
-                          {userPermissions.length} permission modules
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {userPermissions.reduce((sum, p) => sum + p.actions.length, 0)} total actions
-                        </p>
-                        {hasChanges && (
-                          <p className="text-xs text-orange-600 font-medium">• Unsaved changes</p>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {hasChanges && (
-                          <button
-                            onClick={() => handleSaveIndividualUserPermissions(member.id.toString())}
-                            disabled={userSaveStatus[member.id] === 'saving'}
-                            className={`flex items-center space-x-1 px-3 py-2 text-sm rounded-lg transition-colors ${
-                              userSaveStatus[member.id] === 'saving'
-                                ? 'bg-gray-400 text-white cursor-not-allowed'
-                                : userSaveStatus[member.id] === 'error'
-                                ? 'bg-red-600 text-white hover:bg-red-700'
-                                : 'bg-blue-600 text-white hover:bg-blue-700'
-                            }`}
-                          >
-                            <Save size={14} />
-                            <span>
-                              {userSaveStatus[member.id] === 'saving' ? 'Saving...' : 'Save'}
-                            </span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleManageUserPermissions(member)}
-                          className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          <Shield size={16} />
-                          <span>Manage</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Inline Permission Editor */}
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Quick Permission Edit</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {['dashboard', 'jobs', 'candidates', 'tasks'].map((module) => {
-                        const modulePermission = userPermissions.find(p => p.module === module);
-                        const actions = modulePermission?.actions || [];
-                        
-                        return (
-                          <div key={module} className="bg-white border border-gray-200 rounded-lg p-3">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-xs font-medium text-gray-700 capitalize">{module}</span>
-                              <span className="text-xs text-gray-500">{actions.length}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {['view', 'create', 'edit', 'delete'].map((action) => (
-                                <button
-                                  key={action}
-                                  onClick={() => handleInlinePermissionToggle(Number(member.id), module, action)}
-                                  className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
-                                    actions.includes(action)
-                                      ? 'bg-green-100 text-green-800 border border-green-300'
-                                      : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
-                                  }`}
-                                >
-                                  {action}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </div>
-  );
 
   const NotificationSettings = () => (
     <div className="space-y-6">
@@ -1424,11 +1108,11 @@ export default function Settings() {
 
     const getCategoryColor = (category: string) => {
       switch (category) {
-        case 'Interview': return 'bg-blue-100 text-blue-800';
+        case 'Interview Invite': return 'bg-blue-100 text-blue-800';
         case 'Rejection': return 'bg-red-100 text-red-800';
         case 'Offer': return 'bg-green-100 text-green-800';
         case 'Follow-up': return 'bg-yellow-100 text-yellow-800';
-        case 'General': return 'bg-gray-100 text-gray-800';
+        case 'Custom': return 'bg-gray-100 text-gray-800';
         default: return 'bg-gray-100 text-gray-800';
       }
     };
@@ -1562,7 +1246,6 @@ export default function Settings() {
     switch (activeTab) {
       case 'team': return <TeamManagement />;
       case 'permissions': return <PermissionsManagement />;
-      case 'user-permissions': return <UserPermissionsManagement />;
       case 'communications': return <CommunicationsManagement />;
       case 'email-templates': return <EmailTemplatesManagement />;
       case 'notifications': return <NotificationSettings />;
@@ -1898,97 +1581,6 @@ export default function Settings() {
         </div>
       )}
 
-      {/* User Permissions Modal */}
-      {showUserPermissions && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Manage User Permissions</h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  Customize permissions for {selectedUser.name} ({selectedUser.role})
-                </p>
-              </div>
-              <button
-                onClick={() => setShowUserPermissions(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                <h4 className="font-medium text-yellow-900 mb-2">⚠️ Important Note</h4>
-                <p className="text-sm text-yellow-800">
-                  Individual user permissions override role-based permissions. 
-                  Changes here will only affect this specific user.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {['dashboard', 'jobs', 'candidates', 'communications', 'tasks', 'team', 'analytics', 'settings'].map((module) => {
-                  const modulePermission = userPermissions.find(p => p.module === module);
-                  const actions = modulePermission?.actions || [];
-                  
-                  return (
-                    <div key={module} className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-sm font-medium text-gray-700 capitalize">{module}</span>
-                        <span className="text-xs text-gray-500">{actions.length} actions</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {['view', 'create', 'edit', 'delete'].map((action) => (
-                          <button
-                            key={action}
-                            onClick={() => handleUserPermissionToggle(module, action)}
-                            className={`px-2 py-1 text-xs rounded transition-colors ${
-                              actions.includes(action)
-                                ? 'bg-green-100 text-green-800 border border-green-300'
-                                : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
-                            }`}
-                          >
-                            {action}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Current Permissions Summary</h4>
-                <div className="text-sm text-gray-600">
-                  <p>Total modules with permissions: {userPermissions.length}</p>
-                  <p>Total actions granted: {userPermissions.reduce((sum, p) => sum + p.actions.length, 0)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowUserPermissions(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveUserPermissions}
-                disabled={permissionsLoading}
-                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                  permissionsLoading 
-                    ? 'bg-gray-400 text-white cursor-not-allowed' 
-                    : 'bg-green-600 text-white hover:bg-green-700'
-                }`}
-              >
-                <Save size={16} />
-                <span>{permissionsLoading ? 'Saving...' : 'Save Permissions'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add Communication Modal */}
       {showAddCommunication && (
@@ -2295,8 +1887,8 @@ export default function Settings() {
                     onChange={(e) => setTemplateFormData(prev => ({ ...prev, category: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="General">General</option>
-                    <option value="Interview">Interview</option>
+                    <option value="Custom">Custom</option>
+                    <option value="Interview Invite">Interview Invite</option>
                     <option value="Rejection">Rejection</option>
                     <option value="Offer">Offer</option>
                     <option value="Follow-up">Follow-up</option>
@@ -2412,8 +2004,8 @@ export default function Settings() {
                     onChange={(e) => setTemplateFormData(prev => ({ ...prev, category: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="General">General</option>
-                    <option value="Interview">Interview</option>
+                    <option value="Custom">Custom</option>
+                    <option value="Interview Invite">Interview Invite</option>
                     <option value="Rejection">Rejection</option>
                     <option value="Offer">Offer</option>
                     <option value="Follow-up">Follow-up</option>

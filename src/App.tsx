@@ -13,6 +13,7 @@ import Candidates from './components/Candidates';
 import InterviewerCandidates from './components/InterviewerCandidates';
 import InterviewerTest from './components/InterviewerTest';
 import InterviewManagement from './components/InterviewManagement';
+import RecruiterInterview from './components/RecruiterInterview';
 import Team from './components/Team';
 import Tasks from './components/Tasks';
 import Communications from './components/Communications';
@@ -50,6 +51,16 @@ function RoleBasedCandidates() {
   return <Candidates />;
 }
 
+function RoleBasedInterviews() {
+  const { user } = useAuth();
+  
+  if (user?.role === 'Recruiter') {
+    return <RecruiterInterview />;
+  }
+  
+  return <InterviewManagement showAllInterviews={true} />;
+}
+
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
 
@@ -82,7 +93,7 @@ function AppContent() {
           <Route path="candidates" element={<RoleBasedCandidates />} />
           <Route path="interviewer-jobs" element={<InterviewerJobs />} />
           <Route path="interviewer-candidates" element={<InterviewerCandidates />} />
-          <Route path="interviews" element={<InterviewManagement showAllInterviews={true} />} />
+          <Route path="interviews" element={<RoleBasedInterviews />} />
           <Route path="team" element={<Team />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="communications" element={<Communications />} />
