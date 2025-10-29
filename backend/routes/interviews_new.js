@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateInterview, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -49,7 +49,6 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
   const total = countResult[0].total;
 
   // Get interviews with candidate and interviewer details
-  // Use string concatenation for LIMIT and OFFSET to avoid MySQL2 parameter issues
   const interviewsQuery = `SELECT 
        i.*,
        c.name as candidate_name,
@@ -62,9 +61,9 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
      LEFT JOIN users u ON i.interviewer_id = u.id
      ${whereClause}
      ORDER BY i.scheduled_date DESC 
-     LIMIT ${limit} OFFSET ${offset}`;
+     LIMIT ? OFFSET ?`;
 
-  const interviews = await query(interviewsQuery, params);
+  const interviews = await query(interviewsQuery, [...params, limit, offset]);
 
   res.json({
     success: true,
@@ -111,7 +110,7 @@ router.get('/:id', authenticateToken, checkPermission('interviews', 'view'), val
 }));
 
 // Create new interview
-router.post('/', authenticateToken, checkPermission('interviews', 'create'), validateInterview, handleValidationErrors, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, checkPermission('interviews', 'create'), asyncHandler(async (req, res) => {
   const {
     candidate_id,
     interviewer_id,
@@ -155,9 +154,9 @@ router.post('/', authenticateToken, checkPermission('interviews', 'create'), val
 
   // Create interview
   const result = await query(
-    `INSERT INTO interviews (candidate_id, interviewer_id, scheduled_date, duration, type, location, meeting_link, round, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-    [candidate_id, interviewer_id, scheduled_date, 60, type, location || null, meeting_link || null, 1, status]
+    `INSERT INTO interviews (candidate_id, interviewer_id, scheduled_date, type, location, meeting_link, notes, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+    [candidate_id, interviewer_id, scheduled_date, type, location || null, meeting_link || null, notes || null, status]
   );
 
   res.status(201).json({
@@ -349,7 +348,9 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
 
   res.json({
     success: true,
-    data: { interviews }
+    data: {
+      interviews
+    }
   });
 }));
 
@@ -376,3 +377,8 @@ router.get('/stats/overview', authenticateToken, checkPermission('interviews', '
 }));
 
 export default router;
+
+
+
+
+

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Plus, Edit, Trash2, Users, Shield, Bell, Globe, Database, Key, X, MessageSquare, Mail, Phone, Calendar, Search, Send, Eye } from 'lucide-react';
+import { Save, Plus, Edit, Trash2, Users, Shield, Bell, Globe, Database, X, MessageSquare, Mail, Phone, Calendar, Search, Send, Eye } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TeamMember } from '../types';
 import { mockTeam } from '../data/mockData';
@@ -32,9 +32,6 @@ export default function Settings() {
   ]);
   const [rolePermissions, setRolePermissions] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
   const [permissionsLoading, setPermissionsLoading] = useState(false);
-  const [userPermissionChanges, setUserPermissionChanges] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
-  const [userSaveStatus, setUserSaveStatus] = useState<Record<string, 'saved' | 'unsaved' | 'saving' | 'error'>>({});
-  const [originalUserPermissions, setOriginalUserPermissions] = useState<Record<string, Array<{module: string, actions: string[]}>>>({});
   
   // Communications state
   const [communications, setCommunications] = useState<any[]>([]);
@@ -70,7 +67,7 @@ export default function Settings() {
     name: '',
     subject: '',
     content: '',
-    category: 'General',
+    category: 'Custom',
     variables: [] as string[]
   });
   const [templateErrors, setTemplateErrors] = useState<Record<string, string>>({});
@@ -79,10 +76,6 @@ export default function Settings() {
   const [selectedCandidates, setSelectedCandidates] = useState<number[]>([]);
   const [sendingTemplate, setSendingTemplate] = useState(false);
   
-  // User permissions modal state
-  const [showUserPermissions, setShowUserPermissions] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
-  const [userPermissions, setUserPermissions] = useState<Array<{module: string, actions: string[]}>>([]);
 
   // Load role permissions on component mount
   useEffect(() => {
@@ -279,7 +272,7 @@ export default function Settings() {
 
   // Load team members on component mount
   useEffect(() => {
-    if (activeTab === 'team' || activeTab === 'user-permissions') {
+    if (activeTab === 'team') {
       loadTeamMembers();
     }
   }, [activeTab]);
@@ -329,7 +322,7 @@ export default function Settings() {
       name: '',
       subject: '',
       content: '',
-      category: 'General',
+      category: 'Custom',
       variables: []
     });
     setTemplateErrors({});
@@ -593,75 +586,7 @@ export default function Settings() {
   };
 
 
-  const handleManageUserPermissions = async (member: TeamMember) => {
-    setSelectedUser(member);
-    setPermissionsLoading(true);
-    try {
-      const response = await usersAPI.getUserById(Number(member.id));
-      if (response.success && response.data) {
-        const permissions = response.data.user.permissions || [];
-        setUserPermissions(permissions);
-        
-        // Store current permissions as changes for this user
-        setUserPermissionChanges(prev => ({
-          ...prev,
-          [member.id]: permissions
-        }));
-        
-        setShowUserPermissions(true);
-      }
-    } catch (error) {
-      console.error('Error loading user permissions:', error);
-      alert('Error loading user permissions');
-    } finally {
-      setPermissionsLoading(false);
-    }
-  };
 
-  const handleSaveUserPermissions = async () => {
-    if (!selectedUser) return;
-    
-    setPermissionsLoading(true);
-    setUserSaveStatus(prev => ({
-      ...prev,
-      [selectedUser.id]: 'saving'
-    }));
-    
-    try {
-      await usersAPI.updateUserPermissions(Number(selectedUser.id), userPermissions);
-      
-      // Update save status to saved
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [selectedUser.id]: 'saved'
-      }));
-      
-      // Update original permissions
-      setOriginalUserPermissions(prev => ({
-        ...prev,
-        [selectedUser.id]: userPermissions
-      }));
-      
-      alert(`Permissions updated successfully for ${selectedUser.name}!`);
-      setShowUserPermissions(false);
-      setSelectedUser(null);
-      // Reload team members to get updated permissions
-      await loadTeamMembers();
-    } catch (error: any) {
-      console.error('Error updating user permissions:', error);
-      const errorMessage = error.response?.data?.message || 'An error occurred while updating permissions';
-      
-      // Update save status to error
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [selectedUser.id]: 'error'
-      }));
-      
-      alert(`Error: ${errorMessage}`);
-    } finally {
-      setPermissionsLoading(false);
-    }
-  };
 
   const handleSaveRolePermissions = async () => {
     setPermissionsLoading(true);
@@ -679,114 +604,9 @@ export default function Settings() {
     }
   };
 
-  const handleSaveIndividualUserPermissions = async (userId: string) => {
-    const userChanges = userPermissionChanges[userId];
-    if (!userChanges) return;
-    
-    setUserSaveStatus(prev => ({
-      ...prev,
-      [userId]: 'saving'
-    }));
-    
-    try {
-      await usersAPI.updateUserPermissions(Number(userId), userChanges);
-      
-      // Update save status to saved
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [userId]: 'saved'
-      }));
-      
-      // Update original permissions
-      setOriginalUserPermissions(prev => ({
-        ...prev,
-        [userId]: userChanges
-      }));
-      
-      // Find user name for success message
-      const user = teamMembers.find(m => m.id.toString() === userId);
-      alert(`Permissions updated successfully for ${user?.name || 'user'}!`);
-      
-      // Reload team members to get updated permissions
-      await loadTeamMembers();
-    } catch (error: any) {
-      console.error('Error updating user permissions:', error);
-      const errorMessage = error.response?.data?.message || 'An error occurred while updating permissions';
-      
-      // Update save status to error
-      setUserSaveStatus(prev => ({
-        ...prev,
-        [userId]: 'error'
-      }));
-      
-      alert(`Error: ${errorMessage}`);
-    }
-  };
 
-  // Helper function to check if user has changes
-  const hasUserChanges = (userId: string) => {
-    const currentChanges = userPermissionChanges[userId];
-    const originalPermissions = originalUserPermissions[userId];
-    if (!currentChanges || !originalPermissions) return false;
-    
-    return JSON.stringify(currentChanges) !== JSON.stringify(originalPermissions);
-  };
 
-  // Handle inline permission toggle
-  const handleInlinePermissionToggle = (userId: number, module: string, action: string) => {
-    const currentChanges = userPermissionChanges[userId.toString()] || [];
-    const moduleIndex = currentChanges.findIndex(p => p.module === module);
-    
-    if (moduleIndex >= 0) {
-      const actions = [...currentChanges[moduleIndex].actions];
-      const actionIndex = actions.indexOf(action);
-      
-      if (actionIndex >= 0) {
-        actions.splice(actionIndex, 1);
-      } else {
-        actions.push(action);
-      }
-      
-      const newChanges = [...currentChanges];
-      newChanges[moduleIndex] = { module, actions };
-      
-      setUserPermissionChanges(prev => ({
-        ...prev,
-        [userId.toString()]: newChanges
-      }));
-    } else {
-      setUserPermissionChanges(prev => ({
-        ...prev,
-        [userId.toString()]: [...currentChanges, { module, actions: [action] }]
-      }));
-    }
-  };
 
-  // Handle user permission toggle in modal
-  const handleUserPermissionToggle = (module: string, action: string) => {
-    setUserPermissions(prev => {
-      const existingModule = prev.find(p => p.module === module);
-      
-      if (existingModule) {
-        const actions = [...existingModule.actions];
-        const actionIndex = actions.indexOf(action);
-        
-        if (actionIndex >= 0) {
-          actions.splice(actionIndex, 1);
-        } else {
-          actions.push(action);
-        }
-        
-        return prev.map(p => 
-          p.module === module 
-            ? { ...p, actions }
-            : p
-        );
-      } else {
-        return [...prev, { module, actions: [action] }];
-      }
-    });
-  };
 
 
 
@@ -987,8 +807,6 @@ export default function Settings() {
       )}
     </div>
   );
-
-
 
   const NotificationSettings = () => (
     <div className="space-y-6">
@@ -1302,11 +1120,11 @@ export default function Settings() {
 
     const getCategoryColor = (category: string) => {
       switch (category) {
-        case 'Interview': return 'bg-blue-100 text-blue-800';
+        case 'Interview Invite': return 'bg-blue-100 text-blue-800';
         case 'Rejection': return 'bg-red-100 text-red-800';
         case 'Offer': return 'bg-green-100 text-green-800';
         case 'Follow-up': return 'bg-yellow-100 text-yellow-800';
-        case 'General': return 'bg-gray-100 text-gray-800';
+        case 'Custom': return 'bg-gray-100 text-gray-800';
         default: return 'bg-gray-100 text-gray-800';
       }
     };
@@ -1440,7 +1258,6 @@ export default function Settings() {
     switch (activeTab) {
       case 'team': return <TeamManagement />;
       case 'permissions': return <PermissionsManagement />;
-
       case 'communications': return <CommunicationsManagement />;
       case 'email-templates': return <EmailTemplatesManagement />;
       case 'notifications': return <NotificationSettings />;
@@ -2082,8 +1899,8 @@ export default function Settings() {
                     onChange={(e) => setTemplateFormData(prev => ({ ...prev, category: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="General">General</option>
-                    <option value="Interview">Interview</option>
+                    <option value="Custom">Custom</option>
+                    <option value="Interview Invite">Interview Invite</option>
                     <option value="Rejection">Rejection</option>
                     <option value="Offer">Offer</option>
                     <option value="Follow-up">Follow-up</option>
@@ -2199,8 +2016,8 @@ export default function Settings() {
                     onChange={(e) => setTemplateFormData(prev => ({ ...prev, category: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="General">General</option>
-                    <option value="Interview">Interview</option>
+                    <option value="Custom">Custom</option>
+                    <option value="Interview Invite">Interview Invite</option>
                     <option value="Rejection">Rejection</option>
                     <option value="Offer">Offer</option>
                     <option value="Follow-up">Follow-up</option>

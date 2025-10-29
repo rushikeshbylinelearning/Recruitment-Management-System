@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateInterview, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -16,41 +16,39 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
   const candidateId = req.query.candidateId || '';
   const interviewerId = req.query.interviewerId || '';
 
-  // Build WHERE conditions
-  let whereConditions = [];
+  let whereClause = 'WHERE 1=1';
   let params = [];
 
   if (status) {
-    whereConditions.push('i.status = ?');
+    whereClause += ' AND i.status = ?';
     params.push(status);
   }
 
   if (type) {
-    whereConditions.push('i.type = ?');
+    whereClause += ' AND i.type = ?';
     params.push(type);
   }
 
   if (candidateId) {
-    whereConditions.push('i.candidate_id = ?');
+    whereClause += ' AND i.candidate_id = ?';
     params.push(candidateId);
   }
 
   if (interviewerId) {
-    whereConditions.push('i.interviewer_id = ?');
+    whereClause += ' AND i.interviewer_id = ?';
     params.push(interviewerId);
   }
 
-  // Create WHERE clause
-  const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
-
   // Get total count
-  const countQuery = `SELECT COUNT(*) as total FROM interviews i ${whereClause}`;
-  const countResult = await query(countQuery, params);
+  const countResult = await query(
+    `SELECT COUNT(*) as total FROM interviews i ${whereClause}`,
+    params
+  );
   const total = countResult[0].total;
 
   // Get interviews with candidate and interviewer details
-  // Use string concatenation for LIMIT and OFFSET to avoid MySQL2 parameter issues
-  const interviewsQuery = `SELECT 
+  const interviews = await query(
+    `SELECT 
        i.*,
        c.name as candidate_name,
        c.position as candidate_position,
@@ -62,9 +60,9 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
      LEFT JOIN users u ON i.interviewer_id = u.id
      ${whereClause}
      ORDER BY i.scheduled_date DESC 
-     LIMIT ${limit} OFFSET ${offset}`;
-
-  const interviews = await query(interviewsQuery, params);
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
 
   res.json({
     success: true,
@@ -111,7 +109,7 @@ router.get('/:id', authenticateToken, checkPermission('interviews', 'view'), val
 }));
 
 // Create new interview
-router.post('/', authenticateToken, checkPermission('interviews', 'create'), validateInterview, handleValidationErrors, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, checkPermission('interviews', 'create'), asyncHandler(async (req, res) => {
   const {
     candidate_id,
     interviewer_id,
@@ -155,9 +153,9 @@ router.post('/', authenticateToken, checkPermission('interviews', 'create'), val
 
   // Create interview
   const result = await query(
-    `INSERT INTO interviews (candidate_id, interviewer_id, scheduled_date, duration, type, location, meeting_link, round, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-    [candidate_id, interviewer_id, scheduled_date, 60, type, location || null, meeting_link || null, 1, status]
+    `INSERT INTO interviews (candidate_id, interviewer_id, scheduled_date, type, location, meeting_link, notes, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+    [candidate_id, interviewer_id, scheduled_date, type, location || null, meeting_link || null, notes || null, status]
   );
 
   res.status(201).json({
@@ -349,7 +347,9 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
 
   res.json({
     success: true,
-    data: { interviews }
+    data: {
+      interviews
+    }
   });
 }));
 

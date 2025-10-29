@@ -4,6 +4,7 @@ import { body, param, query, validationResult } from 'express-validator';
 export const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.log('🔍 DEBUG: Validation errors found:', errors.array());
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
@@ -207,33 +208,56 @@ export const validateCandidatePartial = [
 
 // Interview validation rules
 export const validateInterview = [
-  body('candidateId')
+  body('candidate_id')
     .isInt({ min: 1 })
     .withMessage('Candidate ID must be a valid integer'),
   
-  body('interviewerId')
+  body('interviewer_id')
     .isInt({ min: 1 })
     .withMessage('Interviewer ID must be a valid integer'),
   
-  body('scheduledDate')
-    .isISO8601()
-    .withMessage('Scheduled date must be a valid date'),
-  
-  body('duration')
-    .isInt({ min: 15, max: 480 })
-    .withMessage('Duration must be between 15 and 480 minutes'),
+  body('scheduled_date')
+    .notEmpty()
+    .withMessage('Scheduled date is required')
+    .custom((value) => {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date format');
+      }
+      return true;
+    }),
   
   body('type')
     .isIn(['Technical', 'HR', 'Managerial', 'Final'])
     .withMessage('Invalid interview type'),
   
   body('status')
+    .optional()
     .isIn(['Scheduled', 'Completed', 'Cancelled', 'Rescheduled'])
     .withMessage('Invalid status'),
   
-  body('round')
-    .isInt({ min: 1, max: 10 })
-    .withMessage('Round must be between 1 and 10')
+  body('location')
+    .optional()
+    .isString()
+    .withMessage('Location must be a string'),
+  
+  body('meeting_link')
+    .optional()
+    .custom((value) => {
+      if (value && value.trim() !== '') {
+        try {
+          new URL(value);
+        } catch {
+          throw new Error('Meeting link must be a valid URL');
+        }
+      }
+      return true;
+    }),
+  
+  body('notes')
+    .optional()
+    .isString()
+    .withMessage('Notes must be a string')
 ];
 
 // Task validation rules
@@ -294,14 +318,19 @@ export const validateEmailTemplate = [
     .withMessage('Subject must be between 5 and 500 characters')
     .trim(),
   
-  body('body')
+  body('content')
     .isLength({ min: 10 })
-    .withMessage('Body must be at least 10 characters long')
+    .withMessage('Content must be at least 10 characters long')
     .trim(),
   
-  body('type')
+  body('category')
     .isIn(['Interview Invite', 'Rejection', 'Offer', 'Follow-up', 'Custom'])
-    .withMessage('Invalid template type')
+    .withMessage('Invalid template category'),
+  
+  body('variables')
+    .optional()
+    .isArray()
+    .withMessage('Variables must be an array')
 ];
 
 // ID parameter validation

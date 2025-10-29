@@ -37,7 +37,7 @@ const getDefaultPermissions = (role) => {
       { module: 'dashboard', actions: ['view'] },
       { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view', 'edit'] },
-      { module: 'interviews', actions: ['view', 'create', 'edit'] },
+      { module: 'interviews', actions: ['view', 'create', 'edit', 'delete'] },
       { module: 'communications', actions: ['view', 'create'] },
       { module: 'assignments', actions: ['view', 'create', 'edit'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },

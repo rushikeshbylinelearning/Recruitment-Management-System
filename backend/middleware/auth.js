@@ -5,10 +5,14 @@ import config from '../config/config.js';
 // Verify JWT token
 export const authenticateToken = async (req, res, next) => {
   try {
+    console.log('🔍 DEBUG: Authentication middleware called');
     const authHeader = req.headers['authorization'];
+    console.log('Auth header:', authHeader);
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    console.log('Token:', token ? 'Present' : 'Missing');
 
     if (!token) {
+      console.log('❌ No token found');
       return res.status(401).json({ 
         success: false, 
         message: 'Access token required' 
@@ -90,7 +94,11 @@ export const authenticateToken = async (req, res, next) => {
 // Check user permissions
 export const checkPermission = (module, action) => {
   return (req, res, next) => {
+    console.log('🔍 DEBUG: Permission check called for:', module, action);
+    console.log('User:', req.user ? req.user.role : 'No user');
+    
     if (!req.user) {
+      console.log('❌ No user found in request');
       return res.status(401).json({ 
         success: false, 
         message: 'Authentication required' 
@@ -99,6 +107,7 @@ export const checkPermission = (module, action) => {
 
     // Admin has all permissions
     if (req.user.role === 'Admin') {
+      console.log('✅ Admin user, permission granted');
       return next();
     }
 

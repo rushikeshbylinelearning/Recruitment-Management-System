@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Users, Briefcase, Clock, Target, Calendar, ArrowRight } from 'lucide-react';
+import { TrendingUp, Users, Briefcase, Clock, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dashboardAPI } from '../services/api';
 import ProtectedComponent from './ProtectedComponent';
@@ -215,10 +215,10 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
           <div className="space-y-4">
-            {dashboardData.activities.length > 0 ? (
+            {dashboardData.activities && dashboardData.activities.length > 0 ? (
               dashboardData.activities.slice(0, 8).map((activity, index) => (
                 <div 
-                  key={`${activity.id}-${index}`} 
+                  key={`activity-${activity.id || index}-${index}`} 
                   className="flex items-start space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
                   onClick={() => {
                     if (activity.type === 'candidate_update' || activity.type === 'new_application') {
