@@ -228,12 +228,12 @@ export const validateInterview = [
     }),
   
   body('type')
-    .isIn(['Technical', 'HR', 'Managerial', 'Final'])
+    .isIn(['Video', 'Phone', 'In-Person', 'Technical', 'HR', 'Managerial', 'Final'])
     .withMessage('Invalid interview type'),
   
   body('status')
     .optional()
-    .isIn(['Scheduled', 'Completed', 'Cancelled', 'Rescheduled'])
+    .isIn(['Scheduled', 'Completed', 'Cancelled', 'Rescheduled', 'In Progress'])
     .withMessage('Invalid status'),
   
   body('location')

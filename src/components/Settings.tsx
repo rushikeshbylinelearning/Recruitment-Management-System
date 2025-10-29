@@ -1344,7 +1344,7 @@ export default function Settings() {
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.email ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="member@company.com"
+                    placeholder="zaki.byline@gmail.com"
                   />
                   {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
                 </div>
@@ -1481,7 +1481,7 @@ export default function Settings() {
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.email ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="member@company.com"
+                    placeholder="zaki.byline@gmail.com"
                   />
                   {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
                 </div>

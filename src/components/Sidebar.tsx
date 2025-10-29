@@ -55,7 +55,7 @@ export default function Sidebar({ activeSection, onSectionChange }: SidebarProps
   return (
     <div className="w-64 bg-slate-900 text-white h-full flex flex-col">
       <div className="p-6 border-b border-slate-700">
-        <h1 className="text-xl font-bold text-blue-400">RecruitPro</h1>
+        <h1 className="text-xl font-bold text-blue-400">Byline HR Management Portal</h1>
         <p className="text-sm text-slate-400 mt-1">Hiring Management</p>
       </div>
       

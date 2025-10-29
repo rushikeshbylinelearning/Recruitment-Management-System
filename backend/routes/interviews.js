@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateId, validatePagination, validateInterview, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
