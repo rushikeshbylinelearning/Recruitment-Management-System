@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Calendar, User, AlertCircle, CheckCircle, Clock, X, Save, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Calendar, User, AlertCircle, CheckCircle, Clock, X, Save, Edit, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Task } from '../types';
 import { tasksAPI, usersAPI, jobsAPI, candidatesAPI } from '../services/api';
 import ProtectedComponent from './ProtectedComponent';
@@ -43,6 +43,18 @@ export default function Tasks({}: TasksProps) {
     dueDate: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0
+  });
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, priorityFilter]);
 
   // Load data from backend
   useEffect(() => {
@@ -78,7 +90,12 @@ export default function Tasks({}: TasksProps) {
         
         // Load other data in parallel
         const [tasksResponse, jobsResponse, candidatesResponse] = await Promise.all([
-          tasksAPI.getTasks(),
+          tasksAPI.getTasks({ 
+            page: currentPage, 
+            limit: 20,
+            status: statusFilter !== 'All' ? statusFilter : undefined,
+            priority: priorityFilter !== 'All' ? priorityFilter : undefined
+          }),
           jobsAPI.getJobs(),
           candidatesAPI.getCandidates()
         ]);
@@ -89,10 +106,13 @@ export default function Tasks({}: TasksProps) {
         if (tasksResponse.success && tasksResponse.data) {
           const tasks = tasksResponse.data.tasks || [];
           setTasks(tasks);
+          if (tasksResponse.data.pagination) {
+            setPagination(tasksResponse.data.pagination);
+          }
           console.log('Tasks loaded:', tasks.length);
           
           // If no tasks exist, create a sample task for the current user
-          if (tasks.length === 0 && users.length > 0) {
+          if (tasks.length === 0 && users.length > 0 && currentPage === 1) {
             console.log('No tasks found, creating sample task...');
             try {
               const currentUserId = user?.id || users[0]?.id || 1;
@@ -110,9 +130,12 @@ export default function Tasks({}: TasksProps) {
               if (createResponse.success) {
                 console.log('Sample task created successfully');
                 // Reload tasks
-                const reloadResponse = await tasksAPI.getTasks();
+                const reloadResponse = await tasksAPI.getTasks({ page: currentPage, limit: 20 });
                 if (reloadResponse.success && reloadResponse.data) {
                   setTasks(reloadResponse.data.tasks || []);
+                  if (reloadResponse.data.pagination) {
+                    setPagination(reloadResponse.data.pagination);
+                  }
                 }
               }
             } catch (createError) {
@@ -124,9 +147,12 @@ export default function Tasks({}: TasksProps) {
           // Try to retry once
           try {
             console.log('Retrying tasks API...');
-            const retryResponse = await tasksAPI.getTasks();
+            const retryResponse = await tasksAPI.getTasks({ page: currentPage, limit: 20 });
             if (retryResponse.success && retryResponse.data) {
               setTasks(retryResponse.data.tasks || []);
+              if (retryResponse.data.pagination) {
+                setPagination(retryResponse.data.pagination);
+              }
               console.log('Tasks loaded on retry:', retryResponse.data.tasks?.length || 0);
             } else {
               setError('Failed to load tasks: ' + (tasksResponse.message || 'Unknown error'));
@@ -162,7 +188,7 @@ export default function Tasks({}: TasksProps) {
     };
 
     loadData();
-  }, []);
+  }, [currentPage, statusFilter, priorityFilter]);
 
   // Handler functions
   function handleNewTask() {
@@ -202,9 +228,17 @@ export default function Tasks({}: TasksProps) {
       const response = await tasksAPI.updateTaskStatus(taskId, 'Completed');
       if (response.success) {
         // Refresh tasks list
-        const tasksResponse = await tasksAPI.getTasks();
+        const tasksResponse = await tasksAPI.getTasks({ 
+          page: currentPage, 
+          limit: 20,
+          status: statusFilter !== 'All' ? statusFilter : undefined,
+          priority: priorityFilter !== 'All' ? priorityFilter : undefined
+        });
         if (tasksResponse.success && tasksResponse.data) {
           setTasks(tasksResponse.data.tasks || []);
+          if (tasksResponse.data.pagination) {
+            setPagination(tasksResponse.data.pagination);
+          }
         }
         setError('');
       } else {
@@ -227,7 +261,19 @@ export default function Tasks({}: TasksProps) {
       setLoading(true);
       const response = await tasksAPI.deleteTask(taskId);
       if (response.success) {
-        setTasks(tasks.filter(t => t.id !== taskId));
+        // Refresh tasks list
+        const tasksResponse = await tasksAPI.getTasks({ 
+          page: currentPage, 
+          limit: 20,
+          status: statusFilter !== 'All' ? statusFilter : undefined,
+          priority: priorityFilter !== 'All' ? priorityFilter : undefined
+        });
+        if (tasksResponse.success && tasksResponse.data) {
+          setTasks(tasksResponse.data.tasks || []);
+          if (tasksResponse.data.pagination) {
+            setPagination(tasksResponse.data.pagination);
+          }
+        }
         setError('');
       } else {
         setError('Failed to delete task');
@@ -302,9 +348,17 @@ export default function Tasks({}: TasksProps) {
         }, 3000);
         
         // Refresh tasks list
-        const tasksResponse = await tasksAPI.getTasks();
+        const tasksResponse = await tasksAPI.getTasks({ 
+          page: currentPage, 
+          limit: 20,
+          status: statusFilter !== 'All' ? statusFilter : undefined,
+          priority: priorityFilter !== 'All' ? priorityFilter : undefined
+        });
         if (tasksResponse.success && tasksResponse.data) {
           setTasks(tasksResponse.data.tasks || []);
+          if (tasksResponse.data.pagination) {
+            setPagination(tasksResponse.data.pagination);
+          }
         }
         setError('');
         
@@ -334,12 +388,11 @@ export default function Tasks({}: TasksProps) {
     }
   }
 
+  // Client-side search filter (status and priority are handled by backend)
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          task.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || task.status === statusFilter;
-    const matchesPriority = priorityFilter === 'All' || task.priority === priorityFilter;
-    return matchesSearch && matchesStatus && matchesPriority;
+    return matchesSearch;
   });
 
   const getStatusIcon = (status: string) => {
@@ -369,8 +422,8 @@ export default function Tasks({}: TasksProps) {
     }
   };
 
-  const isOverdue = (dueDate: string) => {
-    return new Date(dueDate) < new Date() && tasks.find(t => t.dueDate === dueDate)?.status !== 'Completed';
+  const isOverdue = (dueDate: string, status: string) => {
+    return new Date(dueDate) < new Date() && status !== 'Completed';
   };
 
   // Show loading state
@@ -467,7 +520,7 @@ export default function Tasks({}: TasksProps) {
       {/* Task Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Tasks', value: tasks?.length || 0, color: 'bg-blue-500' },
+          { label: 'Total Tasks', value: pagination.total || 0, color: 'bg-blue-500' },
           { label: 'Pending', value: tasks?.filter(t => t.status === 'Pending')?.length || 0, color: 'bg-yellow-500' },
           { label: 'In Progress', value: tasks?.filter(t => t.status === 'In Progress')?.length || 0, color: 'bg-blue-500' },
           { label: 'Completed', value: tasks?.filter(t => t.status === 'Completed')?.length || 0, color: 'bg-green-500' },
@@ -490,8 +543,13 @@ export default function Tasks({}: TasksProps) {
           <h3 className="text-lg font-semibold text-gray-900">Task List</h3>
         </div>
         <div className="divide-y divide-gray-200">
-          {filteredTasks.map((task) => (
-            <div key={task.id} id={`task-${task.id}`} className={`p-6 hover:bg-gray-50 ${isOverdue(task.dueDate) ? 'bg-red-50' : ''}`}>
+          {filteredTasks.map((task) => {
+            const overdue = isOverdue(task.dueDate, task.status);
+            const isCompleted = task.status === 'Completed';
+            return (
+            <div key={task.id} id={`task-${task.id}`} className={`p-6 hover:bg-gray-50 ${
+              isCompleted ? 'bg-green-50' : overdue ? 'bg-red-50' : ''
+            }`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-start space-x-3">
@@ -507,7 +565,7 @@ export default function Tasks({}: TasksProps) {
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
                           {task.status}
                         </span>
-                        {isOverdue(task.dueDate) && (
+                        {overdue && !isCompleted && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
                             Overdue
                           </span>
@@ -649,9 +707,76 @@ export default function Tasks({}: TasksProps) {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-between bg-white px-6 py-4 rounded-lg border border-gray-200">
+          <div className="text-sm text-gray-700">
+            Showing <span className="font-medium">{(pagination.page - 1) * pagination.limit + 1}</span> to{' '}
+            <span className="font-medium">
+              {Math.min(pagination.page * pagination.limit, pagination.total)}
+            </span>{' '}
+            of <span className="font-medium">{pagination.total}</span> tasks
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className={`px-3 py-2 border border-gray-300 rounded-lg transition-colors flex items-center space-x-1 ${
+                currentPage === 1
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <ChevronLeft size={16} />
+              <span>Previous</span>
+            </button>
+            <div className="flex items-center space-x-1">
+              {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
+                let pageNum;
+                if (pagination.pages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= pagination.pages - 2) {
+                  pageNum = pagination.pages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-2 rounded-lg transition-colors ${
+                      currentPage === pageNum
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(pagination.pages, prev + 1))}
+              disabled={currentPage === pagination.pages}
+              className={`px-3 py-2 border border-gray-300 rounded-lg transition-colors flex items-center space-x-1 ${
+                currentPage === pagination.pages
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span>Next</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {(filteredTasks?.length || 0) === 0 && (
         <div className="text-center py-12">
