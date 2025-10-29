@@ -1,6 +1,7 @@
 import { X, Mail, Phone, MapPin, Calendar, FileText, Star, DollarSign, Clock, Download } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI } from '../services/api';
+import { formatToDDMMYYYY } from '../utils/dateFormatter';
 
 interface ApplicantDetailsModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export default function ApplicantDetailsModal({ isOpen, onClose, applicant }: Ap
                 <div className="flex items-center space-x-3">
                   <Calendar size={16} className="text-gray-400" />
                   <span className="text-gray-900">
-                    Applied: {new Date(applicant.appliedDate).toLocaleDateString()}
+                    Applied: {formatToDDMMYYYY(applicant.appliedDate)}
                   </span>
                 </div>
                 <div className="flex items-center space-x-3">

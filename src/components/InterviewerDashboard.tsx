@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Clock, Calendar, Star, MessageSquare, UserCheck, AlertCircle } from 'lucide-react';
+import { Users, Clock, Calendar, MessageSquare, UserCheck, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { candidatesAPI, interviewsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -179,7 +179,7 @@ export default function InterviewerDashboard() {
       value: dashboardData.metrics.pendingReviews.value,
       change: `${dashboardData.metrics.pendingReviews.change > 0 ? '+' : ''}${dashboardData.metrics.pendingReviews.change}%`,
       positive: dashboardData.metrics.pendingReviews.change > 0,
-      icon: Star,
+      icon: MessageSquare,
       color: 'bg-purple-500',
       section: 'interviewer-candidates',
     },

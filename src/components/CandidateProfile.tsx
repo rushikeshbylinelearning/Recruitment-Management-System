@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Calendar, DollarSign, Clock, Star, MessageSquare, ClipboardList, FileText, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { X, User, Mail, Phone, Calendar, DollarSign, Clock, MessageSquare, ClipboardList, FileText, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Candidate } from '../types';
 import { assignmentsAPI, Assignment } from '../services/api';
 import InterviewManagement from './InterviewManagement';
@@ -86,20 +86,6 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
   };
 
 
-  const renderStarRating = (rating: number) => {
-    return (
-      <div className="flex items-center space-x-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <Star
-            key={star}
-            size={16}
-            className={star <= rating ? 'text-yellow-500 fill-current' : 'text-gray-300'}
-          />
-        ))}
-        <span className="text-sm text-gray-600 ml-2">{rating}/5</span>
-      </div>
-    );
-  };
 
   const OverviewTab = () => (
     <div className="space-y-6">
@@ -208,8 +194,6 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
           <div>
             <p className="text-sm text-gray-600 mb-2">Experience</p>
             <p className="font-medium text-gray-900 mb-4">{candidate.experience}</p>
-            <p className="text-sm text-gray-600 mb-2">Overall Score</p>
-            {renderStarRating(candidate.score)}
           </div>
           <div>
             <p className="text-sm text-gray-600 mb-2">Skills</p>

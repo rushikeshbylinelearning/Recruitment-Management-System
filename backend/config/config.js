@@ -50,7 +50,7 @@ const config = {
   
   // CORS Configuration
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173' || 'https://hr.legatolxp.online',
     credentials: true
   }
 };

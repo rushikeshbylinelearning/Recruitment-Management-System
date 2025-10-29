@@ -2,6 +2,7 @@ import axios, { AxiosResponse, AxiosError } from 'axios';
 
 // API Base Configuration
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://hr.bylinelms.com/api/';
 
 // Create axios instance
 const api = axios.create({
@@ -471,6 +472,7 @@ export interface Candidate {
   notes: string;
   score: number;
   assignedTo: string;
+  assignedToId?: number | null; // Added for form submission
   communications: Communication[];
   skills: string[];
   experience: string;
@@ -501,6 +503,8 @@ export interface Candidate {
   assignmentLocation?: string;
   resumeLocation?: string;
   interviews: Interview[];
+  latestInterviewDate?: string; // Added for Interview stage sorting
+  job_id?: number; // Added for job filtering
 }
 
 export interface Communication {

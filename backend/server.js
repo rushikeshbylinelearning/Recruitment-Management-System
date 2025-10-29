@@ -70,7 +70,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
+app.get('/api', async (req, res) => {
   try {
     const dbConnected = await testConnection();
     res.json({
@@ -105,7 +105,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/assignments', assignmentRoutes);
 
 // API documentation endpoint
-app.get('/api', (req, res) => {
+app.get('/health', (req, res) => {
   res.json({
     success: true,
     message: 'HR Workflow Management API',
@@ -123,7 +123,6 @@ app.get('/api', (req, res) => {
       files: '/api/files',
       assignments: '/api/assignments'
     },
-    documentation: 'https://github.com/your-repo/api-docs'
   });
 });
 

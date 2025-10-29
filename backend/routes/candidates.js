@@ -9,10 +9,7 @@ import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../
 const router = express.Router();
 
 // Get all candidates
-router.get('/', authenticateToken, checkPermission('candidates', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
+router.get('/', authenticateToken, checkPermission('candidates', 'view'), asyncHandler(async (req, res) => {
   const search = req.query.search || '';
   const stage = req.query.stage || '';
   const source = req.query.source || '';
@@ -21,8 +18,8 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
   let params = [];
 
   if (search) {
-    whereClause += ' AND (c.name LIKE ? OR c.email LIKE ? OR c.position LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    whereClause += ' AND (c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.position LIKE ? OR c.location LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   if (stage) {
@@ -35,21 +32,22 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     params.push(source);
   }
 
-  // Get total count
-  const countResult = await query(
-    `SELECT COUNT(*) as total FROM candidates c ${whereClause}`,
-    params
-  );
-  const total = countResult[0].total;
-
-  // Get candidates
+  // Get candidates with latest interview date for Interview stage sorting
   const candidates = await query(
-    `SELECT c.*, u.name as assigned_to_name 
+    `SELECT c.*, u.name as assigned_to_name,
+       (SELECT MAX(i.scheduled_date) 
+        FROM interviews i 
+        WHERE i.candidate_id = c.id 
+        AND i.status = 'Completed') as latest_interview_date
      FROM candidates c
      LEFT JOIN users u ON c.assigned_to = u.id
      ${whereClause}
-     ORDER BY c.applied_date DESC 
-     LIMIT ${limit} OFFSET ${offset}`,
+     ORDER BY 
+       CASE 
+         WHEN c.stage = 'Interview' AND latest_interview_date IS NOT NULL 
+         THEN latest_interview_date 
+         ELSE c.applied_date 
+       END DESC`,
     params
   );
 
@@ -79,6 +77,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
     candidate.resume = candidate.resume_path; // Add resume path for frontend
     candidate.appliedDate = candidate.applied_date;
     candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
+    candidate.assignedToId = candidate.assigned_to || null; // Add user ID for form submission
     
     // Structure salary object
     candidate.salary = {
@@ -109,6 +108,9 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
       interviewerId: candidate.interviewer_id || null,
       inOfficeAssignment: candidate.in_office_assignment || null
     };
+
+    // Add latest interview date for Interview stage candidates
+    candidate.latestInterviewDate = candidate.latest_interview_date || null;
 
     // Add location fields
     candidate.assignmentLocation = candidate.assignment_location || null;
@@ -160,13 +162,7 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), valida
   res.json({
     success: true,
     data: {
-      candidates,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
+      candidates
     }
   });
 }));
@@ -212,6 +208,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   candidate.resume = candidate.resume_path; // Add resume path for frontend
   candidate.appliedDate = candidate.applied_date;
   candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
+  candidate.assignedToId = candidate.assigned_to || null; // Add user ID for form submission
   
   // Structure salary object
   candidate.salary = {
@@ -790,10 +787,6 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
     throw new ValidationError('Candidates array is required');
   }
 
-  if (candidates.length > 100) {
-    throw new ValidationError('Cannot import more than 100 candidates at once');
-  }
-
   const results = [];
   const errors = [];
 
@@ -801,9 +794,15 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
     try {
       const candidate = candidates[i];
       
-      // Validate required fields
-      if (!candidate.name || !candidate.email || !candidate.position) {
-        errors.push({ row: i + 1, error: 'Missing required fields' });
+      // Skip completely empty rows
+      const hasAnyData = candidate.name || candidate.email || candidate.phone;
+      if (!hasAnyData) {
+        continue;
+      }
+      
+      // Validate required fields (only name and email are required)
+      if (!candidate.name || !candidate.email) {
+        errors.push({ row: i + 1, error: 'Missing required fields (name and email)' });
         continue;
       }
 
@@ -844,8 +843,8 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
          assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
          location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
          interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position, candidate.stage || 'Applied',
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [candidate.jobId || null, candidate.name, candidate.email, candidate.phone || '', candidate.position || '', candidate.stage || 'Applied',
          candidate.source || 'Bulk Import', candidate.appliedDate || new Date().toISOString().split('T')[0],
          candidate.resumePath || null, candidate.score || 0, assignedTo,
          JSON.stringify(candidate.skills || []), candidate.experience || '', candidate.expectedSalary || '', 

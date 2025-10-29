@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MessageSquare, Clock, MapPin, Phone, Mail, Star, Users, ChevronDown, Calendar, Video, User } from 'lucide-react';
+import { Search, MessageSquare, Clock, MapPin, Phone, Mail, Users, ChevronDown, Calendar, Video, User } from 'lucide-react';
 import { candidatesAPI, interviewsAPI, Candidate } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -200,12 +200,6 @@ export default function InterviewerCandidates() {
     }
   };
 
-  const getScoreColor = (score: number | string) => {
-    const numScore = typeof score === 'string' ? parseFloat(score) : score;
-    if (numScore >= 4) return 'text-green-600';
-    if (numScore >= 3) return 'text-yellow-600';
-    return 'text-red-600';
-  };
 
   const getInterviewForCandidate = (candidateId: number) => {
     return interviews.find(interview => interview.candidate_id === candidateId);
@@ -320,14 +314,6 @@ export default function InterviewerCandidates() {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageColor(candidate.stage)}`}>
                         {candidate.stage}
                       </span>
-                      {parseFloat(String(candidate.score || '0')) > 0 && (
-                        <div className="flex items-center ml-2">
-                          <Star size={14} className={`mr-1 ${getScoreColor(candidate.score)}`} />
-                          <span className={`text-xs font-medium ${getScoreColor(candidate.score)}`}>
-                            {candidate.score}/5
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>

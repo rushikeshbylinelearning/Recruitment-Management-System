@@ -4,6 +4,7 @@ import { Task } from '../types';
 import { tasksAPI, usersAPI, jobsAPI, candidatesAPI } from '../services/api';
 import ProtectedComponent from './ProtectedComponent';
 import { useAuth } from '../contexts/AuthContext';
+import { formatToDDMMYYYY } from '../utils/dateFormatter';
 
 interface TasksProps {
   tasks?: Task[]; // Made optional since we'll fetch from backend
@@ -534,11 +535,11 @@ export default function Tasks({}: TasksProps) {
                     <div className="space-y-2">
                       <div>
                         <span className="text-sm font-medium text-gray-600">Created Date:</span>
-                        <p className="text-sm text-gray-900">{new Date(task.createdDate).toLocaleDateString()}</p>
+                        <p className="text-sm text-gray-900">{formatToDDMMYYYY(task.createdDate)}</p>
                       </div>
                       <div>
                         <span className="text-sm font-medium text-gray-600">Due Date:</span>
-                        <p className="text-sm text-gray-900">{new Date(task.dueDate).toLocaleDateString()}</p>
+                        <p className="text-sm text-gray-900">{formatToDDMMYYYY(task.dueDate)}</p>
                       </div>
                       <div>
                         <span className="text-sm font-medium text-gray-600">Days Remaining:</span>

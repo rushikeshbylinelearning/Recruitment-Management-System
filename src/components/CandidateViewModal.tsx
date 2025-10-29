@@ -1,4 +1,4 @@
-import { X, Mail, Phone, MapPin, Star, Download, FileText, User, Calendar, Clock } from 'lucide-react';
+import { X, Mail, Phone, MapPin, Download, FileText, User, Calendar, Clock } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, assignmentsAPI, Assignment } from '../services/api';
 import { useState, useEffect } from 'react';
@@ -229,13 +229,6 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                       {candidate.stage}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Score:</span>
-                    <div className="flex items-center space-x-1">
-                      <Star size={16} className="text-yellow-500" />
-                      <span className="text-gray-900">{candidate.score}/5</span>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -360,22 +353,7 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
                 }
                   // Debug: Show all notes if no interviewer notes found
                   console.log('No interviewer notes found, showing debug info');
-                  return (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <h3 className="text-lg font-medium text-yellow-900 mb-2">Debug: Interview Details</h3>
-                      <p className="text-sm text-yellow-800 mb-2">No interviewer notes found. Available notes:</p>
-                      <div className="text-xs text-yellow-700">
-                        <p>Total notes: {notes.length}</p>
-                        {notes.map((note: any, index: number) => (
-                          <div key={index} className="mt-1 p-2 bg-white rounded border">
-                            <p>User: {note.user_name} (Role: {note.user_role})</p>
-                            <p>Has recommendation: {note.recommendation ? 'Yes' : 'No'}</p>
-                            <p>Recommendation: {note.recommendation || 'None'}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
+                  
                 }
                 return null;
               })()}

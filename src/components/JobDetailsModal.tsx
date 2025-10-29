@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, MapPin, Calendar, Users, Briefcase, Clock, ExternalLink } from 'lucide-react';
 import { JobPosting } from '../types';
+import { formatToDDMMYYYY } from '../utils/dateFormatter';
 
 interface JobDetailsModalProps {
   job: JobPosting;
@@ -67,14 +68,14 @@ export default function JobDetailsModal({ job, onClose, onEdit }: JobDetailsModa
               <Calendar className="text-gray-400" size={20} />
               <div>
                 <p className="text-sm text-gray-600">Posted Date</p>
-                <p className="font-medium text-gray-900">{new Date(job.postedDate).toLocaleDateString()}</p>
+                <p className="font-medium text-gray-900">{formatToDDMMYYYY(job.postedDate)}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
               <Clock className="text-gray-400" size={20} />
               <div>
                 <p className="text-sm text-gray-600">Deadline</p>
-                <p className="font-medium text-gray-900">{new Date(job.deadline).toLocaleDateString()}</p>
+                <p className="font-medium text-gray-900">{formatToDDMMYYYY(job.deadline)}</p>
               </div>
             </div>
           </div>
