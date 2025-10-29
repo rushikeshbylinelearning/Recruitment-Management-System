@@ -1,7 +1,8 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 
 // API Base Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://hr.bylinelms.com/api/';
 
 // Create axios instance
 const api = axios.create({
@@ -471,6 +472,7 @@ export interface Candidate {
   notes: string;
   score: number;
   assignedTo: string;
+  assignedToId?: number | null; // Added for form submission
   communications: Communication[];
   skills: string[];
   experience: string;
@@ -501,6 +503,8 @@ export interface Candidate {
   assignmentLocation?: string;
   resumeLocation?: string;
   interviews: Interview[];
+  latestInterviewDate?: string; // Added for Interview stage sorting
+  job_id?: number; // Added for job filtering
 }
 
 export interface Communication {
@@ -553,6 +557,11 @@ export const candidatesAPI = {
     return response.data;
   },
 
+  updateCandidatePartial: async (id: number, candidateData: Partial<Candidate>): Promise<ApiResponse> => {
+    const response = await api.patch(`/candidates/${id}`, candidateData);
+    return response.data;
+  },
+
   deleteCandidate: async (id: number): Promise<ApiResponse> => {
     const response = await api.delete(`/candidates/${id}`);
     return response.data;
@@ -584,8 +593,17 @@ export const candidatesAPI = {
     notes?: string;
     rating?: number;
     ratingComments?: string;
+    recommendation?: string;
   }): Promise<ApiResponse> => {
     const response = await api.post(`/candidates/${candidateId}/notes`, noteData);
+    return response.data;
+  },
+
+  addInterviewNote: async (candidateId: number, noteData: {
+    notes?: string;
+    recommendation?: string;
+  }): Promise<ApiResponse> => {
+    const response = await api.post(`/candidates/${candidateId}/interview-notes`, noteData);
     return response.data;
   },
 
@@ -1021,6 +1039,134 @@ export const analyticsAPI = {
     }>;
   }>> => {
     const response = await api.get('/analytics/candidate-quality');
+    return response.data;
+  },
+};
+
+// Assignments API
+export interface Assignment {
+  id: number;
+  candidate_id: number;
+  job_id?: number;
+  assigned_by: number;
+  title: string;
+  description_html?: string;
+  status: 'Draft' | 'Assigned' | 'In Progress' | 'Submitted' | 'Approved' | 'Rejected' | 'Cancelled';
+  due_date?: string;
+  created_at: string;
+  updated_at: string;
+  candidate_name?: string;
+  candidate_email?: string;
+  job_title?: string;
+  assigned_by_name?: string;
+  attachment_count?: number;
+  last_sent?: string;
+  attachments?: Array<{
+    id: number;
+    filename: string;
+    original_name: string;
+    file_size: number;
+    mime_type: string;
+    uploaded_at: string;
+  }>;
+  communications?: Array<{
+    id: number;
+    type: string;
+    date: string;
+    content: string;
+    status: string;
+    created_at: string;
+  }>;
+}
+
+export interface AssignmentFilters {
+  search?: string;
+  status?: string;
+  candidateId?: number;
+  jobId?: number;
+  dueBefore?: string;
+  dueAfter?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const assignmentsAPI = {
+  getAssignments: async (filters: AssignmentFilters = {}): Promise<any> => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value.toString());
+      }
+    });
+    
+    const response = await api.get(`/assignments?${params.toString()}`);
+    return response.data;
+  },
+
+  getAssignment: async (id: number): Promise<ApiResponse<Assignment>> => {
+    const response = await api.get(`/assignments/${id}`);
+    return response.data;
+  },
+
+  createAssignment: async (assignmentData: {
+    candidateId: number;
+    jobId?: number;
+    title: string;
+    descriptionHtml?: string;
+    dueDate?: string;
+  }): Promise<ApiResponse<Assignment>> => {
+    const response = await api.post('/assignments', assignmentData);
+    return response.data;
+  },
+
+  updateAssignment: async (id: number, assignmentData: {
+    candidateId?: number;
+    jobId?: number;
+    title?: string;
+    descriptionHtml?: string;
+    dueDate?: string;
+    status?: string;
+  }): Promise<ApiResponse<Assignment>> => {
+    const response = await api.put(`/assignments/${id}`, assignmentData);
+    return response.data;
+  },
+
+  deleteAssignment: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/assignments/${id}`);
+    return response.data;
+  },
+
+  uploadFiles: async (id: number, files: FileList): Promise<ApiResponse> => {
+    const formData = new FormData();
+    Array.from(files).forEach(file => {
+      formData.append('files', file);
+    });
+    
+    const response = await api.post(`/assignments/${id}/files`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  removeFile: async (id: number, fileId: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/assignments/${id}/files/${fileId}`);
+    return response.data;
+  },
+
+  sendAssignment: async (id: number): Promise<ApiResponse> => {
+    const response = await api.post(`/assignments/${id}/send`);
+    return response.data;
+  },
+
+  updateStatus: async (id: number, status: string): Promise<ApiResponse> => {
+    const response = await api.patch(`/assignments/${id}/status`, { status });
+    return response.data;
+  },
+
+  getCandidateAssignments: async (candidateId: number): Promise<ApiResponse<Assignment[]>> => {
+    const response = await api.get(`/assignments/candidates/${candidateId}`);
     return response.data;
   },
 };

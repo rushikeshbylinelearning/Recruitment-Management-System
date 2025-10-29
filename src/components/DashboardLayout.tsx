@@ -16,10 +16,11 @@ export default function DashboardLayout() {
     if (path.startsWith('/dashboard')) setActiveSection('dashboard');
     else if (path.startsWith('/jobs')) setActiveSection('jobs');
     else if (path.startsWith('/candidates')) setActiveSection('candidates');
-    else if (path.startsWith('/interviewer-feedback')) setActiveSection('interviewer-feedback');
     else if (path.startsWith('/interviews')) setActiveSection('interviews');
     else if (path.startsWith('/tasks')) setActiveSection('tasks');
     else if (path.startsWith('/team')) setActiveSection('team');
+    else if (path.startsWith('/communications')) setActiveSection('communications');
+    else if (path.startsWith('/assignments')) setActiveSection('assignments');
     else if (path.startsWith('/analytics')) setActiveSection('analytics');
     else if (path.startsWith('/settings')) setActiveSection('settings');
     else setActiveSection('dashboard');

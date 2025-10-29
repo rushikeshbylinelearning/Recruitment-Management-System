@@ -110,7 +110,7 @@ export interface TeamMember {
   lastLogin: string;
   statistics?: {
     tasks_completed: number;
-    assigned_jobs: number;
+    tasks_assigned: number;
   };
   createdDate: string;
   interviewerProfile?: InterviewerProfile;
@@ -138,9 +138,15 @@ export interface User {
   permissions: Permission[];
   avatar: string;
   interviewerProfile?: InterviewerProfile;
+  assignedJobs?: string[];
+  tasksCompleted?: number;
+  candidatesProcessed?: number;
+  status?: string;
+  lastLogin?: string;
+  createdDate?: string;
   statistics?: {
     tasks_completed: number;
-    assigned_jobs: number;
+    tasks_assigned: number;
   };
 }
 

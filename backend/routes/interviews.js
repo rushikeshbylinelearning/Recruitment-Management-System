@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateInterview, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -60,8 +60,8 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
      LEFT JOIN users u ON i.interviewer_id = u.id
      ${whereClause}
      ORDER BY i.scheduled_date DESC 
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
 
   res.json({
@@ -344,6 +344,12 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
      ORDER BY i.scheduled_date DESC`,
     [interviewerId]
   );
+
+  res.json({
+    success: true,
+    data: { interviews }
+  });
+}));
 
 // Get interview statistics
 router.get('/stats/overview', authenticateToken, checkPermission('interviews', 'view'), asyncHandler(async (req, res) => {

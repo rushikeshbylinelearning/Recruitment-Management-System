@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, User, Mail, Phone, Star, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download, FileText, Users, DollarSign, CheckCircle, XCircle, Briefcase } from 'lucide-react';
+import { Search, User, Mail, Phone, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
 import BulkImportModal from './BulkImportModal';
 import CandidateViewModal from './CandidateViewModal';
-import ProtectedComponent from './ProtectedComponent';
 
 export default function Candidates() {
   const { hasPermission } = useAuth();
@@ -16,6 +15,8 @@ export default function Candidates() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [stageFilter, setStageFilter] = useState('All');
+  const [jobFilter, setJobFilter] = useState<number[]>([]);
+  const [showJobFilter, setShowJobFilter] = useState(false);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkImportModal, setShowBulkImportModal] = useState(false);
@@ -36,13 +37,17 @@ export default function Candidates() {
         ]);
         
         if (candidatesResponse.success && candidatesResponse.data) {
-          setCandidates(candidatesResponse.data.candidates || []);
+          const candidatesData = candidatesResponse.data.candidates || [];
+          setCandidates(candidatesData);
+          // Debug logging removed
         } else {
           setError('Failed to load candidates');
         }
         
         if (jobsResponse.success && jobsResponse.data) {
-          setJobs(jobsResponse.data.jobs || []);
+          const jobsData = jobsResponse.data.jobs || [];
+          setJobs(jobsData);
+          // Debug logging removed
         } else {
           setError('Failed to load jobs');
         }
@@ -55,12 +60,34 @@ export default function Candidates() {
     };
     loadData();
   }, []);
+
+  // Close job filter dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.job-filter-container')) {
+        setShowJobFilter(false);
+      }
+    };
+
+    if (showJobFilter) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showJobFilter]);
   
   const filteredCandidates = candidates.filter((candidate) => {
     const matchesSearch = candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         candidate.position.toLowerCase().includes(searchTerm.toLowerCase());
+                         candidate.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         candidate.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         candidate.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (candidate.location && candidate.location.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStage = stageFilter === 'All' || candidate.stage === stageFilter;
-    return matchesSearch && matchesStage;
+    const matchesJob = jobFilter.length === 0 || (candidate.job_id && jobFilter.includes(Number(candidate.job_id)));
+    
+    // Debug logging removed
+    
+    return matchesSearch && matchesStage && matchesJob;
   });
 
   const getStageColor = (stage: string) => {
@@ -103,22 +130,33 @@ export default function Candidates() {
     }
   };
 
-  const getStageIcon = (stage: string) => {
-    switch (stage) {
-      case 'Applied': return <FileText size={20} className="text-blue-600" />;
-      case 'Screening': return <Search size={20} className="text-yellow-600" />;
-      case 'Interview': return <Users size={20} className="text-orange-600" />;
-      case 'Offer': return <DollarSign size={20} className="text-purple-600" />;
-      case 'Hired': return <CheckCircle size={20} className="text-green-600" />;
-      case 'Rejected': return <XCircle size={20} className="text-red-600" />;
-      default: return <Briefcase size={20} className="text-gray-600" />;
-    }
-  };
 
   const candidatesByStage = stages.reduce((acc, stage) => {
     acc[stage] = filteredCandidates.filter(candidate => candidate.stage === stage);
     return acc;
   }, {} as Record<string, Candidate[]>);
+
+  // Job filter functions
+  const handleJobFilterChange = (jobId: number, checked: boolean) => {
+    if (checked) {
+      setJobFilter(prev => [...prev, jobId]);
+    } else {
+      setJobFilter(prev => prev.filter(id => id !== jobId));
+    }
+  };
+
+  const handleClearJobFilter = () => {
+    setJobFilter([]);
+  };
+
+  const getSelectedJobsText = () => {
+    if (jobFilter.length === 0) return 'All Jobs';
+    if (jobFilter.length === 1) {
+      const job = jobs.find(j => j.id === jobFilter[0]);
+      return job ? job.title : 'Selected Job';
+    }
+    return `${jobFilter.length} Jobs Selected`;
+  };
 
   // Handler functions
 
@@ -148,87 +186,6 @@ export default function Candidates() {
   };
 
 
-  const handleShowResumeParser = () => {
-    // Create a hidden file input for resume parsing
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.txt';
-    input.style.display = 'none';
-    
-    input.onchange = async (event) => {
-      const file = (event.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      try {
-        setLoading(true);
-        
-        // Import the resume parser
-        const { parseResume } = await import('../utils/resumeParser');
-        
-        // Parse the resume
-        const parsedData = await parseResume(file);
-        
-        // Set the parsed data and open the modal
-        setEditingCandidate({
-          id: 0, // Temporary ID for new candidate
-          name: parsedData.name || '',
-          email: parsedData.email || '',
-          phone: parsedData.phone || '',
-          position: parsedData.expertise || '',
-          stage: 'Applied',
-          source: 'Resume Parser',
-          appliedDate: new Date().toISOString(),
-          notes: parsedData.notes || '',
-          score: 0,
-          skills: parsedData.skills || [],
-          experience: parsedData.experience || '',
-          salary: {
-            expected: parsedData.expectedSalary || '',
-            offered: '',
-            negotiable: true
-          },
-          availability: {
-            joiningTime: '',
-            noticePeriod: parsedData.noticePeriod || '',
-            immediateJoiner: parsedData.immediateJoiner || false
-          },
-          location: parsedData.location || '',
-          expertise: parsedData.expertise || '',
-          willingAlternateSaturday: parsedData.willingAlternateSaturday,
-          workPreference: parsedData.workPreference || '',
-          currentCtc: parsedData.currentCtc || '',
-          ctcFrequency: 'Annual',
-          inHouseAssignmentStatus: 'Pending',
-          interviewDate: '',
-          interviewerId: null,
-          inOfficeAssignment: '',
-          assignmentLocation: '',
-          resumeLocation: '',
-          communications: [],
-          interviews: [],
-          communicationsCount: 0,
-          interviewsCount: 0,
-          assignedTo: 'Unassigned',
-          jobId: jobs.length > 0 ? jobs[0].id : null,
-          resumeFileId: null,
-          resume: file.name
-        } as any);
-        
-        setShowAddModal(true);
-        setError('');
-        
-      } catch (error) {
-        console.error('Resume parsing error:', error);
-        setError(error instanceof Error ? error.message : 'Failed to parse resume');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    document.body.appendChild(input);
-    input.click();
-    document.body.removeChild(input);
-  };
 
   // CRUD Operations
   const handleViewCandidate = (candidate: ApiCandidate) => {
@@ -356,10 +313,6 @@ export default function Candidates() {
                 <p className="text-xs text-gray-600 truncate max-w-32">{candidate.position}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-1 bg-yellow-50 px-2 py-1 rounded-full">
-              <Star size={12} className="text-yellow-500 fill-current" />
-              <span className="text-xs font-medium text-yellow-700">{candidate.score}/5</span>
-            </div>
           </div>
           
           {/* Salary info */}
@@ -413,7 +366,12 @@ export default function Candidates() {
         <div className="px-4 py-3 bg-gray-50 rounded-b-xl border-t border-gray-100">
           <div className="flex justify-between items-center text-xs text-gray-500">
             <span className="font-medium">{candidate.source}</span>
-            <span>{new Date(candidate.appliedDate).toLocaleDateString()}</span>
+            <span>
+              {candidate.stage === 'Interview' && candidate.latestInterviewDate 
+                ? new Date(candidate.latestInterviewDate).toLocaleDateString()
+                : new Date(candidate.appliedDate).toLocaleDateString()
+              }
+            </span>
           </div>
         </div>
         
@@ -510,15 +468,7 @@ export default function Candidates() {
                 <span className="font-medium">Add Candidate</span>
               </button>
             )}
-            {hasPermission('candidates', 'create') && (
-              <button
-                onClick={handleShowResumeParser}
-                className="flex items-center space-x-2 bg-violet-50 text-violet-700 border border-violet-200 px-4 py-2.5 rounded-xl hover:bg-violet-100 hover:border-violet-300 transition-all duration-200 shadow-sm hover:shadow-md"
-              >
-                <Upload size={18} />
-                <span className="font-medium">Parse Resume</span>
-              </button>
-            )}
+            
             {hasPermission('candidates', 'create') && (
               <button
                 onClick={() => setShowBulkImportModal(true)}
@@ -557,8 +507,8 @@ export default function Candidates() {
       </div>
 
       {/* Filters */}
-      <div className="flex space-x-4">
-        <div className="flex-1 relative">
+      <div className="flex space-x-4 items-center">
+        <div className="relative w-80">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
@@ -568,16 +518,90 @@ export default function Candidates() {
             className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200"
           />
         </div>
+        
+        {/* Stage Filter */}
         <select
           value={stageFilter}
           onChange={(e) => setStageFilter(e.target.value)}
-          className="px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200 min-w-[140px]"
+          className="px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200 min-w-[140px] hover:border-slate-300 hover:shadow-md"
         >
           <option value="All">All Stages</option>
           {stages.map(stage => (
             <option key={stage} value={stage}>{stage}</option>
           ))}
         </select>
+
+        {/* Job Filter */}
+        <div className="relative job-filter-container">
+          <button
+            onClick={() => setShowJobFilter(!showJobFilter)}
+            className="px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200 min-w-[180px] text-left flex items-center justify-between hover:border-slate-300 hover:shadow-md"
+          >
+            <div className="flex items-center space-x-2">
+              <span className={jobFilter.length > 0 ? 'text-indigo-600 font-medium' : 'text-gray-700'}>
+                {getSelectedJobsText()}
+              </span>
+              {jobFilter.length > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                  {jobFilter.length}
+                </span>
+              )}
+            </div>
+            <svg className={`w-4 h-4 transition-transform duration-200 ${showJobFilter ? 'rotate-180' : ''} text-gray-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          
+          {/* Job Filter Dropdown */}
+          {showJobFilter && jobs.length > 0 && (
+            <div className="absolute top-full left-0 mt-2 w-96 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto animate-in slide-in-from-top-2 duration-200">
+              <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                    <h4 className="text-sm font-semibold text-gray-900">Filter by Job Position</h4>
+                  </div>
+                  <button
+                    onClick={handleClearJobFilter}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+              <div className="p-3 space-y-1">
+                {jobs.filter(job => job.status === 'Active').map(job => (
+                  <label key={job.id} className="flex items-center space-x-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors group">
+                    <input
+                      type="checkbox"
+                      checked={jobFilter.includes(job.id)}
+                      onChange={(e) => handleJobFilterChange(job.id, e.target.checked)}
+                      className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 focus:ring-2"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-700 transition-colors">
+                        {job.title}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {job.department}
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
+                        {candidates.filter(c => Number(c.job_id) === job.id).length} candidates
+                      </div>
+                    </div>
+                  </label>
+                ))}
+                {jobs.filter(job => job.status === 'Active').length === 0 && (
+                  <div className="p-4 text-center text-gray-500">
+                    <p className="text-sm">No active jobs found</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Kanban View */}
@@ -609,7 +633,7 @@ export default function Candidates() {
                   </div>
                   
                   {/* Stage Content */}
-                  <div className="bg-gray-50 p-4 rounded-b-xl min-h-96 border-l-4 border-r border-b border-gray-200" style={{borderLeftColor: stageColors.header.includes('blue') ? '#3B82F6' : stageColors.header.includes('yellow') ? '#EAB308' : stageColors.header.includes('orange') ? '#F97316' : stageColors.header.includes('purple') ? '#8B5CF6' : stageColors.header.includes('green') ? '#10B981' : stageColors.header.includes('red') ? '#EF4444' : '#6B7280'}}>
+                  <div className="bg-gray-50 p-4 rounded-b-xl min-h-96 max-h-[600px] overflow-y-auto border-l-4 border-r border-b border-gray-200 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400" style={{borderLeftColor: stageColors.header.includes('blue') ? '#3B82F6' : stageColors.header.includes('yellow') ? '#EAB308' : stageColors.header.includes('orange') ? '#F97316' : stageColors.header.includes('purple') ? '#8B5CF6' : stageColors.header.includes('green') ? '#10B981' : stageColors.header.includes('red') ? '#EF4444' : '#6B7280'}}>
                     {stageCandidates.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                         <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-3">
@@ -619,7 +643,7 @@ export default function Candidates() {
                         <p className="text-xs text-center">Candidates will appear here when they reach this stage</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-3 pr-2">
                         {stageCandidates.map((candidate) => (
                           <CandidateCard key={candidate.id} candidate={candidate} />
                         ))}
@@ -675,10 +699,7 @@ export default function Candidates() {
                     Source
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Applied
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Score
+                    Date
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -706,13 +727,10 @@ export default function Candidates() {
                       {candidate.source}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(candidate.appliedDate).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Star size={14} className="text-yellow-500 mr-1" />
-                        <span className="text-sm text-gray-900">{candidate.score}/5</span>
-                      </div>
+                      {candidate.stage === 'Interview' && candidate.latestInterviewDate 
+                        ? new Date(candidate.latestInterviewDate).toLocaleDateString()
+                        : new Date(candidate.appliedDate).toLocaleDateString()
+                      }
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button

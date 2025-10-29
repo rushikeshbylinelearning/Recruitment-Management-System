@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { X, Upload, Download, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Upload, Download, FileText, AlertCircle, CheckCircle, Sheet } from 'lucide-react';
 import { JobPosting } from '../types';
+import * as XLSX from 'xlsx';
+import { parseDDMMYYYY as parseDateUtil } from '../utils/dateFormatter';
 
 interface BulkImportModalProps {
   isOpen: boolean;
@@ -14,6 +16,25 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
   const [importData, setImportData] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState('');
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [sheetJobMappings, setSheetJobMappings] = useState<{[sheetName: string]: string}>({});
+  const [workbookData, setWorkbookData] = useState<XLSX.WorkBook | null>(null);
+  const [allSheetsData, setAllSheetsData] = useState<{[sheetName: string]: any[]}>({});
+
+  // Reset state when modal closes
+  React.useEffect(() => {
+    if (!isOpen) {
+      setImportData([]);
+      setSelectedJob('');
+      setImportStatus('idle');
+      setAvailableSheets([]);
+      setSelectedSheet('');
+      setSheetJobMappings({});
+      setWorkbookData(null);
+      setAllSheetsData({});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -42,9 +63,21 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
   };
 
   const handleFiles = (files: File[]) => {
-    const csvFile = files.find(file => file.type === 'text/csv' || file.name.endsWith('.csv'));
-    if (csvFile) {
-      parseCSV(csvFile);
+    const file = files.find(f => 
+      f.type === 'text/csv' || 
+      f.name.endsWith('.csv') ||
+      f.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      f.name.endsWith('.xlsx') ||
+      f.type === 'application/vnd.ms-excel' ||
+      f.name.endsWith('.xls')
+    );
+    
+    if (file) {
+      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+        parseCSV(file);
+      } else {
+        parseExcel(file);
+      }
     }
   };
 
@@ -101,7 +134,8 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
               switch (header) {
                 case 'date':
                 case 'applied date':
-                  candidate.appliedDate = value ? new Date(value).toISOString() : new Date().toISOString();
+                  const parsedDate = parseDateUtil(value);
+                  candidate.appliedDate = parsedDate ? parsedDate.toISOString() : new Date().toISOString();
                   break;
                 case 'name':
                 case 'full name':
@@ -149,7 +183,11 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
                   candidate.inHouseAssignmentStatus = value;
                   break;
                 case 'interview date':
-                  candidate.interviewDate = value;
+                  // Parse interview date in DD/MM/YYYY format and store as YYYY-MM-DD for input fields
+                  const parsedInterviewDate = parseDateUtil(value);
+                  candidate.interviewDate = parsedInterviewDate 
+                    ? parsedInterviewDate.toISOString().split('T')[0] 
+                    : '';
                   break;
                 case 'interviewer':
                 case 'interviewer name':
@@ -192,6 +230,10 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
             candidate.joiningTime = candidate.joiningTime || '';
             
             return candidate;
+          })
+          .filter(candidate => {
+            // Only include candidates that have at least name or email
+            return candidate.name || candidate.email;
           });
         
         setImportData(candidates);
@@ -205,13 +247,234 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
     reader.readAsText(file);
   };
 
+  const parseExcel = (file: File) => {
+    setImportStatus('processing');
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        // Get all sheet names
+        const sheetNames = workbook.SheetNames;
+        setAvailableSheets(sheetNames);
+        setWorkbookData(workbook);
+        
+        if (sheetNames.length === 1) {
+          // Single sheet - auto-select and parse
+          setSelectedSheet(sheetNames[0]);
+          parseSheet(workbook, sheetNames[0]);
+        } else {
+          // Multiple sheets - show sheet selection
+          setImportStatus('success');
+          setImportData([]);
+        }
+      } catch (error) {
+        console.error('Excel parsing error:', error);
+        setImportStatus('error');
+      }
+    };
+    
+    reader.readAsArrayBuffer(file);
+  };
+
+  const parseSheet = (workbook: XLSX.WorkBook, sheetName: string) => {
+    try {
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      if (jsonData.length < 2) {
+        setImportStatus('error');
+        return;
+      }
+      
+      const headers = (jsonData[0] as string[]).map(h => h?.toString().trim().toLowerCase() || '');
+      const rows = jsonData.slice(1) as string[][];
+      
+      const candidates = rows
+        .map((row, index) => {
+          const candidate: any = { id: `import-${index}` };
+          
+          headers.forEach((header, i) => {
+            const value = (row[i] || '').toString().trim();
+            switch (header) {
+              case 'date':
+              case 'applied date':
+                const parsedDate = parseDateUtil(value);
+                candidate.appliedDate = parsedDate ? parsedDate.toISOString() : new Date().toISOString();
+                break;
+              case 'name':
+              case 'full name':
+                candidate.name = value;
+                break;
+              case 'email':
+              case 'email address':
+                candidate.email = value;
+                break;
+              case 'phone':
+              case 'phone number':
+              case 'phone no':
+                candidate.phone = value;
+                break;
+              case 'location':
+                candidate.location = value;
+                break;
+              case 'experience':
+              case 'years of experience':
+                candidate.experience = value;
+                break;
+              case 'expertise':
+                candidate.expertise = value;
+                break;
+              case 'notice period':
+                candidate.noticePeriod = value;
+                break;
+              case 'willing to work on alternate saturday':
+                candidate.willingAlternateSaturday = value.toLowerCase() === 'yes' ? true : 
+                                                    value.toLowerCase() === 'no' ? false : null;
+                break;
+              case 'work preference':
+                candidate.workPreference = value;
+                break;
+              case 'current ctc':
+                candidate.currentCtc = value;
+                break;
+              case 'ctc frequency':
+                candidate.ctcFrequency = value || 'Annual';
+                break;
+              case 'expected ctc':
+                candidate.expectedSalary = value;
+                break;
+              case 'in house assignment':
+                candidate.inHouseAssignmentStatus = value;
+                break;
+              case 'interview date':
+                // Parse interview date in DD/MM/YYYY format and store as YYYY-MM-DD for input fields
+                const parsedInterviewDate = parseDateUtil(value);
+                candidate.interviewDate = parsedInterviewDate 
+                  ? parsedInterviewDate.toISOString().split('T')[0] 
+                  : '';
+                break;
+              case 'interviewer':
+              case 'interviewer name':
+                candidate.interviewerName = value;
+                break;
+              case 'in office assignment':
+                candidate.inOfficeAssignment = value;
+                break;
+              case 'hr remarks':
+              case 'notes':
+                candidate.notes = value;
+                break;
+              case 'skills':
+                candidate.skills = value ? value.split(';').map(s => s.trim()).filter(Boolean) : [];
+                break;
+              case 'source':
+                candidate.source = value || 'Bulk Import';
+                break;
+              case 'status':
+                candidate.stage = value || 'Applied';
+                break;
+              case 'resume location/link':
+                candidate.resumeLocation = value;
+                break;
+              case 'assignment location/link':
+                candidate.assignmentLocation = value;
+                break;
+              default:
+                candidate[header] = value;
+            }
+          });
+          
+          // Set defaults
+          candidate.stage = candidate.stage || 'Applied';
+          candidate.appliedDate = candidate.appliedDate || new Date().toISOString();
+          candidate.score = 0;
+          candidate.communications = [];
+          candidate.salaryNegotiable = false;
+          candidate.immediateJoiner = false;
+          candidate.joiningTime = candidate.joiningTime || '';
+          
+          return candidate;
+        })
+        .filter(candidate => {
+          // Only include candidates that have at least name or email
+          return candidate.name || candidate.email;
+        });
+      
+      setImportData(candidates);
+      setAllSheetsData(prev => ({
+        ...prev,
+        [sheetName]: candidates
+      }));
+      setImportStatus('success');
+    } catch (error) {
+      console.error('Sheet parsing error:', error);
+      setImportStatus('error');
+    }
+  };
+
+  const handleSheetSelect = (sheetName: string) => {
+    setSelectedSheet(sheetName);
+    if (workbookData) {
+      parseSheet(workbookData, sheetName);
+    }
+  };
+
+  const handleSheetJobMapping = (sheetName: string, jobId: string) => {
+    setSheetJobMappings(prev => ({
+      ...prev,
+      [sheetName]: jobId
+    }));
+    
+    // Automatically parse the sheet when job is mapped
+    if (jobId && workbookData && !allSheetsData[sheetName]) {
+      parseSheet(workbookData, sheetName);
+    }
+  };
+
+  const handleImportAllSheets = () => {
+    const allCandidates: any[] = [];
+    
+    // Collect all candidates from all mapped sheets
+    Object.keys(sheetJobMappings).forEach(sheetName => {
+      const jobId = sheetJobMappings[sheetName];
+      const sheetCandidates = allSheetsData[sheetName] || [];
+      
+      if (jobId && sheetCandidates.length > 0) {
+        const selectedJobData = jobs.find(job => job.id.toString() === jobId);
+        const candidatesWithJob = sheetCandidates.map(candidate => ({
+          ...candidate,
+          jobId: parseInt(jobId),
+          position: selectedJobData?.title || '',
+          assignedTo: selectedJobData?.assignedTo?.[0] || 1,
+          source: `${candidate.source || 'Bulk Import'} (${sheetName})`
+        }));
+        
+        allCandidates.push(...candidatesWithJob);
+      }
+    });
+    
+    if (allCandidates.length > 0) {
+      onImport(allCandidates);
+      onClose();
+    }
+  };
+
   const handleImport = () => {
     if (!selectedJob || (importData?.length || 0) === 0) return;
     
-    const selectedJobData = jobs.find(job => job.id.toString() === selectedJob);
+    // For Excel files with sheet mapping, use the mapped job
+    let jobId = selectedJob;
+    if (selectedSheet && sheetJobMappings[selectedSheet]) {
+      jobId = sheetJobMappings[selectedSheet];
+    }
+    
+    const selectedJobData = jobs.find(job => job.id.toString() === jobId);
     const candidatesWithJob = importData.map(candidate => ({
       ...candidate,
-      jobId: parseInt(selectedJob),
+      jobId: parseInt(jobId),
       position: selectedJobData?.title || '',
       assignedTo: selectedJobData?.assignedTo?.[0] || 1 // Default to admin user ID 1
     }));
@@ -379,14 +642,14 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
           >
             <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Drop your CSV file here
+              Drop your CSV or Excel file here
             </h3>
             <p className="text-gray-600 mb-4">
-              or click to browse and select a file
+              Supports CSV files or Excel files (.xlsx, .xls) with multiple sheets
             </p>
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={handleFileInput}
               className="hidden"
               id="file-upload"
@@ -415,12 +678,92 @@ export default function BulkImportModal({ isOpen, onClose, onImport, jobs }: Bul
             </div>
           )}
 
+          {/* Sheet Selection for Excel files */}
+          {importStatus === 'success' && availableSheets.length > 1 && (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <Sheet className="text-blue-600" size={20} />
+                <span className="text-blue-800">
+                  Found {availableSheets.length} sheets in your Excel file. Please select which sheet to import and map it to a job.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {availableSheets.map(sheetName => (
+                  <div key={sheetName} className="border border-gray-200 rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sheet size={16} />
+                        {sheetName}
+                      </div>
+                      {allSheetsData[sheetName] && (
+                        <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                          {allSheetsData[sheetName].length} candidates
+                        </span>
+                      )}
+                    </h4>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Map to Job Position
+                      </label>
+                      <select
+                        value={sheetJobMappings[sheetName] || ''}
+                        onChange={(e) => handleSheetJobMapping(sheetName, e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">Select job position</option>
+                        {jobs.filter(job => job.status === 'Active').map(job => (
+                          <option key={job.id} value={job.id}>
+                            {job.title} - {job.department}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={() => handleSheetSelect(sheetName)}
+                      disabled={!sheetJobMappings[sheetName]}
+                      className="mt-3 w-full bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm"
+                    >
+                      Import This Sheet
+                    </button>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Import All Sheets Button */}
+              {Object.keys(sheetJobMappings).filter(sheetName => sheetJobMappings[sheetName]).length > 0 && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-green-900">Import All Mapped Sheets</h4>
+                      <p className="text-sm text-green-700 mt-1">
+                        Import candidates from all sheets that have job mappings assigned
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleImportAllSheets}
+                      className="flex items-center space-x-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                    >
+                      <Upload size={16} />
+                      <span>
+                        Import All Sheets (
+                        {Object.keys(sheetJobMappings).reduce((total, sheetName) => {
+                          return total + (allSheetsData[sheetName]?.length || 0);
+                        }, 0)} candidates)
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {importStatus === 'success' && (importData?.length || 0) > 0 && (
             <div className="space-y-4">
               <div className="flex items-center space-x-3 p-4 bg-green-50 border border-green-200 rounded-lg">
                 <CheckCircle className="text-green-600" size={20} />
                 <span className="text-green-800">
-                  Successfully parsed {importData?.length || 0} candidates
+                  Successfully parsed {importData?.length || 0} candidates from {selectedSheet || 'file'}
                 </span>
               </div>
 

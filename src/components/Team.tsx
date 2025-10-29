@@ -1,38 +1,64 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, MoreVertical, Mail, CheckCircle, Clock, AlertCircle, X, Save, Edit } from 'lucide-react';
 import { TeamMember } from '../types';
-import { usersAPI, User } from '../services/api';
+import { usersAPI, User, tasksAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../services/api';
 
 export default function Team() {
   const { hasPermission, user } = useAuth();
   const [team, setTeam] = useState<User[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
 
-  // Load users from backend
+  // Load users and tasks from backend
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
-        const response = await usersAPI.getUsers();
-        if (response.success && response.data) {
-          setTeam(response.data.users);
+        
+        // Load users
+        const usersResponse = await usersAPI.getUsers();
+        if (usersResponse.success && usersResponse.data) {
+          setTeam(usersResponse.data.users);
         } else {
           setError('Failed to load team members');
         }
+
+        // Load tasks
+        const tasksResponse = await tasksAPI.getTasks();
+        if (tasksResponse.success && tasksResponse.data) {
+          setTasks(tasksResponse.data.tasks || []);
+        }
       } catch (err) {
-        console.error('Error loading users:', err);
-        setError('Failed to load team members');
+        console.error('Error loading data:', err);
+        setError('Failed to load team data');
       } finally {
         setLoading(false);
       }
     };
 
-    loadUsers();
+    loadData();
   }, []);
+
+  // Helper functions to calculate task statistics
+  const getActiveTasksForMember = (memberId: number) => {
+    return tasks.filter(task => 
+      task.assignedTo === memberId && 
+      (task.status === 'Pending' || task.status === 'In Progress')
+    ).length;
+  };
+
+  const getCompletedTasksForMember = (memberId: number) => {
+    return tasks.filter(task => 
+      task.assignedTo === memberId && 
+      task.status === 'Completed'
+    ).length;
+  };
+
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showEditMemberModal, setShowEditMemberModal] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
@@ -174,7 +200,7 @@ export default function Team() {
           role: memberFormData.role.toLowerCase()
         };
         
-        const response = await fetch('http://localhost:3001/api/auth/register', {
+        const response = await fetch(`${API_BASE_URL}/auth/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -341,12 +367,12 @@ export default function Team() {
             <div className="border-t pt-4">
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
-                  <p className="text-2xl font-bold text-blue-600">{member.statistics?.assigned_jobs || 0}</p>
-                  <p className="text-xs text-gray-600">Jobs Assigned</p>
+                  <p className="text-2xl font-bold text-blue-600">{getActiveTasksForMember(member.id)}</p>
+                  <p className="text-xs text-gray-600">Active Tasks</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-green-600">{member.statistics?.tasks_completed || 0}</p>
-                  <p className="text-xs text-gray-600">Tasks Done</p>
+                  <p className="text-2xl font-bold text-green-600">{getCompletedTasksForMember(member.id)}</p>
+                  <p className="text-xs text-gray-600">Tasks Completed</p>
                 </div>
               </div>
             </div>
@@ -370,7 +396,7 @@ export default function Team() {
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-purple-600">
-              {team?.reduce((sum, m) => sum + (m.statistics?.tasks_completed || 0), 0) || 0}
+              {tasks.filter(task => task.status === 'Completed').length}
             </p>
             <p className="text-sm text-gray-600">Tasks Completed</p>
           </div>
@@ -623,12 +649,12 @@ export default function Team() {
                 <h4 className="font-medium text-blue-900 mb-2">Current Statistics</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-blue-700">Jobs Assigned</p>
-                    <p className="font-semibold text-blue-900">{editingMember.statistics?.assigned_jobs || 0}</p>
+                    <p className="text-blue-700">Active Tasks</p>
+                    <p className="font-semibold text-blue-900">{editingMember ? getActiveTasksForMember(editingMember.id) : 0}</p>
                   </div>
                   <div>
                     <p className="text-blue-700">Tasks Completed</p>
-                    <p className="font-semibold text-blue-900">{editingMember.statistics?.tasks_completed || 0}</p>
+                    <p className="font-semibold text-blue-900">{editingMember ? getCompletedTasksForMember(editingMember.id) : 0}</p>
                   </div>
                 </div>
               </div>
