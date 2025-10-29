@@ -34,30 +34,7 @@ export default function Login() {
     }
   };
 
-  const demoAccounts = [
-    { username: 'admin', password: 'admin123', role: 'Admin' },
-    { username: 'sarah.johnson', password: 'sarah123', role: 'HR Manager' },
-    { username: 'mike.chen', password: 'mike123', role: 'Recruiter' },
-    { username: 'john.smith', password: 'john123', role: 'Interviewer' }
-  ];
-
-  const handleDemoLogin = async (username: string, password: string) => {
-    setUsername(username);
-    setPassword(password);
-    setError('');
-    setLoading(true);
-
-    try {
-      const success = await login(username, password);
-      if (!success) {
-        setError('Invalid username or password');
-      }
-    } catch (err) {
-      setError('Login failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Demo accounts removed for production
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -67,7 +44,7 @@ export default function Login() {
             <div className="mx-auto h-16 w-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
               <Users className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900">RecruitPro</h2>
+            <h2 className="text-3xl font-bold text-gray-900">Byline HR Management Portal</h2>
             <p className="text-gray-600 mt-2">Sign in to your account</p>
           </div>
 
@@ -133,17 +110,7 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Demo Accounts:</h3>
-            <div className="space-y-2">
-              {demoAccounts.map((account) => (
-                <div key={account.username} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded">
-                  <span className="font-medium">{account.role}</span>
-                  <span className="text-gray-600">{account.username} / {account.password}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Demo accounts section removed */}
         </div>
       </div>
     </div>
