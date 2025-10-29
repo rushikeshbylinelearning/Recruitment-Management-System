@@ -2,8 +2,8 @@
 // Copy these values to your .env file
 
 export const emailConfig = {
-  EMAIL_USER: 'rahulkirad.byline@gmail.com',
-  EMAIL_PASS: 'wpuiwhyxrzrcegcq' // Gmail App Password without spaces
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASS: process.env.EMAIL_PASS // Gmail App Password without spaces
 };
 
 // Instructions for setting up Gmail App Password:

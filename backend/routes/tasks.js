@@ -10,7 +10,7 @@ const router = express.Router();
 // Get all tasks
 router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
+  const limit = parseInt(req.query.limit) || 20;
   const offset = (page - 1) * limit;
   const status = req.query.status || '';
   const priority = req.query.priority || '';
@@ -57,7 +57,7 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
      LEFT JOIN job_postings j ON t.job_id = j.id
      LEFT JOIN users creator ON t.created_by = creator.id
      ${whereClause}
-     ORDER BY t.due_date ASC 
+     ORDER BY t.created_at DESC 
      LIMIT ${limit} OFFSET ${offset}`,
     params
   );
@@ -184,6 +184,7 @@ router.post('/', authenticateToken, checkPermission('tasks', 'create'), validate
   );
 
   // Notify assignee by email when created by Admin/HR Manager
+  let emailResult = null;
   try {
     if ((req.user.role === 'Admin' || req.user.role === 'HR Manager') && assignedTo) {
       const assigneeRows = await query('SELECT email, name FROM users WHERE id = ?', [assignedTo]);
@@ -336,20 +337,35 @@ Best regards,
 HR Team
         `;
         
-        await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
+        emailResult = await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
       }
     }
   } catch (e) {
-    console.warn('Task assignment email failed:', e?.message || e);
+    emailResult = {
+      success: false,
+      message: 'Email notification failed',
+      error: e?.message || e?.toString() || String(e),
+      stack: process.env.NODE_ENV === 'development' ? e?.stack : undefined
+    };
   }
 
-  res.status(201).json({
+  const responseData = {
     success: true,
     message: 'Task created successfully',
     data: {
       taskId: result.insertId
     }
-  });
+  };
+
+  // Include email notification result in response
+  if (emailResult !== null) {
+    responseData.emailNotification = emailResult;
+    if (!emailResult.success) {
+      responseData.warning = 'Task created but email notification failed';
+    }
+  }
+
+  res.status(201).json(responseData);
 }));
 
 // Update task
@@ -404,6 +420,7 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
   );
 
   // If assignee changed and action by Admin/HR Manager, notify new assignee
+  let emailResult = null;
   try {
     const assigneeChanged = previousAssignee !== assignedTo;
     if (assigneeChanged && (req.user.role === 'Admin' || req.user.role === 'HR Manager') && assignedTo) {
@@ -557,17 +574,32 @@ Best regards,
 HR Team
         `;
         
-        await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
+        emailResult = await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
       }
     }
   } catch (e) {
-    console.warn('Task reassignment email failed:', e?.message || e);
+    emailResult = {
+      success: false,
+      message: 'Email notification failed',
+      error: e?.message || e?.toString() || String(e),
+      stack: process.env.NODE_ENV === 'development' ? e?.stack : undefined
+    };
   }
 
-  res.json({
+  const responseData = {
     success: true,
     message: 'Task updated successfully'
-  });
+  };
+
+  // Include email notification result in response
+  if (emailResult !== null) {
+    responseData.emailNotification = emailResult;
+    if (!emailResult.success) {
+      responseData.warning = 'Task updated but email notification failed';
+    }
+  }
+
+  res.json(responseData);
 }));
 
 // Delete task
