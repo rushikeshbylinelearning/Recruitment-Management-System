@@ -147,13 +147,34 @@ router.post('/register', validateUser, handleValidationErrors, asyncHandler(asyn
 
     const userId = userResult.insertId;
 
-    // Set default permissions based on role
-    const defaultPermissions = getDefaultPermissions(normalizedRole);
-    for (const permission of defaultPermissions) {
-      await connection.execute(
-        'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
-        [userId, permission.module, JSON.stringify(permission.actions)]
+    // Clone permissions from an existing user with the same role if available,
+    // otherwise fall back to hardcoded defaults
+    const [templateUsers] = await connection.execute(
+      'SELECT id FROM users WHERE role = ? AND id != ? LIMIT 1',
+      [normalizedRole, userId]
+    );
+
+    if (Array.isArray(templateUsers) && templateUsers.length > 0) {
+      const templateUserId = templateUsers[0].id;
+      const [templatePerms] = await connection.execute(
+        'SELECT module, actions FROM permissions WHERE user_id = ?',
+        [templateUserId]
       );
+
+      for (const p of templatePerms) {
+        await connection.execute(
+          'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
+          [userId, p.module, typeof p.actions === 'string' ? p.actions : JSON.stringify(p.actions)]
+        );
+      }
+    } else {
+      const defaultPermissions = getDefaultPermissions(normalizedRole);
+      for (const permission of defaultPermissions) {
+        await connection.execute(
+          'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
+          [userId, permission.module, JSON.stringify(permission.actions)]
+        );
+      }
     }
 
     // Create interviewer profile if role is Interviewer

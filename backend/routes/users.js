@@ -161,13 +161,35 @@ router.post('/', authenticateToken, checkPermission('team', 'create'), validateU
 
   const userId = result.insertId;
 
-  // Set default permissions based on role
-  const defaultPermissions = getDefaultPermissions(role);
-  for (const permission of defaultPermissions) {
-    await query(
-      'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
-      [userId, permission.module, JSON.stringify(permission.actions)]
+  // Clone role permissions from an existing user of the same role if available,
+  // otherwise fall back to hardcoded defaults
+  const templateUsers = await query(
+    'SELECT id FROM users WHERE role = ? AND id != ? LIMIT 1',
+    [role, userId]
+  );
+
+  if (templateUsers.length > 0) {
+    const templateUserId = templateUsers[0].id;
+    const templatePerms = await query(
+      'SELECT module, actions FROM permissions WHERE user_id = ?',
+      [templateUserId]
     );
+
+    for (const p of templatePerms) {
+      await query(
+        'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
+        [userId, p.module, typeof p.actions === 'string' ? p.actions : JSON.stringify(p.actions)]
+      );
+    }
+  } else {
+    // Set default permissions based on role (first user of this role)
+    const defaultPermissions = getDefaultPermissions(role);
+    for (const permission of defaultPermissions) {
+      await query(
+        'INSERT INTO permissions (user_id, module, actions) VALUES (?, ?, ?)',
+        [userId, permission.module, JSON.stringify(permission.actions)]
+      );
+    }
   }
 
   res.status(201).json({
