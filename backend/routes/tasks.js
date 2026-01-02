@@ -300,7 +300,7 @@ router.post('/', authenticateToken, checkPermission('tasks', 'create'), validate
                     </div>
                     
                     <div style="text-align: center;">
-                        <a href="https://hr.bylinelms.com/" target="_blank" rel="noopener noreferrer" class="action-button">View Task Details</a>
+                        <a href="https://hr.legatolxp.online/" target="_blank" rel="noopener noreferrer" class="action-button">View Task Details</a>
                     </div>
                 </div>
                 
@@ -537,7 +537,7 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
                     </div>
                     
                     <div style="text-align: center;">
-                        <a href="https://hr.bylinelms.com/" target="_blank" rel="noopener noreferrer" class="action-button">View Updated Task</a>
+                        <a href="https://hr.legatolxp.online/" target="_blank" rel="noopener noreferrer" class="action-button">View Updated Task</a>
                     </div>
                 </div>
                 

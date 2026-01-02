@@ -44,7 +44,7 @@ export default function Login() {
             <div className="mx-auto h-16 w-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
               <Users className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900">Byline HR Management Portal</h2>
+            <h2 className="text-3xl font-bold text-gray-900">Byline HR Management Portal!!!</h2>
             <p className="text-gray-600 mt-2">Sign in to your account</p>
           </div>
 

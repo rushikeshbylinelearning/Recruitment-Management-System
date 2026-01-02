@@ -1,8 +1,9 @@
 // Environment configuration for the frontend
 export const config = {
   // API Configuration
-  API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
+  // API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
   // API_BASE_URL: import.meta.env.VITE_API_URL || 'https://hr.bylinelms.com/api/',
+  API_BASE_URL: import.meta.env.VITE_API_URL || 'https://hr.legatolxp.online/api/',
   
   // App Configuration
   APP_NAME: import.meta.env.VITE_APP_NAME || 'HR Workflow Management',

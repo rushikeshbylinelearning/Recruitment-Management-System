@@ -1,8 +1,9 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 
 // API Base Configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 // export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://hr.bylinelms.com/api/';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://hr.legatolxp.online/api/';
 
 // Create axios instance
 const api = axios.create({
