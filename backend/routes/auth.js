@@ -69,6 +69,10 @@ router.post('/login',
   }
 
   // Generate JWT token
+  const signOptions = { expiresIn: config.jwt.expiresIn };
+  if (config.jwt.issuer) signOptions.issuer = config.jwt.issuer;
+  if (config.jwt.audience) signOptions.audience = config.jwt.audience;
+
   const token = jwt.sign(
     { 
       userId: user.id, 
@@ -76,7 +80,7 @@ router.post('/login',
       role: user.role 
     },
     config.jwt.secret,
-    { expiresIn: config.jwt.expiresIn }
+    signOptions
   );
 
   // Update last login

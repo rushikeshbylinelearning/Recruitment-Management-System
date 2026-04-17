@@ -1,8 +1,30 @@
-import { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Calendar, DollarSign, Clock, MessageSquare, ClipboardList, FileText, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, User, Mail, Phone, Calendar, DollarSign, Clock, MessageSquare, ClipboardList, FileText, Send, CheckCircle, XCircle, AlertCircle, Download, StickyNote } from 'lucide-react';
 import { Candidate } from '../types';
 import { assignmentsAPI, Assignment } from '../services/api';
 import InterviewManagement from './InterviewManagement';
+import NotesPanel from './NotesPanel';
+import FileViewer, { ViewerFile } from './FileViewer';
+
+interface CandidateAssignmentNew {
+  id: number;
+  candidate_id: number;
+  assignment_id: number;
+  assignment_title: string;
+  status: 'Assigned' | 'Submitted' | 'Reviewed';
+  deadline: string;
+  submitted_at?: string;
+  email_status?: string;
+  is_overdue?: boolean;
+}
+
+interface CandidateAssignmentFile {
+  id: number;
+  original_filename: string;
+  stored_filename: string;
+  mime_type: string;
+  file_size: number;
+}
 
 interface CandidateProfileProps {
   candidate: Candidate;
@@ -14,6 +36,27 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
   const [activeTab, setActiveTab] = useState('overview');
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [candidateAssignmentsNew, setCandidateAssignmentsNew] = useState<CandidateAssignmentNew[]>([]);
+  const [candidateAssignmentsNewLoading, setCandidateAssignmentsNewLoading] = useState(false);
+  const [expandedFiles, setExpandedFiles] = useState<Record<number, CandidateAssignmentFile[]>>({});
+  const [loadingFiles, setLoadingFiles] = useState<Record<number, boolean>>({});
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notesButtonRef = useRef<HTMLButtonElement>(null);
+
+  // File viewer
+  const [viewerFiles, setViewerFiles] = useState<ViewerFile[] | null>(null);
+  const [viewerIndex, setViewerIndex] = useState(0);
+
+  const openFileViewer = (files: CandidateAssignmentFile[], startIndex = 0) => {
+    const viewable: ViewerFile[] = files.map(f => ({
+      name: f.original_filename,
+      url: `/uploads/assignment-submissions/${f.stored_filename}`,
+      mimeType: f.mime_type,
+    }));
+    setViewerFiles(viewable);
+    setViewerIndex(startIndex);
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -24,6 +67,11 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
 
   useEffect(() => {
     fetchAssignments();
+    fetchCandidateAssignmentsNew();
+    pollingRef.current = setInterval(fetchCandidateAssignmentsNew, 5000);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, [candidate.id]);
 
   const fetchAssignments = async () => {
@@ -47,7 +95,56 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
     }
   };
 
-  const getStageColor = (stage: string) => {
+  const fetchCandidateAssignmentsNew = async () => {
+    setCandidateAssignmentsNewLoading(true);
+    try {
+      const authToken = localStorage.getItem('authToken');
+      const response = await fetch(`/api/candidate-assignments?candidateId=${candidate.id}`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const data = await response.json();
+      if (data.success && data.data) {
+        setCandidateAssignmentsNew(data.data);
+      } else {
+        setCandidateAssignmentsNew([]);
+      }
+    } catch (error) {
+      console.error('Error fetching candidate assignments (new):', error);
+    } finally {
+      setCandidateAssignmentsNewLoading(false);
+    }
+  };
+
+  const fetchAssignmentFiles = async (assignmentId: number) => {
+    if (expandedFiles[assignmentId]) {
+      setExpandedFiles(prev => { const next = { ...prev }; delete next[assignmentId]; return next; });
+      return;
+    }
+    setLoadingFiles(prev => ({ ...prev, [assignmentId]: true }));
+    try {
+      const authToken = localStorage.getItem('authToken');
+      const response = await fetch(`/api/candidate-assignments/${assignmentId}`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const data = await response.json();
+      if (data.success && data.data?.files) {
+        setExpandedFiles(prev => ({ ...prev, [assignmentId]: data.data.files }));
+      }
+    } catch (error) {
+      console.error('Error fetching assignment files:', error);
+    } finally {
+      setLoadingFiles(prev => ({ ...prev, [assignmentId]: false }));
+    }
+  };
+
+  const getNewAssignmentStatusColor = (status: string) => {
+    switch (status) {
+      case 'Assigned': return 'bg-blue-100 text-blue-800';
+      case 'Submitted': return 'bg-purple-100 text-purple-800';
+      case 'Reviewed': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
     switch (stage) {
       case 'Applied': return 'bg-blue-100 text-blue-800';
       case 'Screening': return 'bg-yellow-100 text-yellow-800';
@@ -398,6 +495,90 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
           <p className="text-gray-600">Assignment history will appear here.</p>
         </div>
       )}
+
+      {/* Candidate Assignments (new) */}
+      <div className="mt-6">
+        <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <Send size={16} className="text-blue-500" />
+          Sent Assignments
+        </h3>
+        {candidateAssignmentsNewLoading && candidateAssignmentsNew.length === 0 ? (
+          <div className="flex items-center justify-center py-6">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          </div>
+        ) : candidateAssignmentsNew.length > 0 ? (
+          candidateAssignmentsNew.map((ca) => (
+            <div key={ca.id} className="bg-white p-4 rounded-lg border border-gray-200 mb-3">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center space-x-3">
+                  <ClipboardList size={20} className="text-blue-500" />
+                  <h4 className="font-medium text-gray-900">{ca.assignment_title}</h4>
+                </div>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getNewAssignmentStatusColor(ca.status)}`}>
+                  {ca.status}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Deadline:</span>
+                  <p className="font-medium">{ca.deadline ? new Date(ca.deadline).toLocaleDateString() : 'Not set'}</p>
+                </div>
+                {ca.submitted_at && (
+                  <div>
+                    <span className="text-gray-500">Submitted:</span>
+                    <p className="font-medium">{new Date(ca.submitted_at).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+
+              {(ca.status === 'Submitted' || ca.status === 'Reviewed') && (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <button
+                    onClick={() => fetchAssignmentFiles(ca.id)}
+                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    <Download size={14} />
+                    {loadingFiles[ca.id] ? 'Loading...' : expandedFiles[ca.id] ? 'Hide Files' : 'View Files'}
+                  </button>
+                  {expandedFiles[ca.id] && expandedFiles[ca.id].length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {expandedFiles[ca.id].map((file, fi) => (
+                        <div key={file.id} className="flex items-center gap-2">
+                          <button
+                            onClick={() => openFileViewer(expandedFiles[ca.id], fi)}
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 hover:underline text-left"
+                          >
+                            <FileText size={13} className="flex-shrink-0" />
+                            {file.original_filename}
+                            <span className="text-gray-400 text-xs">({(file.file_size / 1024).toFixed(1)} KB)</span>
+                          </button>
+                          <a
+                            href={`/uploads/assignment-submissions/${file.stored_filename}`}
+                            download={file.original_filename}
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Download"
+                          >
+                            <Download size={12} />
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {expandedFiles[ca.id] && expandedFiles[ca.id].length === 0 && (
+                    <p className="mt-2 text-sm text-gray-500 italic">No files found.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-6 bg-white rounded-lg border border-gray-200">
+            <Send size={32} className="mx-auto text-gray-300 mb-2" />
+            <p className="text-gray-500 text-sm">No sent assignments yet.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -422,12 +603,23 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
               </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              ref={notesButtonRef}
+              onClick={() => setNotesOpen(o => !o)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors"
+              title="Add / view notes"
+            >
+              <StickyNote size={15} />
+              Notes
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -457,6 +649,21 @@ export default function CandidateProfile({ candidate, onClose }: CandidateProfil
           {activeTab === 'assignments' && <AssignmentsTab />}
         </div>
       </div>
+
+      <NotesPanel
+        candidateId={String(candidate.id)}
+        anchorRef={notesButtonRef as React.RefObject<HTMLElement>}
+        isOpen={notesOpen}
+        onClose={() => setNotesOpen(false)}
+      />
+
+      {viewerFiles && (
+        <FileViewer
+          files={viewerFiles}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerFiles(null)}
+        />
+      )}
     </div>
   );
 }

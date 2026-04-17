@@ -1,8 +1,12 @@
 import express from 'express';
-import { query } from '../config/database.js';
+import ExcelJS from 'exceljs';
+import pool, { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
 import { validateId, validatePagination, validateInterview, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
+import { checkConflict } from '../services/conflictDetector.js';
+import { sendScheduledEmails, sendRescheduledEmails } from '../services/interviewEmailService.js';
+import { createNotification } from '../services/inAppNotifications.js';
 
 const router = express.Router();
 
@@ -76,6 +80,82 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
       totalPages: Math.ceil(total / limit)
     }
   });
+}));
+
+// Export interviews to XLSX
+router.get('/export', authenticateToken, checkPermission('interviews', 'view'), asyncHandler(async (req, res) => {
+  const { dateFrom, dateTo, type, status, interviewerId, mode } = req.query;
+
+  const whereConditions = [];
+  const params = [];
+
+  if (dateFrom) {
+    whereConditions.push('i.date >= ?');
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    whereConditions.push('i.date <= ?');
+    params.push(dateTo);
+  }
+  if (type) {
+    whereConditions.push('i.type = ?');
+    params.push(type);
+  }
+  if (status) {
+    whereConditions.push('i.status = ?');
+    params.push(status);
+  }
+  if (interviewerId) {
+    whereConditions.push('i.interviewer_id = ?');
+    params.push(interviewerId);
+  }
+  if (mode) {
+    whereConditions.push('i.mode = ?');
+    params.push(mode);
+  }
+
+  const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
+
+  const rows = await query(
+    `SELECT
+       c.name AS candidate_name,
+       i.job_role AS role,
+       i.date AS interview_date,
+       i.time AS interview_time,
+       u.name AS interviewer,
+       i.mode,
+       i.type,
+       i.status
+     FROM interviews i
+     LEFT JOIN candidates c ON i.candidate_id = c.id
+     LEFT JOIN users u ON i.interviewer_id = u.id
+     ${whereClause}
+     ORDER BY i.date DESC, i.time DESC`,
+    params
+  );
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Interviews');
+
+  sheet.columns = [
+    { header: 'Candidate Name', key: 'candidate_name', width: 25 },
+    { header: 'Role', key: 'role', width: 25 },
+    { header: 'Interview Date', key: 'interview_date', width: 18 },
+    { header: 'Interview Time', key: 'interview_time', width: 15 },
+    { header: 'Interviewer', key: 'interviewer', width: 25 },
+    { header: 'Mode', key: 'mode', width: 15 },
+    { header: 'Type', key: 'type', width: 15 },
+    { header: 'Status', key: 'status', width: 15 },
+  ];
+
+  rows.forEach(row => sheet.addRow(row));
+
+  const today = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="interviews-export-${today}.xlsx"`);
+
+  await workbook.xlsx.write(res);
+  res.end();
 }));
 
 // Get interview by ID
@@ -373,6 +453,208 @@ router.get('/stats/overview', authenticateToken, checkPermission('interviews', '
       stats: stats[0]
     }
   });
+}));
+
+// Schedule a new interview (with transaction + conflict check + email)
+router.post('/schedule', authenticateToken, checkPermission('interviews', 'create'), asyncHandler(async (req, res) => {
+  console.log('[interviews/schedule] Step 1: API HIT — schedule interview request received');
+  const {
+    candidate_id,
+    job_role,
+    interviewer_id,
+    date,
+    time,
+    duration,
+    type,
+    mode,
+    meeting_link,
+    location,
+    notes,
+  } = req.body;
+
+  // Validate required fields (job_role is optional — defaults to empty string)
+  const missing = ['candidate_id', 'interviewer_id', 'date', 'time', 'duration', 'type', 'mode']
+    .filter(f => req.body[f] == null || req.body[f] === '');
+  if (missing.length > 0) {
+    return res.status(422).json({
+      success: false,
+      error: 'VALIDATION',
+      message: `Missing required fields: ${missing.join(', ')}`,
+    });
+  }
+
+  // Validate date/time is not in the past
+  const proposedDateTime = new Date(`${date}T${time}`);
+  if (isNaN(proposedDateTime.getTime()) || proposedDateTime <= new Date()) {
+    return res.status(422).json({
+      success: false,
+      error: 'VALIDATION',
+      message: 'Interview date/time must be in the future',
+    });
+  }
+
+  // Check for scheduling conflicts
+  const conflict = await checkConflict(interviewer_id, date, time, duration);
+  if (conflict.hasConflict) {
+    return res.status(409).json({
+      success: false,
+      error: 'CONFLICT',
+      conflictingDate: conflict.conflictingDate,
+      conflictingTime: conflict.conflictingTime,
+    });
+  }
+
+  // Wrap INSERT + candidate stage UPDATE in a transaction
+  const conn = await pool.getConnection();
+  let interviewId;
+  try {
+    await conn.beginTransaction();
+    console.log('[interviews/schedule] Step 2: Saving interview to DB...');
+
+    const [insertResult] = await conn.execute(
+      `INSERT INTO interviews (candidate_id, job_role, interviewer_id, date, time, duration, type, mode, meeting_link, location, notes, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Scheduled', NOW(), NOW())`,
+      [candidate_id, job_role || '', interviewer_id, date, time, duration, type, mode, meeting_link || null, location || null, notes || null]
+    );
+    interviewId = insertResult.insertId;
+
+    await conn.execute(
+      `UPDATE candidates SET stage = 'Interview' WHERE id = ?`,
+      [candidate_id]
+    );
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+
+  // Fire-and-forget: fetch full details, send emails, create in-app notifications
+  (async () => {
+    try {
+      console.log('[interviews/schedule] Step 3: Interview saved. interviewId:', interviewId);
+      console.log('[interviews/schedule] Step 4: Sending email...');
+      const rows = await query(
+        `SELECT i.*, c.name AS candidate_name, c.email AS candidate_email,
+                u.name AS interviewer_name, u.email AS interviewer_email
+         FROM interviews i
+         LEFT JOIN candidates c ON i.candidate_id = c.id
+         LEFT JOIN users u ON i.interviewer_id = u.id
+         WHERE i.id = ?`,
+        [interviewId]
+      );
+      if (rows.length > 0) {
+        const iv = rows[0];
+        await sendScheduledEmails(iv);
+        console.log('[interviews/schedule] Step 5: Email function completed.');
+
+        // In-app notification for the interviewer
+        await createNotification(iv.interviewer_id, {
+          type: 'interview_scheduled',
+          title: 'New Interview Scheduled',
+          message: `Interview with ${iv.candidate_name} for ${iv.job_role || 'a role'} on ${iv.date} at ${iv.time}.`,
+          link: '/interviews',
+        });
+
+        // In-app notification for the recruiter who created it
+        await createNotification(req.user.id, {
+          type: 'interview_scheduled',
+          title: 'Interview Scheduled',
+          message: `Interview scheduled for ${iv.candidate_name} with ${iv.interviewer_name} on ${iv.date} at ${iv.time}.`,
+          link: '/interviews',
+        });
+      } else {
+        console.warn('[interviews/schedule] Could not fetch interview row for email send.');
+      }
+    } catch (err) {
+      console.error('[interviews/schedule] EMAIL ERROR:', err.message);
+    }
+  })();
+
+  return res.status(201).json({ success: true, data: { interviewId } });
+}));
+
+// Reschedule an existing interview (conflict check + email)
+router.put('/:id/reschedule', authenticateToken, checkPermission('interviews', 'edit'), validateId, handleValidationErrors, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { date, time, duration, mode, meeting_link, location } = req.body;
+
+  // Validate required fields
+  const missing = ['date', 'time', 'duration', 'mode']
+    .filter(f => req.body[f] == null || req.body[f] === '');
+  if (missing.length > 0) {
+    return res.status(422).json({
+      success: false,
+      error: 'VALIDATION',
+      message: `Missing required fields: ${missing.join(', ')}`,
+    });
+  }
+
+  // Fetch existing interview
+  const existing = await query('SELECT * FROM interviews WHERE id = ?', [id]);
+  if (existing.length === 0) {
+    return res.status(404).json({ success: false, error: 'NOT_FOUND' });
+  }
+
+  const { interviewer_id } = existing[0];
+
+  // Check for conflicts, excluding the current interview
+  const conflict = await checkConflict(interviewer_id, date, time, duration, id);
+  if (conflict.hasConflict) {
+    return res.status(409).json({
+      success: false,
+      error: 'CONFLICT',
+      conflictingDate: conflict.conflictingDate,
+      conflictingTime: conflict.conflictingTime,
+    });
+  }
+
+  // Update the interview record
+  await query(
+    `UPDATE interviews SET date = ?, time = ?, duration = ?, mode = ?, meeting_link = ?, location = ?, updated_at = NOW() WHERE id = ?`,
+    [date, time, duration, mode, meeting_link || null, location || null, id]
+  );
+
+  // Fire-and-forget: fetch full details, send rescheduled emails, create in-app notifications
+  (async () => {
+    try {
+      const rows = await query(
+        `SELECT i.*, c.name AS candidate_name, c.email AS candidate_email,
+                u.name AS interviewer_name, u.email AS interviewer_email
+         FROM interviews i
+         LEFT JOIN candidates c ON i.candidate_id = c.id
+         LEFT JOIN users u ON i.interviewer_id = u.id
+         WHERE i.id = ?`,
+        [id]
+      );
+      if (rows.length > 0) {
+        const iv = rows[0];
+        await sendRescheduledEmails(iv);
+
+        // In-app notification for the interviewer
+        await createNotification(iv.interviewer_id, {
+          type: 'interview_rescheduled',
+          title: 'Interview Rescheduled',
+          message: `Interview with ${iv.candidate_name} has been rescheduled to ${iv.date} at ${iv.time}.`,
+          link: '/interviews',
+        });
+
+        // In-app notification for the recruiter who rescheduled
+        await createNotification(req.user.id, {
+          type: 'interview_rescheduled',
+          title: 'Interview Rescheduled',
+          message: `Interview for ${iv.candidate_name} with ${iv.interviewer_name} rescheduled to ${iv.date} at ${iv.time}.`,
+          link: '/interviews',
+        });
+      }
+    } catch (err) {
+      console.error('[interviews/reschedule] Failed to send rescheduled emails:', err.message);
+    }
+  })();
+
+  return res.status(200).json({ success: true });
 }));
 
 export default router;

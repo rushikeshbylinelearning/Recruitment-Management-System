@@ -4,7 +4,7 @@
 -- 1. New assignments table
 CREATE TABLE IF NOT EXISTS `assignments` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `candidate_id` int NOT NULL,
+  `candidate_id` int DEFAULT NULL,
   `job_id` int DEFAULT NULL,
   `assigned_by` int NOT NULL,
   `title` varchar(200) NOT NULL,

@@ -1,25 +1,45 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { DrawerProvider } from './contexts/DrawerContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
 import InterviewerLayout from './components/InterviewerLayout';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import InterviewerDashboard from './components/InterviewerDashboard';
-import Jobs from './components/Jobs';
-import InterviewerJobs from './components/InterviewerJobs';
-import Candidates from './components/Candidates';
-import InterviewerCandidates from './components/InterviewerCandidates';
-import InterviewerTest from './components/InterviewerTest';
-import InterviewManagement from './components/InterviewManagement';
-import RecruiterInterview from './components/RecruiterInterview';
-import Team from './components/Team';
-import Tasks from './components/Tasks';
-import Communications from './components/Communications';
-import Assignments from './components/Assignments';
-import Analytics from './components/Analytics';
-import Settings from './components/Settings';
+import FloatingNoteButton from './components/FloatingNoteButton';
+import GlobalDrawerManager from './components/GlobalDrawerManager';
+import PublicFormPage from './pages/PublicFormPage';
+import SubmissionPage from './pages/SubmissionPage';
+
+// Lazy load heavy components
+const InterviewerDashboard = lazy(() => import('./components/InterviewerDashboard'));
+const Jobs = lazy(() => import('./components/Jobs'));
+const InterviewerJobs = lazy(() => import('./components/InterviewerJobs'));
+const Candidates = lazy(() => import('./components/CandidatesNew'));
+const InterviewerCandidates = lazy(() => import('./components/InterviewerCandidates'));
+const InterviewerTest = lazy(() => import('./components/InterviewerTest'));
+const InterviewManagement = lazy(() => import('./components/InterviewManagement'));
+const RecruiterInterview = lazy(() => import('./components/RecruiterInterview'));
+const Team = lazy(() => import('./components/Team'));
+const Tasks = lazy(() => import('./components/Tasks'));
+const Communications = lazy(() => import('./components/Communications'));
+const Assignments = lazy(() => import('./components/Assignments'));
+const Analytics = lazy(() => import('./components/Analytics'));
+const Settings = lazy(() => import('./components/Settings'));
+const FormBuilder = lazy(() => import('./components/FormBuilder'));
+const WorkflowBuilder = lazy(() => import('./components/WorkflowBuilder'));
+const RecruiterMonitor = lazy(() => import('./components/RecruiterMonitor'));
+
+// Loading component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-96">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mx-auto mb-4"></div>
+      <p className="text-gray-600 font-medium">Loading...</p>
+    </div>
+  </div>
+);
 
 // Role-based component wrapper
 function RoleBasedDashboard() {
@@ -59,20 +79,18 @@ function RoleBasedInterviews() {
     return <RecruiterInterview />;
   }
   
-  return <InterviewManagement showAllInterviews={true} />;
+  return <InterviewManagement />;
 }
 
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
 
-  // Debug logging
-  console.log('AppContent - isAuthenticated:', isAuthenticated);
-  console.log('AppContent - user:', user);
-  console.log('AppContent - user role:', user?.role);
-
   return (
+    <Suspense fallback={<LoadingFallback />}>
     <Routes>
       {/* Public Routes */}
+      <Route path="/apply/:slug" element={<PublicFormPage />} />
+      <Route path="/submit-assignment/:candidateId/:token" element={<SubmissionPage />} />
       <Route 
         path="/login" 
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
@@ -101,23 +119,33 @@ function AppContent() {
           <Route path="assignments" element={<Assignments />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="form-builder" element={<FormBuilder />} />
+          <Route path="workflows" element={<WorkflowBuilder />} />
+          <Route path="recruiter-monitor" element={<RecruiterMonitor />} />
         </Route>
       )}
       
       {/* Catch all route - redirect to dashboard */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    {/* Universal floating note button — visible on all authenticated pages */}
+    {isAuthenticated && user?.role !== 'Interviewer' && <FloatingNoteButton />}
+    {/* Global drawer manager for context-aware drawers */}
+    {isAuthenticated && <GlobalDrawerManager />}
+    </Suspense>
   );
 }
 
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <div className="App">
-      <AppContent />
-        </div>
-      </Router>
+      <DrawerProvider>
+        <Router>
+          <div className="App">
+            <AppContent />
+          </div>
+        </Router>
+      </DrawerProvider>
     </AuthProvider>
   );
 }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, 
   Search, 
@@ -11,12 +12,52 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Download,
+  User,
+  StickyNote,
+  ExternalLink,
+  Filter,
+  X
 } from 'lucide-react';
-import { assignmentsAPI, Assignment, AssignmentFilters } from '../services/api';
+import { assignmentsAPI, Assignment, AssignmentFilters, API_BASE_URL } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import AssignmentFormModal from './AssignmentFormModal';
 import AssignmentDetailsModal from './AssignmentDetailsModal';
+import NotesPanel from './NotesPanel';
+import FileViewer, { ViewerFile } from './FileViewer';
+
+// Shape returned by GET /api/candidate-assignments
+interface CandidateAssignment {
+  id: number;
+  candidate_id: string;
+  assignment_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  assignment_title: string;
+  status: 'Assigned' | 'Submitted' | 'Overdue' | 'Reviewed';
+  deadline: string | null;
+  expiry_at: string | null;
+  submitted_at: string | null;
+  email_status: 'Pending' | 'Sent' | 'Failed';
+  is_overdue: number;
+  created_at: string;
+  // candidate pipeline stage — joined from candidates table
+  current_stage?: string;
+  stage?: string;
+}
+
+interface CandidateAssignmentFile {
+  id: number;
+  stored_filename: string;
+  original_filename: string;
+  mime_type: string;
+  file_size: number;
+  storage_path: string;
+  uploaded_at: string;
+}
+
+type SubmissionFilter = 'all' | 'Assigned' | 'Submitted' | 'Overdue';
 
 const Assignments: React.FC = () => {
   const { hasPermission } = useAuth();
@@ -44,9 +85,93 @@ const Assignments: React.FC = () => {
   const canEdit = hasPermission('assignments', 'edit');
   const canDelete = hasPermission('assignments', 'delete');
 
+  // ── Candidate Assignments (submissions) section ──────────────────────────
+  const [candidateAssignments, setCandidateAssignments] = useState<CandidateAssignment[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(true);
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>('all');
+  const [expandedFiles, setExpandedFiles] = useState<Record<number, CandidateAssignmentFile[]>>({});
+  const [loadingFiles, setLoadingFiles] = useState<Record<number, boolean>>({});
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Notes panel state
+  const [notesPanelCandidateId, setNotesPanelCandidateId] = useState<string | null>(null);
+  const notesBtnRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const notesAnchorRef = useRef<HTMLButtonElement | null>(null);
+
+  // File viewer state
+  const [viewerFiles, setViewerFiles] = useState<ViewerFile[] | null>(null);
+  const [viewerIndex, setViewerIndex] = useState(0);
+
+  // Filter drawer state
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+
+  // Lock body scroll when filter drawer is open
+  useEffect(() => {
+    if (showFilterDrawer) {
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      document.body.style.overflow = 'hidden';
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    };
+  }, [showFilterDrawer]);
+
+  // Handle ESC key for filter drawer
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showFilterDrawer) setShowFilterDrawer(false);
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [showFilterDrawer]);
+
   useEffect(() => {
     fetchAssignments();
   }, [filters]);
+
+  // ── Candidate assignments fetch + 5-second polling (tasks 9.1, 9.4) ──────
+  const fetchCandidateAssignments = async (filter: SubmissionFilter = submissionFilter) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const params = new URLSearchParams();
+      if (filter === 'Overdue') {
+        params.set('overdue', 'true');
+      } else if (filter !== 'all') {
+        params.set('status', filter);
+      }
+      const url = `${API_BASE_URL}/candidate-assignments${params.toString() ? `?${params}` : ''}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setCandidateAssignments(json.data);
+      }
+    } catch (err) {
+      console.error('Error fetching candidate assignments:', err);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setSubmissionsLoading(true);
+    fetchCandidateAssignments(submissionFilter);
+
+    // 5-second polling (task 9.4)
+    pollingRef.current = setInterval(() => {
+      fetchCandidateAssignments(submissionFilter);
+    }, 5000);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [submissionFilter]);
 
   const fetchAssignments = async () => {
     try {
@@ -133,6 +258,108 @@ const Assignments: React.FC = () => {
   };
 
 
+  // ── Attachment download helpers (task 9.5) ───────────────────────────────
+  const fetchFilesForRecord = async (recordId: number) => {
+    if (expandedFiles[recordId] !== undefined) {
+      // toggle off
+      setExpandedFiles(prev => {
+        const next = { ...prev };
+        delete next[recordId];
+        return next;
+      });
+      return;
+    }
+    setLoadingFiles(prev => ({ ...prev, [recordId]: true }));
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`${API_BASE_URL}/candidate-assignments/${recordId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success && json.data?.files) {
+        setExpandedFiles(prev => ({ ...prev, [recordId]: json.data.files }));
+      }
+    } catch (err) {
+      console.error('Error fetching files:', err);
+    } finally {
+      setLoadingFiles(prev => ({ ...prev, [recordId]: false }));
+    }
+  };
+
+  const getDownloadUrl = (file: CandidateAssignmentFile) => {
+    // Files are served from /uploads/assignment-submissions/ via the backend static middleware
+    const backendBase = API_BASE_URL.replace(/\/api\/?$/, '');
+    return `${backendBase}/uploads/assignment-submissions/${file.stored_filename}`;
+  };
+
+  const openViewer = (files: CandidateAssignmentFile[], startIndex = 0) => {
+    const viewable: ViewerFile[] = files.map(f => ({
+      name: f.original_filename,
+      url: getDownloadUrl(f),
+      mimeType: f.mime_type,
+    }));
+    setViewerFiles(viewable);
+    setViewerIndex(startIndex);
+  };
+
+  const handleDeleteSubmission = async (recordId: number, candidateName: string) => {
+    if (!window.confirm(`Are you sure you want to delete the submission for ${candidateName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`${API_BASE_URL}/candidate-assignments/${recordId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      
+      if (json.success) {
+        // Refresh the submissions list
+        fetchCandidateAssignments(submissionFilter);
+        // Clear expanded files if this record was expanded
+        if (expandedFiles[recordId]) {
+          setExpandedFiles(prev => {
+            const next = { ...prev };
+            delete next[recordId];
+            return next;
+          });
+        }
+      } else {
+        alert('Failed to delete submission: ' + (json.message || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Error deleting submission:', err);
+      alert('An error occurred while deleting the submission');
+    }
+  };
+
+  const getSubmissionStatusColor = (record: CandidateAssignment) => {
+    const status = record.is_overdue ? 'Overdue' : record.status;
+    switch (status) {
+      case 'Assigned': return 'bg-blue-100 text-blue-800';
+      case 'Submitted': return 'bg-purple-100 text-purple-800';
+      case 'Overdue': return 'bg-red-100 text-red-800';
+      case 'Reviewed': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getSubmissionStatusLabel = (record: CandidateAssignment) =>
+    record.is_overdue && record.status !== 'Submitted' ? 'Overdue' : record.status;
+
+  const getSubmissionStatusIcon = (record: CandidateAssignment) => {
+    const label = getSubmissionStatusLabel(record);
+    switch (label) {
+      case 'Assigned': return <Send size={14} />;
+      case 'Submitted': return <Upload size={14} />;
+      case 'Overdue': return <AlertCircle size={14} />;
+      case 'Reviewed': return <CheckCircle size={14} />;
+      default: return <Clock size={14} />;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Draft': return 'bg-gray-100 text-gray-800';
@@ -172,77 +399,7 @@ const Assignments: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Assignments</h1>
-          <p className="text-gray-600">Manage and track candidate assignments</p>
-        </div>
-        {canCreate && (
-          <button
-            onClick={handleCreateAssignment}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus size={20} />
-            Create Assignment
-          </button>
-        )}
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-            <div className="relative">
-              <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search assignments..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                onChange={(e) => handleSearch(e.target.value)}
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-            >
-              <option value="">All Statuses</option>
-              <option value="Draft">Draft</option>
-              <option value="Assigned">Assigned</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Submitted">Submitted</option>
-              <option value="Approved">Approved</option>
-              <option value="Rejected">Rejected</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Due Before</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              onChange={(e) => handleFilterChange('dueBefore', e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Due After</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              onChange={(e) => handleFilterChange('dueAfter', e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-6 relative">
       {/* Assignments List */}
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="overflow-x-auto">
@@ -424,6 +581,207 @@ const Assignments: React.FC = () => {
         )}
       </div>
 
+      {/* ── Assignment Submissions Section (tasks 9.1, 9.4, 9.5, 9.6) ── */}
+      <div className="bg-white rounded-lg shadow-sm border">
+        {/* Section header */}
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">Assignment Submissions</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Candidate assignment records — auto-refreshes every 5 seconds</p>
+        </div>
+
+        {/* Status filter tabs (task 9.1) */}
+        <div className="px-6 pt-4 flex gap-2 flex-wrap">
+          {(['all', 'Assigned', 'Submitted', 'Overdue'] as SubmissionFilter[]).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setSubmissionFilter(tab)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                submissionFilter === tab
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {tab === 'all' ? 'All' : tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto mt-4">
+          {submissionsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Candidate</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignment</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadline</th>
+                  {/* Kanban stage column (task 9.6) */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pipeline Stage</th>
+                  {/* Attachments column (task 9.5) */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attachments</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {candidateAssignments.length > 0 ? candidateAssignments.map(record => (
+                  <React.Fragment key={record.id}>
+                    <tr className="hover:bg-gray-50">
+                      {/* Candidate */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{record.candidate_name}</div>
+                        <div className="text-xs text-gray-500">{record.candidate_email}</div>
+                      </td>
+
+                      {/* Assignment title */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {record.assignment_title}
+                      </td>
+
+                      {/* Status badge */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getSubmissionStatusColor(record)}`}>
+                          {getSubmissionStatusIcon(record)}
+                          {getSubmissionStatusLabel(record)}
+                        </span>
+                        {record.email_status === 'Failed' && (
+                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600">
+                            <XCircle size={12} /> Email failed
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Deadline */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {record.deadline ? formatDate(record.deadline) : '—'}
+                      </td>
+
+                      {/* Pipeline stage (task 9.6) — from candidate data joined in API */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 text-sm text-gray-700">
+                          <User size={14} className="text-gray-400" />
+                          {(record as any).current_stage || (record as any).stage || '—'}
+                        </span>
+                      </td>
+
+                      {/* Attachments (task 9.5) */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {record.status === 'Submitted' || record.status === 'Reviewed' ? (
+                          <button
+                            onClick={() => fetchFilesForRecord(record.id)}
+                            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                            title="View / download files"
+                          >
+                            {loadingFiles[record.id] ? (
+                              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 inline-block" />
+                            ) : (
+                              <Download size={14} />
+                            )}
+                            {expandedFiles[record.id] !== undefined ? 'Hide files' : 'Show files'}
+                          </button>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+
+                      {/* Notes (task 11.6) */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {record.candidate_id ? (
+                          <button
+                            ref={el => { notesBtnRefs.current[record.id] = el; }}
+                            onClick={() => {
+                              notesAnchorRef.current = notesBtnRefs.current[record.id];
+                              setNotesPanelCandidateId(prev =>
+                                prev === record.candidate_id ? null : record.candidate_id
+                              );
+                            }}
+                            className="inline-flex items-center gap-1 text-sm text-yellow-600 hover:text-yellow-800"
+                            title="Add / view notes"
+                          >
+                            <StickyNote size={14} />
+                            Notes
+                          </button>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDeleteSubmission(record.id, record.candidate_name)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete submission"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Expanded file list */}
+                    {expandedFiles[record.id] && expandedFiles[record.id].length > 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-6 pb-4 bg-gray-50">
+                          <ul className="space-y-1 mt-1">
+                            {expandedFiles[record.id].map((file, fi) => (
+                              <li key={file.id} className="flex items-center gap-2 text-sm">
+                                <FileText size={14} className="text-gray-400 flex-shrink-0" />
+                                <button
+                                  onClick={() => openViewer(expandedFiles[record.id], fi)}
+                                  className="text-blue-600 hover:underline truncate max-w-xs text-left"
+                                >
+                                  {file.original_filename}
+                                </button>
+                                <span className="text-gray-400 text-xs flex-shrink-0">
+                                  ({(file.file_size / 1024).toFixed(1)} KB)
+                                </span>
+                                <a
+                                  href={getDownloadUrl(file)}
+                                  download={file.original_filename}
+                                  className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                                  title="Download"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <Download size={12} />
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    )}
+
+                    {expandedFiles[record.id] && expandedFiles[record.id].length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-6 pb-4 bg-gray-50 text-sm text-gray-500">
+                          No files found for this submission.
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )) : (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center">
+                        <Upload size={40} className="text-gray-300 mb-3" />
+                        <p className="text-sm">No submission records found for the selected filter.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
       {/* Modals */}
       {showFormModal && (
         <AssignmentFormModal
@@ -451,6 +809,173 @@ const Assignments: React.FC = () => {
             fetchAssignments();
           }}
         />
+      )}
+
+      {notesPanelCandidateId !== null && (
+        <NotesPanel
+          candidateId={notesPanelCandidateId}
+          anchorRef={notesAnchorRef as React.RefObject<HTMLElement>}
+          isOpen={true}
+          onClose={() => setNotesPanelCandidateId(null)}
+        />
+      )}
+
+      {viewerFiles && (
+        <FileViewer
+          files={viewerFiles}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerFiles(null)}
+        />
+      )}
+
+      {/* Floating Action Buttons - Bottom Right */}
+      <div className="fixed bottom-6 right-6 z-30 flex flex-col items-center gap-3">
+        {/* Filter Button (Top) */}
+        <button
+          onClick={() => setShowFilterDrawer(true)}
+          className="relative w-14 h-14 bg-white text-gray-700 rounded-full shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center group border border-gray-200"
+          title="Open filters"
+        >
+          <Filter size={20} className="group-hover:rotate-90 transition-transform duration-200" />
+        </button>
+
+        {/* Create Assignment Button (Bottom) */}
+        {canCreate && (
+          <button
+            onClick={handleCreateAssignment}
+            className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl hover:shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center"
+            title="Create Assignment"
+            style={{ boxShadow: '0 10px 25px -5px rgba(37, 99, 235, 0.4)' }}
+          >
+            <Plus size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* Filter Drawer */}
+      {showFilterDrawer && createPortal(
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
+            style={{ zIndex: 9998 }}
+            onClick={() => setShowFilterDrawer(false)}
+          />
+
+          {/* Drawer */}
+          <div 
+            className="fixed right-0 top-0 h-full w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out"
+            style={{ 
+              zIndex: 9999,
+              animation: 'slideInRight 300ms cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          >
+            <div className="flex flex-col h-full">
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">Filter Assignments</h2>
+                <button
+                  onClick={() => setShowFilterDrawer(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+                {/* Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                  <div className="relative">
+                    <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search assignments..."
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(e) => handleSearch(e.target.value)}
+                      value={filters.search || ''}
+                    />
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    value={filters.status || ''}
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="Draft">Draft</option>
+                    <option value="Assigned">Assigned</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Submitted">Submitted</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {/* Due Before */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Due Before</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => handleFilterChange('dueBefore', e.target.value)}
+                    value={filters.dueBefore || ''}
+                  />
+                </div>
+
+                {/* Due After */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Due After</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => handleFilterChange('dueAfter', e.target.value)}
+                    value={filters.dueAfter || ''}
+                  />
+                </div>
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+                <button
+                  onClick={() => {
+                    setFilters({ page: 1, limit: 10 });
+                    setShowFilterDrawer(false);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Clear Filters
+                </button>
+                <button
+                  onClick={() => setShowFilterDrawer(false)}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes slideInRight {
+              from {
+                transform: translateX(100%);
+                opacity: 0;
+              }
+              to {
+                transform: translateX(0);
+                opacity: 1;
+              }
+            }
+          `}</style>
+        </>,
+        document.body
       )}
     </div>
   );

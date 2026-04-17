@@ -19,7 +19,9 @@ const config = {
   // JWT Configuration
   jwt: {
     secret: process.env.JWT_SECRET || 'hfdsjhsfuiewhyrfjsdbnfjsdhfjwdhfjsdh8493901nsjnjsan812u120',
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h'
+    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    issuer: process.env.JWT_ISSUER || '',
+    audience: process.env.JWT_AUDIENCE || ''
   },
   
   // Email Configuration
@@ -50,7 +52,9 @@ const config = {
   
   // CORS Configuration
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173' || 'https://hr.legatolxp.online',
+    origin: process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(',').map(u => u.trim())
+      : ['http://localhost:5173', 'http://localhost:5174', 'https://hr.legatolxp.online'],
     credentials: true
   }
 };

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { authAPI, User as ApiUser } from '../services/api';
+import { requestPermission, subscribeToPush } from '../services/notificationService';
 
 interface AuthContextType {
   user: User | null;
@@ -17,6 +18,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Register service worker once on app load
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        const alreadyRegistered = registrations.some((r) =>
+          r.active?.scriptURL.includes('service-worker.js')
+        );
+        if (!alreadyRegistered) {
+          navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+            console.error('Service worker registration failed:', err);
+          });
+        }
+      }).catch((err) => {
+        console.error('Failed to check service worker registrations:', err);
+      });
+    }
+  }, []);
+
+  // Request notification permission and subscribe to push when user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      requestPermission()
+        .then(() => subscribeToPush())
+        .catch((err) => console.error('Push notification setup failed:', err));
+    }
+  }, [isAuthenticated, user]);
 
   useEffect(() => {
     // Check for stored session and verify token
@@ -37,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Token is invalid, clear storage
             localStorage.removeItem('authToken');
             localStorage.removeItem('currentUser');
+            localStorage.removeItem('token');
           }
         }
       } catch (error) {
@@ -44,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Clear invalid session
         localStorage.removeItem('authToken');
         localStorage.removeItem('currentUser');
+        localStorage.removeItem('token');
       } finally {
         setIsLoading(false);
       }
@@ -67,7 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         setUser(userData);
         setIsAuthenticated(true);
-        
+
+        // Non-blocking: request permission and subscribe to push
+        requestPermission()
+          .then(() => subscribeToPush())
+          .catch((err) => console.error('Push notification setup failed:', err));
+
         return true;
       }
       
@@ -92,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       localStorage.removeItem('authToken');
       localStorage.removeItem('currentUser');
+      localStorage.removeItem('token');
     }
   };
 

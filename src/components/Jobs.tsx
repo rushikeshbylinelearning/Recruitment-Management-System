@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react';
 import { JobPosting } from '../types';
 import { jobsAPI, JobPosting as ApiJobPosting, candidatesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,6 +10,8 @@ import JobDetailsModal from './JobDetailsModal';
 import JobApplicantsModal from './JobApplicantsModal';
 import ApplicantDetailsModal from './ApplicantDetailsModal';
 
+const JOBS_PAGE_SIZE = 10;
+
 export default function Jobs() {
   const { hasPermission } = useAuth();
   const [jobs, setJobs] = useState<ApiJobPosting[]>([]);
@@ -17,6 +19,8 @@ export default function Jobs() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<{ page: number; limit: number; total: number; pages: number } | null>(null);
   const [showAddJobModal, setShowAddJobModal] = useState(false);
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
   const [showJobDetailsModal, setShowJobDetailsModal] = useState(false);
@@ -28,13 +32,19 @@ export default function Jobs() {
   const [selectedApplicant, setSelectedApplicant] = useState<any>(null);
   const [editingCandidate, setEditingCandidate] = useState<any>(null);
 
-  // Load jobs from backend
-  const loadJobs = async () => {
+  // Load jobs from backend with pagination and filters
+  const loadJobs = useCallback(async (pageNum: number) => {
     try {
       setLoading(true);
-      const response = await jobsAPI.getJobs();
+      const response = await jobsAPI.getJobs({
+        page: pageNum,
+        limit: JOBS_PAGE_SIZE,
+        search: searchTerm.trim() || undefined,
+        status: statusFilter === 'All' ? undefined : statusFilter,
+      });
       if (response.success && response.data) {
         setJobs(response.data.jobs || []);
+        setPagination(response.data.pagination ?? null);
       } else {
         setError('Failed to load jobs');
       }
@@ -44,18 +54,14 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, statusFilter]);
 
   useEffect(() => {
-    loadJobs();
-  }, []);
+    loadJobs(page);
+  }, [page, searchTerm, statusFilter, loadJobs]);
 
-  const filteredJobs = (jobs || []).filter((job) => {
-    const matchesSearch = job.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.department?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || job.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Jobs are already filtered by the API; display current page results
+  const displayJobs = jobs || [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -103,7 +109,7 @@ export default function Jobs() {
           setSelectedJobForCandidate(null);
           setShowAddCandidateModal(false);
           // Reload jobs to refresh applicant counts
-          loadJobs();
+          loadJobs(page);
         } else {
           setError('Failed to update candidate');
         }
@@ -115,7 +121,7 @@ export default function Jobs() {
           setSelectedJobForCandidate(null);
           setShowAddCandidateModal(false);
           // Reload jobs to refresh applicant counts
-          loadJobs();
+          loadJobs(page);
         } else {
           setError('Failed to add candidate');
         }
@@ -144,11 +150,7 @@ export default function Jobs() {
         const response = await jobsAPI.updateJob(selectedJob.id, jobData);
         if (response.success) {
           setError(''); // Clear any previous errors
-          // Reload jobs to get updated data
-          const jobsResponse = await jobsAPI.getJobs();
-          if (jobsResponse.success && jobsResponse.data) {
-            setJobs(jobsResponse.data.jobs || []);
-          }
+          await loadJobs(page);
           setSelectedJob(null);
           setShowEditJobModal(false);
         } else {
@@ -166,11 +168,7 @@ export default function Jobs() {
       const response = await jobsAPI.createJob(jobData);
       if (response.success) {
         setError(''); // Clear any previous errors
-        // Reload jobs to get updated data
-        const jobsResponse = await jobsAPI.getJobs();
-        if (jobsResponse.success && jobsResponse.data) {
-          setJobs(jobsResponse.data.jobs || []);
-        }
+        await loadJobs(page);
         setShowAddJobModal(false);
       } else {
         setError('Failed to create job');
@@ -227,13 +225,19 @@ export default function Jobs() {
             type="text"
             placeholder="Search jobs..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(1);
+            }}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
           className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="All">All Status</option>
@@ -245,7 +249,7 @@ export default function Jobs() {
 
       {/* Jobs Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredJobs.map((job) => (
+        {displayJobs.map((job) => (
           <div key={job.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -329,11 +333,41 @@ export default function Jobs() {
         ))}
       </div>
 
-          {(filteredJobs?.length || 0) === 0 && (
+          {(displayJobs?.length || 0) === 0 && (
             <div className="text-center py-12">
               <Briefcase size={48} className="mx-auto text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs found</h3>
               <p className="text-gray-600">Try adjusting your search criteria or create a new job posting.</p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {pagination && pagination.pages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-gray-200">
+              <p className="text-sm text-gray-600">
+                Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} jobs
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={pagination.page <= 1}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={18} />
+                  Previous
+                </button>
+                <span className="px-3 py-2 text-sm text-gray-600">
+                  Page {pagination.page} of {pagination.pages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+                  disabled={pagination.page >= pagination.pages}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                  <ChevronRight size={18} />
+                </button>
+              </div>
             </div>
           )}
         </>

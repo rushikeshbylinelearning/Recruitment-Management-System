@@ -1,14 +1,17 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 
 // API Base Configuration
-// export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-// export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://hr.bylinelms.com/api/';
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://hr.legatolxp.online/api/';
+// - In development, the Vite dev-server proxy (vite.config.ts) forwards `/api` → localhost:3001.
+// - In production builds, VITE_API_URL should be set at build time (e.g. in .env.production).
+//   If not set, falls back to the known production URL so hosted builds still work correctly
+//   without needing a proxy.
+export const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? '/api' : 'https://hr.legatolxp.online/api');
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // Increased to 60 seconds for large data loads
   headers: {
     'Content-Type': 'application/json',
   },
@@ -231,11 +234,11 @@ export const communicationsAPI = {
     limit?: number;
     type?: string;
     status?: string;
-    candidateId?: number;
+    candidateId?: string;
   }): Promise<ApiResponse<{
     communications: Array<{
       id: number;
-      candidateId: number;
+      candidateId: string;
       candidateName: string;
       candidatePosition: string;
       type: string;
@@ -263,7 +266,7 @@ export const communicationsAPI = {
   },
 
   createCommunication: async (communicationData: {
-    candidateId: number;
+    candidateId: string;
     type: string;
     content: string;
     status?: string;
@@ -364,11 +367,11 @@ export const emailTemplatesAPI = {
     return response.data;
   },
 
-  sendEmailTemplate: async (templateId: number, candidateIds: number[], customData?: Record<string, any>): Promise<ApiResponse<{
+  sendEmailTemplate: async (templateId: number, candidateIds: string[], customData?: Record<string, any>): Promise<ApiResponse<{
     sent: number;
     failed: number;
     results: Array<{
-      candidateId: number;
+      candidateId: string;
       candidateName: string;
       success: boolean;
       error?: string;
@@ -461,12 +464,12 @@ export const jobsAPI = {
 
 // Candidates API
 export interface Candidate {
-  id: number;
+  id: string; // UUID
   name: string;
   email: string;
   phone: string;
   position: string;
-  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'Rejected';
+  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out';
   source: string;
   appliedDate: string;
   resume: string;
@@ -531,6 +534,23 @@ export interface Interview {
   round: number;
 }
 
+export interface CandidateExportParams {
+  search?: string;
+  stage?: string[];
+  role?: string;
+  location?: string;
+  source?: string;
+  minExperience?: string;
+  maxExperience?: string;
+  minCTC?: string;
+  maxCTC?: string;
+  startDate?: string;
+  endDate?: string;
+  appliedDateFrom?: string;
+  appliedDateTo?: string;
+  format: 'excel' | 'pdf';
+}
+
 export const candidatesAPI = {
   getCandidates: async (params?: {
     page?: number;
@@ -543,27 +563,27 @@ export const candidatesAPI = {
     return response.data;
   },
 
-  getCandidateById: async (id: number): Promise<ApiResponse<{ candidate: Candidate }>> => {
+  getCandidateById: async (id: string): Promise<ApiResponse<{ candidate: Candidate }>> => {
     const response = await api.get(`/candidates/${id}`);
     return response.data;
   },
 
-  createCandidate: async (candidateData: Omit<Candidate, 'id' | 'communications' | 'interviews'>): Promise<ApiResponse<{ candidateId: number }>> => {
+  createCandidate: async (candidateData: Omit<Candidate, 'id' | 'communications' | 'interviews'>): Promise<ApiResponse<{ candidateId: string }>> => {
     const response = await api.post('/candidates', candidateData);
     return response.data;
   },
 
-  updateCandidate: async (id: number, candidateData: Partial<Candidate>): Promise<ApiResponse> => {
+  updateCandidate: async (id: string, candidateData: Partial<Candidate>): Promise<ApiResponse> => {
     const response = await api.put(`/candidates/${id}`, candidateData);
     return response.data;
   },
 
-  updateCandidatePartial: async (id: number, candidateData: Partial<Candidate>): Promise<ApiResponse> => {
+  updateCandidatePartial: async (id: string, candidateData: Partial<Candidate>): Promise<ApiResponse> => {
     const response = await api.patch(`/candidates/${id}`, candidateData);
     return response.data;
   },
 
-  deleteCandidate: async (id: number): Promise<ApiResponse> => {
+  deleteCandidate: async (id: string): Promise<ApiResponse> => {
     const response = await api.delete(`/candidates/${id}`);
     return response.data;
   },
@@ -573,24 +593,24 @@ export const candidatesAPI = {
     return response.data;
   },
 
-  updateCandidateStage: async (id: number, stage: string, notes?: string): Promise<ApiResponse> => {
+  updateCandidateStage: async (id: string, stage: string, notes?: string): Promise<ApiResponse> => {
     const response = await api.patch(`/candidates/${id}/stage`, { stage, notes });
     return response.data;
   },
 
-  downloadResume: async (candidateId: number): Promise<Blob> => {
+  downloadResume: async (candidateId: string): Promise<Blob> => {
     const response = await api.get(`/candidates/${candidateId}/resume`, {
       responseType: 'blob'
     });
     return response.data;
   },
 
-  getResumeMetadata: async (candidateId: number): Promise<ApiResponse<any>> => {
+  getResumeMetadata: async (candidateId: string): Promise<ApiResponse<any>> => {
     const response = await api.get(`/candidates/${candidateId}/resume/metadata`);
     return response.data;
   },
 
-  addCandidateNote: async (candidateId: number, noteData: {
+  addCandidateNote: async (candidateId: string, noteData: {
     notes?: string;
     rating?: number;
     ratingComments?: string;
@@ -600,7 +620,7 @@ export const candidatesAPI = {
     return response.data;
   },
 
-  addInterviewNote: async (candidateId: number, noteData: {
+  addInterviewNote: async (candidateId: string, noteData: {
     notes?: string;
     recommendation?: string;
   }): Promise<ApiResponse> => {
@@ -608,10 +628,10 @@ export const candidatesAPI = {
     return response.data;
   },
 
-  getCandidateNotes: async (candidateId: number): Promise<ApiResponse<{
+  getCandidateNotes: async (candidateId: string): Promise<ApiResponse<{
     notes: Array<{
       id: number;
-      candidate_id: number;
+      candidate_id: string;
       user_id: number;
       notes: string | null;
       rating: number | null;
@@ -625,6 +645,39 @@ export const candidatesAPI = {
     const response = await api.get(`/candidates/${candidateId}/notes`);
     return response.data;
   },
+
+  // Delete a specific note for a candidate
+  deleteCandidateNote: async (candidateId: string, noteId: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/candidates/${candidateId}/notes/${noteId}`);
+    return response.data;
+  },
+
+  exportCandidates: async (params: CandidateExportParams): Promise<AxiosResponse<Blob>> => {
+    const response = await api.get('/candidates/export', {
+      params,
+      paramsSerializer: {
+        indexes: null
+      },
+      responseType: 'blob'
+    });
+    return response;
+  },
+
+  addFromInteraction: async (interactionId: number): Promise<ApiResponse<{ candidateId: string; isNew: boolean }>> => {
+    const response = await api.post('/candidates/add-from-interaction', { interactionId });
+    return response.data;
+  },
+
+  // Alias for addFromInteraction - adds an interaction candidate to the main pipeline
+  addInteractionToPipeline: async (interactionId: number): Promise<ApiResponse<{ candidateId: string; isNew: boolean }>> => {
+    const response = await api.post('/candidates/add-from-interaction', { interactionId });
+    return response.data;
+  },
+
+  checkByPhone: async (phone: string): Promise<ApiResponse<Candidate> & { exists: boolean; latestNote?: any }> => {
+    const response = await api.get(`/candidates/check-by-phone/${encodeURIComponent(phone)}`);
+    return response.data;
+  },
 };
 
 // Interviews API
@@ -634,12 +687,12 @@ export const interviewsAPI = {
     limit?: number;
     status?: string;
     type?: string;
-    candidateId?: number;
+    candidateId?: string;
     interviewerId?: number;
   }): Promise<ApiResponse<{
     interviews: Array<{
       id: number;
-      candidate_id: number;
+      candidate_id: string;
       interviewer_id: number;
       scheduled_date: string;
       type: string;
@@ -669,7 +722,7 @@ export const interviewsAPI = {
   },
 
   createInterview: async (interviewData: {
-    candidate_id: number;
+    candidate_id: string;
     interviewer_id: number;
     scheduled_date: string;
     type: string;
@@ -683,7 +736,7 @@ export const interviewsAPI = {
   },
 
   updateInterview: async (id: number, interviewData: Partial<{
-    candidate_id: number;
+    candidate_id: string;
     interviewer_id: number;
     scheduled_date: string;
     type: string;
@@ -723,7 +776,7 @@ export interface Analytics {
 
 // Files API
 export const filesAPI = {
-  uploadFile: async (file: File, candidateId?: number): Promise<ApiResponse<{
+  uploadFile: async (file: File, candidateId?: string): Promise<ApiResponse<{
     fileId: string;
     originalName: string;
     size: number;
@@ -757,7 +810,7 @@ export const filesAPI = {
     mimeType: string;
     uploadedAt: string;
     uploadedByName: string;
-    candidateId: number;
+    candidateId: string;
     stats: any;
   }>> => {
     const response = await api.get(`/files/metadata/${filename}`);
@@ -769,7 +822,7 @@ export const filesAPI = {
     return response.data;
   },
 
-  getCandidateFiles: async (candidateId: number): Promise<ApiResponse<{
+  getCandidateFiles: async (candidateId: string): Promise<ApiResponse<{
     files: Array<{
       filename: string;
       originalName: string;
@@ -793,7 +846,7 @@ export interface Task {
   assignedToName?: string;
   jobId?: number;
   jobTitle?: string;
-  candidateId?: number;
+  candidateId?: string;
   candidateName?: string;
   priority: 'High' | 'Medium' | 'Low';
   status: 'Pending' | 'In Progress' | 'Completed';
@@ -826,7 +879,7 @@ export const tasksAPI = {
     description: string;
     assignedTo: number;
     jobId?: number;
-    candidateId?: number;
+    candidateId?: string;
     priority: 'High' | 'Medium' | 'Low';
     status: 'Pending' | 'In Progress' | 'Completed';
     dueDate: string;
@@ -1047,7 +1100,7 @@ export const analyticsAPI = {
 // Assignments API
 export interface Assignment {
   id: number;
-  candidate_id: number;
+  candidate_id: string;
   job_id?: number;
   assigned_by: number;
   title: string;
@@ -1083,7 +1136,7 @@ export interface Assignment {
 export interface AssignmentFilters {
   search?: string;
   status?: string;
-  candidateId?: number;
+  candidateId?: string;
   jobId?: number;
   dueBefore?: string;
   dueAfter?: string;
@@ -1110,7 +1163,7 @@ export const assignmentsAPI = {
   },
 
   createAssignment: async (assignmentData: {
-    candidateId: number;
+    candidateId?: string;
     jobId?: number;
     title: string;
     descriptionHtml?: string;
@@ -1121,7 +1174,7 @@ export const assignmentsAPI = {
   },
 
   updateAssignment: async (id: number, assignmentData: {
-    candidateId?: number;
+    candidateId?: string;
     jobId?: number;
     title?: string;
     descriptionHtml?: string;
@@ -1166,7 +1219,7 @@ export const assignmentsAPI = {
     return response.data;
   },
 
-  getCandidateAssignments: async (candidateId: number): Promise<ApiResponse<Assignment[]>> => {
+  getCandidateAssignments: async (candidateId: string): Promise<ApiResponse<Assignment[]>> => {
     const response = await api.get(`/assignments/candidates/${candidateId}`);
     return response.data;
   },
@@ -1180,5 +1233,777 @@ export const healthAPI = {
   },
 };
 
+// ─── Candidate Import API ────────────────────────────────────────────────────
+
+export interface FieldMapping {
+  sourceColumn: string;
+  targetField: string;
+  confidence: number;
+  method: 'exact' | 'fuzzy' | 'synonym' | 'manual';
+}
+
+export interface PreviewRow {
+  rowNumber: number;
+  mappedData: Record<string, any>;
+  missingRequired: string[];
+  missingOptional: string[];
+  validationIssues: Array<{
+    field: string;
+    value: any;
+    issue: string;
+    severity: 'error' | 'warning';
+  }>;
+}
+
+export interface DuplicateGroup {
+  rows: number[];
+  matchCriteria: 'email' | 'phone' | 'name+email' | 'name+phone';
+}
+
+export interface ImportLog {
+  id: number;
+  userId: number;
+  username: string;
+  filename: string;
+  totalRows: number;
+  successCount: number;
+  failureCount: number;
+  uploadedAt: string;
+  processingTime: number;
+}
+
+export interface SavedMapping {
+  id: number;
+  userId: number;
+  name: string;
+  mappings: FieldMapping[];
+  createdAt: string;
+  lastUsed: string;
+}
+
+export const candidateImportAPI = {
+  // Upload and preview file
+  uploadFile: async (file: File, sheetIndex?: number): Promise<ApiResponse<{
+    uploadId: string;
+    fileInfo: {
+      filename: string;
+      fileType: 'csv' | 'xlsx' | 'xls';
+      totalRows: number;
+      sheetNames?: string[];
+    };
+    mappings: FieldMapping[];
+    preview: {
+      previewRows: PreviewRow[];
+      statistics: {
+        totalRows: number;
+        rowsWithMissingRequired: number;
+        rowsWithMissingOptional: number;
+        estimatedQuality: {
+          high: number;
+          medium: number;
+          low: number;
+        };
+      };
+      warnings: any[];
+    };
+    duplicates: {
+      uniqueCandidates: any[];
+      duplicatesInFile: DuplicateGroup[];
+      duplicatesInDatabase: any[];
+    };
+  }>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (sheetIndex !== undefined) {
+      formData.append('sheetIndex', sheetIndex.toString());
+    }
+    
+    const response = await api.post('/candidates/import/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // Confirm and execute import
+  confirmImport: async (data: {
+    uploadId: string;
+    mappings: FieldMapping[];
+    options: {
+      saveMappings: boolean;
+      mappingName?: string;
+      duplicateHandling: 'skip' | 'allow_all' | 'merge';
+      removeRows?: number[];
+    };
+  }): Promise<ApiResponse<{
+    importLogId: number;
+    summary: {
+      totalRows: number;
+      successCount: number;
+      failureCount: number;
+      processingTime: number;
+      qualityDistribution: {
+        high: number;
+        medium: number;
+        low: number;
+      };
+    };
+    failedRows?: Array<{
+      rowNumber: number;
+      candidateName: string | null;
+      error: string;
+      data: Record<string, any>;
+    }>;
+  }>> => {
+    const response = await api.post('/candidates/import/confirm', data);
+    return response.data;
+  },
+
+  // Get import history
+  getImportLogs: async (params?: {
+    page?: number;
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ApiResponse<{
+    logs: ImportLog[];
+    pagination: PaginationInfo;
+  }>> => {
+    const response = await api.get('/candidates/import/logs', { params });
+    return response.data;
+  },
+
+  // Download failed rows
+  downloadFailedRows: async (importLogId: number): Promise<Blob> => {
+    const response = await api.get(`/candidates/import/logs/${importLogId}/failed-rows`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  // Get saved mappings
+  getMappings: async (): Promise<ApiResponse<{
+    mappings: SavedMapping[];
+  }>> => {
+    const response = await api.get('/candidates/import/mappings');
+    return response.data;
+  },
+
+  // Save mapping
+  saveMapping: async (data: {
+    name: string;
+    mappings: FieldMapping[];
+  }): Promise<ApiResponse> => {
+    const response = await api.post('/candidates/import/mappings', data);
+    return response.data;
+  },
+
+  // Delete mapping
+  deleteMapping: async (mappingId: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/candidates/import/mappings/${mappingId}`);
+    return response.data;
+  },
+};
+
+// HR Notes API
+export interface HRNote {
+  id: number;
+  candidate_id: string;
+  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding';
+  note_text: string;
+  interaction_type: 'Phone Call' | 'Email' | 'Interview' | 'Stage Change' | 'General Note' | 'System Event';
+  author_id: number;
+  author_name?: string;
+  author_role?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HRNotesByStage {
+  [stage: string]: HRNote[];
+}
+
+export const hrNotesAPI = {
+  // Get HR notes for a candidate (grouped by stage)
+  getCandidateHRNotes: async (candidateId: string): Promise<ApiResponse<{
+    notesByStage: HRNotesByStage;
+  }>> => {
+    const response = await api.get(`/candidates/${candidateId}/hr-notes`);
+    return response.data;
+  },
+
+  // Create new HR note for a candidate
+  createHRNote: async (candidateId: string, noteData: {
+    note_text: string;
+    interaction_type?: 'Phone Call' | 'Email' | 'Interview' | 'Stage Change' | 'General Note' | 'System Event';
+  }): Promise<ApiResponse<{ noteId: number }>> => {
+    const response = await api.post(`/candidates/${candidateId}/hr-notes`, noteData);
+    return response.data;
+  },
+};
+
 
 export default api;
+
+// Pipeline Automations API
+export interface PipelineAutomation {
+  id: number;
+  name: string;
+  description?: string;
+  trigger_stage: string;
+  trigger_event: 'on_enter' | 'on_exit';
+  is_active: boolean;
+  priority: number;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+  action_count?: number;
+  actions?: AutomationAction[];
+}
+
+export interface AutomationAction {
+  id?: number;
+  automation_id?: number;
+  action_type: 'email' | 'task' | 'interview' | 'notification';
+  action_order: number;
+  config: Record<string, any>;
+  is_active: boolean;
+}
+
+export const automationsAPI = {
+  getAutomations: async (): Promise<ApiResponse<{ automations: PipelineAutomation[] }>> => {
+    const response = await api.get('/automations');
+    return response.data;
+  },
+
+  getAutomationById: async (id: number): Promise<ApiResponse<{ automation: PipelineAutomation }>> => {
+    const response = await api.get(`/automations/${id}`);
+    return response.data;
+  },
+
+  createAutomation: async (automationData: {
+    name: string;
+    description?: string;
+    trigger_stage: string;
+    trigger_event: 'on_enter' | 'on_exit';
+    is_active?: boolean;
+    priority?: number;
+    actions?: AutomationAction[];
+  }): Promise<ApiResponse<{ automationId: number }>> => {
+    const response = await api.post('/automations', automationData);
+    return response.data;
+  },
+
+  updateAutomation: async (id: number, automationData: Partial<PipelineAutomation>): Promise<ApiResponse> => {
+    const response = await api.put(`/automations/${id}`, automationData);
+    return response.data;
+  },
+
+  toggleAutomation: async (id: number): Promise<ApiResponse<{ is_active: boolean }>> => {
+    const response = await api.patch(`/automations/${id}/toggle`);
+    return response.data;
+  },
+
+  deleteAutomation: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/automations/${id}`);
+    return response.data;
+  },
+
+  getAutomationLogs: async (id: number, params?: { limit?: number; offset?: number }): Promise<ApiResponse<{ logs: any[] }>> => {
+    const response = await api.get(`/automations/${id}/logs`, { params });
+    return response.data;
+  },
+
+  getAutomationStats: async (id: number): Promise<ApiResponse<{ stats: any }>> => {
+    const response = await api.get(`/automations/${id}/stats`);
+    return response.data;
+  },
+};
+
+// Activity Logs API
+export interface ActivityLog {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  action_type: string;
+  description: string;
+  metadata: Record<string, any>;
+  created_by?: number;
+  user_name?: string;
+  user_role?: string;
+  created_at: string;
+}
+
+export const activityLogsAPI = {
+  getActivitiesForEntity: async (
+    entityType: string,
+    entityId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<ApiResponse<{ activities: ActivityLog[] }>> => {
+    const response = await api.get(`/activity-logs/${entityType}/${entityId}`, { params });
+    return response.data;
+  },
+
+  getRecentActivities: async (params?: {
+    limit?: number;
+    actionTypes?: string;
+  }): Promise<ApiResponse<{ activities: ActivityLog[] }>> => {
+    const response = await api.get('/activity-logs/recent', { params });
+    return response.data;
+  },
+
+  getActivityStatistics: async (params?: {
+    entityType?: string;
+    entityId?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ApiResponse<{ statistics: any[] }>> => {
+    const response = await api.get('/activity-logs/stats', { params });
+    return response.data;
+  },
+};
+
+
+// Form Builder API
+export interface FormBuilderForm {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  is_active: boolean;
+  access_token: string;
+  token_validity_hours: number;
+  token_expires_at: string;
+  job_id: number | null;
+  job_title: string | null;
+  created_by: number;
+  created_by_name: string;
+  submission_count: number;
+  field_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormField {
+  id: number;
+  form_id: number;
+  label: string;
+  field_key: string;
+  field_type: 'text' | 'email' | 'tel' | 'number' | 'date' | 'textarea' | 'select' | 'file';
+  is_required: boolean;
+  options: string[] | null;
+  placeholder: string | null;
+  validation_rules: any | null;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const formBuilderAPI = {
+  // Get all forms
+  getForms: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<ApiResponse<{
+    forms: FormBuilderForm[];
+    pagination: PaginationInfo;
+  }>> => {
+    const response = await api.get('/form-builder/forms', { params });
+    return response.data;
+  },
+
+  // Get form by ID with fields
+  getFormById: async (id: number): Promise<ApiResponse<{
+    form: FormBuilderForm;
+    fields: FormField[];
+    mappings: any[];
+  }>> => {
+    const response = await api.get(`/form-builder/forms/${id}`);
+    return response.data;
+  },
+
+  // Create new form
+  createForm: async (formData: {
+    name: string;
+    slug: string;
+    description?: string;
+    job_id?: number;
+    token_validity_hours?: number;
+  }): Promise<ApiResponse<{ formId: number; accessToken: string }>> => {
+    const response = await api.post('/form-builder/forms', formData);
+    return response.data;
+  },
+
+  // Update form
+  updateForm: async (id: number, formData: Partial<{
+    name: string;
+    description: string;
+    is_active: boolean;
+    job_id: number | null;
+    token_validity_hours: number;
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/form-builder/forms/${id}`, formData);
+    return response.data;
+  },
+
+  // Delete form
+  deleteForm: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/form-builder/forms/${id}`);
+    return response.data;
+  },
+
+  // Regenerate access token
+  regenerateToken: async (id: number): Promise<ApiResponse<{ accessToken: string }>> => {
+    const response = await api.post(`/form-builder/forms/${id}/regenerate-token`);
+    return response.data;
+  },
+
+  // Add field to form
+  addField: async (formId: number, fieldData: {
+    label: string;
+    field_key: string;
+    field_type: string;
+    is_required?: boolean;
+    options?: string[];
+    placeholder?: string;
+    order_index?: number;
+    validation_rules?: any;
+  }): Promise<ApiResponse<{ fieldId: number }>> => {
+    const response = await api.post(`/form-builder/forms/${formId}/fields`, fieldData);
+    return response.data;
+  },
+
+  // Update field
+  updateField: async (fieldId: number, fieldData: Partial<{
+    label: string;
+    is_required: boolean;
+    options: string[];
+    placeholder: string;
+    order_index: number;
+    is_active: boolean;
+    validation_rules: any;
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/form-builder/fields/${fieldId}`, fieldData);
+    return response.data;
+  },
+
+  // Delete field
+  deleteField: async (fieldId: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/form-builder/fields/${fieldId}`);
+    return response.data;
+  },
+
+  // Get form analytics
+  getFormAnalytics: async (formId: number): Promise<ApiResponse<{
+    stats: {
+      views: number;
+      submissions: number;
+      errors: number;
+    };
+    recentActivity: Array<{
+      event_type: string;
+      created_at: string;
+      ip_address: string;
+    }>;
+  }>> => {
+    const response = await api.get(`/form-builder/forms/${formId}/analytics`);
+    return response.data;
+  },
+
+  // Get form submissions
+  getFormSubmissions: async (formId: number, params?: {
+    page?: number;
+    limit?: number;
+  }): Promise<ApiResponse<{
+    submissions: Array<{
+      id: number;
+      form_id: number;
+      candidate_id: number | null;
+      submission_data: any;
+      ip_address: string;
+      status: string;
+      submitted_at: string;
+      candidate_name: string | null;
+      candidate_email: string | null;
+    }>;
+    pagination: PaginationInfo;
+  }>> => {
+    const response = await api.get(`/form-builder/forms/${formId}/submissions`, { params });
+    return response.data;
+  }
+};
+
+// ─── Workflow Engine API (Phase 3) ────────────────────────────────────────────
+
+export interface WorkflowTrigger {
+  entity_type: 'candidate' | 'job' | 'interview';
+  event_type: 'stage_change' | 'created' | 'updated' | 'interview_scheduled' | 'task_completed';
+  config?: Record<string, any>;
+}
+
+export interface WorkflowCondition {
+  id?: number;
+  field: string;
+  operator: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'not_contains';
+  value: string;
+  logic_group: 'AND' | 'OR';
+}
+
+export interface WorkflowAction {
+  id?: number;
+  action_type: 'email' | 'task' | 'interview' | 'webhook' | 'stage_change';
+  config: Record<string, any>;
+  execution_order: number;
+  is_active?: boolean;
+}
+
+export interface Workflow {
+  id: number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+  action_count?: number;
+  condition_count?: number;
+  execution_count?: number;
+  last_executed?: string;
+  triggers?: WorkflowTrigger[];
+  conditions?: WorkflowCondition[];
+  actions?: WorkflowAction[];
+}
+
+export interface WorkflowLog {
+  id: number;
+  workflow_id: number;
+  entity_type: string;
+  entity_id: number;
+  status: 'success' | 'failure' | 'skipped';
+  message: string;
+  actions_executed: number;
+  execution_time_ms: number;
+  created_at: string;
+  candidate_name?: string;
+}
+
+export const workflowsAPI = {
+  getWorkflows: async (): Promise<ApiResponse<{ workflows: Workflow[] }>> => {
+    const response = await api.get('/workflows');
+    return response.data;
+  },
+
+  getWorkflowById: async (id: number): Promise<ApiResponse<{ workflow: Workflow }>> => {
+    const response = await api.get(`/workflows/${id}`);
+    return response.data;
+  },
+
+  createWorkflow: async (data: {
+    name: string;
+    description?: string;
+    is_active?: boolean;
+    trigger: WorkflowTrigger;
+    conditions?: WorkflowCondition[];
+    actions?: WorkflowAction[];
+  }): Promise<ApiResponse<{ workflowId: number }>> => {
+    const response = await api.post('/workflows', data);
+    return response.data;
+  },
+
+  updateWorkflow: async (id: number, data: Partial<{
+    name: string;
+    description: string;
+    is_active: boolean;
+    trigger: WorkflowTrigger;
+    conditions: WorkflowCondition[];
+    actions: WorkflowAction[];
+  }>): Promise<ApiResponse> => {
+    const response = await api.put(`/workflows/${id}`, data);
+    return response.data;
+  },
+
+  toggleWorkflow: async (id: number): Promise<ApiResponse<{ is_active: boolean }>> => {
+    const response = await api.patch(`/workflows/${id}/toggle`);
+    return response.data;
+  },
+
+  deleteWorkflow: async (id: number): Promise<ApiResponse> => {
+    const response = await api.delete(`/workflows/${id}`);
+    return response.data;
+  },
+
+  getWorkflowLogs: async (id: number, params?: { limit?: number; offset?: number }): Promise<ApiResponse<{ logs: WorkflowLog[] }>> => {
+    const response = await api.get(`/workflows/${id}/logs`, { params });
+    return response.data;
+  },
+
+  testWorkflow: async (id: number, candidateId: number): Promise<ApiResponse> => {
+    const response = await api.post(`/workflows/${id}/test`, { candidate_id: candidateId });
+    return response.data;
+  },
+};
+
+// ─── Interaction Memory System API ──────────────────────────────────────────
+
+export interface InteractionCandidate {
+  id: number;
+  name: string;
+  phone: string;
+  email?: string;
+  source: 'Indeed' | 'Naukri' | 'Monster' | 'Manual' | 'Referral';
+  created_by: number;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+  note_count?: number;
+  latest_status?: string;
+  latest_follow_up?: string;
+  stage?: string;
+  candidate_id?: string | null;
+}
+
+export interface InteractionNote {
+  id: number;
+  candidate_id: number;
+  note: string;
+  status: 'Not Interested' | 'Interested' | 'Follow-up' | 'No Response' | 'Wrong Number';
+  priority: number;
+  follow_up_date?: string;
+  created_by: number;
+  author_name?: string;
+  created_at: string;
+}
+
+export interface DailySnapshot {
+  id: number;
+  user_id: number;
+  snap_date: string;
+  total_calls: number;
+  interested: number;
+  no_response: number;
+  follow_ups: number;
+}
+
+export const interactionAPI = {
+  addOrUpdate: async (data: {
+    name: string;
+    phone: string;
+    email?: string;
+    source?: string;
+    note: string;
+    priority?: number;
+    status?: string;
+    follow_up_date?: string;
+  }): Promise<ApiResponse<InteractionCandidate> & { 
+    isNew: boolean;
+    mainCandidate?: {
+      id: string;
+      name: string;
+      email: string | null;
+      phone: string;
+      stage: string;
+    };
+  }> => {
+    const response = await api.post('/interaction/candidates/add-or-update', data);
+    return response.data;
+  },
+
+  // Alias for addOrUpdate - logs an interaction and handles candidate linking
+  logInteraction: async (data: {
+    name: string;
+    phone: string;
+    email?: string;
+    source?: string;
+    note: string;
+    priority?: number;
+    status?: string;
+    follow_up_date?: string;
+  }): Promise<ApiResponse<InteractionCandidate> & { 
+    isNew: boolean;
+    mainCandidate?: {
+      id: string;
+      name: string;
+      email: string | null;
+      phone: string;
+      stage: string;
+    };
+  }> => {
+    const response = await api.post('/interaction/candidates/add-or-update', data);
+    return response.data;
+  },
+
+  search: async (params: {
+    phone?: string;
+    name?: string;
+    email?: string;
+    date?: string;
+    recruiterId?: number;
+    page?: number;
+    limit?: number;
+  }): Promise<ApiResponse<InteractionCandidate[]>> => {
+    const response = await api.get('/interaction/candidates/search', { params });
+    return response.data;
+  },
+
+  getById: async (id: number): Promise<ApiResponse<InteractionCandidate>> => {
+    const response = await api.get(`/interaction/candidates/${id}`);
+    return response.data;
+  },
+
+  checkPhone: async (phone: string): Promise<ApiResponse<InteractionCandidate> & { exists: boolean; latestNote?: InteractionNote }> => {
+    const response = await api.get(`/interaction/candidates/by-phone/${encodeURIComponent(phone)}`);
+    return response.data;
+  },
+
+  addNote: async (data: {
+    candidate_id: number;
+    note: string;
+    status?: string;
+    priority?: number;
+    follow_up_date?: string;
+  }): Promise<ApiResponse<InteractionNote>> => {
+    const response = await api.post('/interaction/notes', data);
+    return response.data;
+  },
+
+  getNotesByCandidate: async (candidateId: number): Promise<ApiResponse<InteractionNote[]>> => {
+    const response = await api.get(`/interaction/notes/by-candidate/${candidateId}`);
+    return response.data;
+  },
+
+  moveToPipeline: async (candidate_id: number, stage: string): Promise<ApiResponse> => {
+    const response = await api.post('/interaction/pipeline/move', { candidate_id, stage });
+    return response.data;
+  },
+
+  getPipeline: async (): Promise<ApiResponse<any[]>> => {
+    const response = await api.get('/interaction/pipeline/all');
+    return response.data;
+  },
+
+  getSnapshots: async (userId?: number): Promise<ApiResponse<DailySnapshot[]>> => {
+    const url = userId ? `/interaction/snapshots/${userId}` : '/interaction/snapshots';
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  getAdminRecruiters: async (): Promise<ApiResponse<any[]>> => {
+    const response = await api.get('/interaction/admin/recruiters');
+    return response.data;
+  },
+
+  getRecruiterActivity: async (userId: number): Promise<ApiResponse<any>> => {
+    const response = await api.get(`/interaction/admin/recruiter/${userId}`);
+    return response.data;
+  },
+
+  getFollowUpsToday: async (): Promise<ApiResponse<any[]>> => {
+    const response = await api.get('/interaction/follow-ups/today');
+    return response.data;
+  },
+};

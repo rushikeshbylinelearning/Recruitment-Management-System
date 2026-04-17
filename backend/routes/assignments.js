@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { query, transaction } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateId, validateUUID, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { body, param } from 'express-validator';
 import fileStorageService from '../services/fileStorage.js';
 import emailService from '../services/emailService.js';
@@ -23,21 +23,25 @@ const router = express.Router();
 // Assignment validation rules
 const validateAssignment = [
   body('candidateId')
-    .isInt({ min: 1 })
-    .withMessage('Candidate ID must be a valid integer'),
+    .optional({ nullable: true, checkFalsy: true })
+    .matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    .withMessage('Candidate ID must be a valid UUID'),
   
   body('jobId')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isInt({ min: 1 })
     .withMessage('Job ID must be a valid integer'),
   
   body('title')
+    .optional()
+    .notEmpty()
+    .withMessage('Title cannot be empty')
     .isLength({ min: 1, max: 200 })
     .withMessage('Title must be between 1 and 200 characters')
     .trim(),
   
   body('descriptionHtml')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .trim(),
   
   body('status')
@@ -46,7 +50,7 @@ const validateAssignment = [
     .withMessage('Invalid status'),
   
   body('dueDate')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isISO8601()
     .withMessage('Due date must be a valid date')
 ];
@@ -55,6 +59,17 @@ const validateAssignmentStatus = [
   body('status')
     .isIn(['Draft', 'Assigned', 'In Progress', 'Submitted', 'Approved', 'Rejected', 'Cancelled'])
     .withMessage('Invalid status')
+];
+
+// Stricter validation for create — title is required
+const validateCreateAssignment = [
+  ...validateAssignment.filter(v => true), // reuse all rules
+  body('title')
+    .notEmpty()
+    .withMessage('Title is required')
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Title must be between 1 and 200 characters')
+    .trim(),
 ];
 
 // Get all assignments
@@ -147,14 +162,16 @@ router.get('/', authenticateToken, checkPermission('assignments', 'view'), valid
 }));
 
 // Create new assignment
-router.post('/', authenticateToken, checkPermission('assignments', 'create'), validateAssignment, handleValidationErrors, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, checkPermission('assignments', 'create'), validateCreateAssignment, handleValidationErrors, asyncHandler(async (req, res) => {
   const { candidateId, jobId, title, descriptionHtml, dueDate } = req.body;
   const assignedBy = req.user.id;
 
-  // Verify candidate exists
-  const candidates = await query('SELECT id, name, email FROM candidates WHERE id = ?', [candidateId]);
-  if (candidates.length === 0) {
-    throw new ValidationError('Candidate not found');
+  // Verify candidate exists if provided
+  if (candidateId) {
+    const candidates = await query('SELECT id, name, email FROM candidates WHERE id = ?', [candidateId]);
+    if (candidates.length === 0) {
+      throw new ValidationError('Candidate not found');
+    }
   }
 
   // Verify job exists if provided
@@ -168,16 +185,18 @@ router.post('/', authenticateToken, checkPermission('assignments', 'create'), va
   const result = await query(
     `INSERT INTO assignments (candidate_id, job_id, assigned_by, title, description_html, due_date, status)
      VALUES (?, ?, ?, ?, ?, ?, 'Draft')`,
-    [candidateId, jobId || null, assignedBy, title, descriptionHtml || null, dueDate || null]
+    [candidateId || null, jobId || null, assignedBy, title, descriptionHtml || null, dueDate || null]
   );
 
   const assignmentId = result.insertId;
 
-  // Sync candidate's inHouseAssignmentStatus to 'Assigned' when assignment is created
-  await query(
-    `UPDATE candidates SET in_house_assignment_status = 'Assigned', updated_at = NOW() WHERE id = ?`,
-    [candidateId]
-  );
+  // Sync candidate's inHouseAssignmentStatus only if a candidate is linked
+  if (candidateId) {
+    await query(
+      `UPDATE candidates SET in_house_assignment_status = 'Assigned', updated_at = NOW() WHERE id = ?`,
+      [candidateId]
+    );
+  }
 
   // Get the created assignment
   const assignments = await query(
@@ -221,13 +240,52 @@ router.get('/:id', authenticateToken, checkPermission('assignments', 'view'), va
     throw new NotFoundError('Assignment not found');
   }
 
-  // Get attachments
-  const attachments = await query(
-    `SELECT id, filename, original_name, file_size, mime_type, uploaded_at
+  // Get admin-uploaded attachments (file_uploads table) — only those that exist on disk
+  const adminFilesRaw = await query(
+    `SELECT id, filename, original_name, file_size, mime_type, uploaded_at, file_path, 'admin' as source
      FROM file_uploads 
      WHERE assignment_id = ?`,
     [assignmentId]
   );
+
+  // Filter to files that actually exist on disk; delete stale records silently
+  const adminFiles = [];
+  for (const f of adminFilesRaw) {
+    const p1 = f.file_path;
+    const p2 = fileStorageService.getFilePath(f.filename);
+    const exists = (p1 && fs.existsSync(p1)) || fs.existsSync(p2);
+    if (exists) {
+      adminFiles.push(f);
+    } else {
+      // Stale record — remove it so it doesn't show up again
+      await query('DELETE FROM file_uploads WHERE id = ?', [f.id]).catch(() => {});
+    }
+  }
+
+  // Get candidate submission files (candidate_assignment_files table) — only those on disk
+  const submissionFilesRaw = await query(
+    `SELECT caf.id, caf.stored_filename as filename, caf.original_filename as original_name,
+            caf.file_size, caf.mime_type, caf.uploaded_at, caf.storage_path as file_path,
+            'submission' as source
+     FROM candidate_assignment_files caf
+     INNER JOIN candidate_assignments ca ON caf.candidate_assignment_id = ca.id
+     WHERE ca.assignment_id = ?
+     ORDER BY caf.uploaded_at DESC`,
+    [assignmentId]
+  );
+
+  const submissionFiles = [];
+  for (const f of submissionFilesRaw) {
+    const exists = f.file_path && fs.existsSync(f.file_path);
+    if (exists) {
+      submissionFiles.push(f);
+    } else {
+      await query('DELETE FROM candidate_assignment_files WHERE id = ?', [f.id]).catch(() => {});
+    }
+  }
+
+  // Merge both sets — submission files first (most relevant), then admin files
+  const attachments = [...submissionFiles, ...adminFiles];
 
   // Get communications history
   const communications = await query(
@@ -266,10 +324,12 @@ router.put('/:id', authenticateToken, checkPermission('assignments', 'edit'), va
     throw new ConflictError('Cannot revert assignment to Draft status once it has been sent');
   }
 
-  // Verify candidate exists
-  const candidates = await query('SELECT id, name, email FROM candidates WHERE id = ?', [candidateId]);
-  if (candidates.length === 0) {
-    throw new ValidationError('Candidate not found');
+  // Verify candidate exists if provided
+  if (candidateId) {
+    const candidates = await query('SELECT id, name, email FROM candidates WHERE id = ?', [candidateId]);
+    if (candidates.length === 0) {
+      throw new ValidationError('Candidate not found');
+    }
   }
 
   // Verify job exists if provided
@@ -286,11 +346,11 @@ router.put('/:id', authenticateToken, checkPermission('assignments', 'edit'), va
     `UPDATE assignments 
      SET candidate_id = ?, job_id = ?, title = ?, description_html = ?, due_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`,
-    [candidateId, jobId || null, title, descriptionHtml || null, dueDate || null, newStatus, assignmentId]
+    [candidateId || null, jobId || null, title, descriptionHtml || null, dueDate || null, newStatus, assignmentId]
   );
 
   // Sync candidate's inHouseAssignmentStatus with assignment status
-  if (newStatus && newStatus !== 'Draft') {
+  if (candidateId && newStatus && newStatus !== 'Draft') {
     // Map assignment status to candidate status
     const statusMapping = {
       'Assigned': 'Assigned',
@@ -432,7 +492,7 @@ router.post('/:id/send', authenticateToken, checkPermission('assignments', 'edit
 
   // Check if assignment has content or attachments
   const attachments = await query(
-    'SELECT id, file_path, original_name FROM file_uploads WHERE assignment_id = ?',
+    'SELECT id, filename, file_path, original_name FROM file_uploads WHERE assignment_id = ?',
     [assignmentId]
   );
 
@@ -440,11 +500,21 @@ router.post('/:id/send', authenticateToken, checkPermission('assignments', 'edit
     throw new ValidationError('Assignment must have description or attachments to send');
   }
 
-  // Prepare email attachments
-  const emailAttachments = attachments.map(file => ({
-    filename: file.original_name,
-    path: file.file_path
-  }));
+  // Resolve file paths dynamically — DB paths may be stale (different machine/location)
+  const emailAttachments = attachments
+    .map(file => {
+      // Try the current resolved path first, fall back to stored path
+      const resolvedPath = fileStorageService.getFilePath(file.filename);
+      const finalPath = fs.existsSync(resolvedPath) ? resolvedPath : file.file_path;
+      if (!fs.existsSync(finalPath)) {
+        console.warn(`[assignments/send] Attachment not found on disk: ${file.original_name} (tried: ${resolvedPath})`);
+        return null;
+      }
+      return { filename: file.original_name, path: finalPath };
+    })
+    .filter(Boolean);
+
+  console.log(`[assignments/send] ${attachments.length} attachment(s) in DB, ${emailAttachments.length} found on disk`);
 
   // Build email content
   const subject = `Assignment: ${assignment.title}`;
@@ -549,9 +619,18 @@ router.patch('/:id/status', authenticateToken, checkPermission('assignments', 'e
 }));
 
 // Get assignments for specific candidate
-router.get('/candidates/:candidateId', authenticateToken, checkPermission('assignments', 'view'), validateId('candidateId'), handleValidationErrors, asyncHandler(async (req, res) => {
+router.get('/candidates/:candidateId', authenticateToken, checkPermission('assignments', 'view'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.candidateId;
   console.log('Fetching assignments for candidate ID:', candidateId);
+
+  // Validate UUID format (8-4-4-4-12 hex characters)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!candidateId || typeof candidateId !== 'string' || !uuidRegex.test(candidateId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'candidateId must be a valid UUID'
+    });
+  }
 
   const assignments = await query(
     `SELECT a.*, 

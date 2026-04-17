@@ -1,61 +1,192 @@
-import { X, Mail, Phone, MapPin, Download, FileText, User, Calendar, Clock } from 'lucide-react';
+import { Mail, Phone, MapPin, Download, FileText, Calendar, Clock, Briefcase, DollarSign, Star, CheckCircle, XCircle, AlertCircle, User, Edit, Send, ClipboardList, Pencil } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, assignmentsAPI, Assignment } from '../services/api';
 import { useState, useEffect } from 'react';
+import FileViewer, { ViewerFile } from './FileViewer';
+import NotesPanel from './NotesPanel';
+import HRNotesTimeline from './HRNotesTimeline';
+
+interface CandidateAssignmentNew {
+  id: number;
+  candidate_id: number;
+  assignment_id: number;
+  assignment_title: string;
+  status: 'Assigned' | 'Submitted' | 'Reviewed' | 'Overdue';
+  deadline: string;
+  submitted_at?: string;
+  email_status?: string;
+  is_overdue?: number;
+}
+
+interface CandidateAssignmentFile {
+  id: number;
+  original_filename: string;
+  stored_filename: string;
+  mime_type: string;
+  file_size: number;
+}
 
 interface CandidateViewModalProps {
   isOpen: boolean;
   onClose: () => void;
   candidate: Candidate | null;
+  onEdit?: (candidate: Candidate) => void;
 }
 
-export default function CandidateViewModal({ isOpen, onClose, candidate }: CandidateViewModalProps) {
+// Matches STAGE_ACCENTS in KanbanBoard.tsx exactly
+const STAGE_ACCENTS: Record<string, string> = {
+  Applied: '#6366f1',
+  Screening: '#f59e0b',
+  Interview: '#f97316',
+  Offer: '#8b5cf6',
+  Hired: '#10b981',
+  Rejected: '#ef4444',
+  'On Hold': '#6b7280',
+  'No Show - Interview': '#ea580c',
+  'No Show - Onboarding': '#ec4899',
+  'Last Minute Back Out': '#dc2626',
+};
+
+const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const toTitleCase = (value?: string | null): string => {
+  if (!value) return '—';
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+const toCapitalizedWords = (value?: string | null): string => {
+  if (!value) return '—';
+  return normalizeWhitespace(value)
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm font-medium text-gray-900 text-right max-w-[60%]">{value}</span>
+    </div>
+  );
+}
+
+function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-3 bg-gray-50 border-b border-gray-100">
+        <span className="text-gray-500">{icon}</span>
+        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">{title}</h3>
+      </div>
+      <div className="px-4 py-1">{children}</div>
+    </div>
+  );
+}
+
+export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit }: CandidateViewModalProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [freshCandidate, setFreshCandidate] = useState<Candidate | null>(null);
+  const [notesPanelOpen, setNotesPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'hr-notes'>('details');
+
+  // New candidate_assignments
+  const [candidateAssignmentsNew, setCandidateAssignmentsNew] = useState<CandidateAssignmentNew[]>([]);
+  const [caLoading, setCaLoading] = useState(false);
+  const [expandedFiles, setExpandedFiles] = useState<Record<number, CandidateAssignmentFile[]>>({});
+  const [loadingFiles, setLoadingFiles] = useState<Record<number, boolean>>({});
+
+  // File viewer
+  const [viewerFiles, setViewerFiles] = useState<ViewerFile[] | null>(null);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  
+  // HR Notes refresh key
+  const [hrNotesKey, setHrNotesKey] = useState(0);
 
   useEffect(() => {
     if (isOpen && candidate) {
-      console.log('CandidateViewModal - Candidate data:', candidate);
-      console.log('CandidateViewModal - Candidate notes:', candidate.notes);
       fetchFreshCandidateData();
       fetchAssignments();
+      fetchCandidateAssignmentsNew();
+      // Reset to details tab when opening
+      setActiveTab('details');
+      // Refresh HR notes
+      setHrNotesKey(prev => prev + 1);
     }
   }, [isOpen, candidate]);
 
+  const fetchCandidateAssignmentsNew = async () => {
+    if (!candidate) return;
+    setCaLoading(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`/api/candidate-assignments?candidateId=${candidate.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setCandidateAssignmentsNew(data.success && data.data ? data.data : []);
+    } catch {
+      setCandidateAssignmentsNew([]);
+    } finally {
+      setCaLoading(false);
+    }
+  };
+
+  const fetchAssignmentFiles = async (caId: number) => {
+    if (expandedFiles[caId] !== undefined) {
+      setExpandedFiles(prev => { const n = { ...prev }; delete n[caId]; return n; });
+      return;
+    }
+    setLoadingFiles(prev => ({ ...prev, [caId]: true }));
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`/api/candidate-assignments/${caId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setExpandedFiles(prev => ({ ...prev, [caId]: data.success && data.data?.files ? data.data.files : [] }));
+    } catch {
+      setExpandedFiles(prev => ({ ...prev, [caId]: [] }));
+    } finally {
+      setLoadingFiles(prev => ({ ...prev, [caId]: false }));
+    }
+  };
+
+  const openFileViewer = (files: CandidateAssignmentFile[], startIndex = 0) => {
+    setViewerFiles(files.map(f => ({
+      name: f.original_filename,
+      url: `/uploads/assignment-submissions/${f.stored_filename}`,
+      mimeType: f.mime_type,
+    })));
+    setViewerIndex(startIndex);
+  };
+
   const fetchFreshCandidateData = async () => {
     if (!candidate) return;
-    
     try {
-      console.log('Fetching fresh candidate data for ID:', candidate.id);
       const response = await candidatesAPI.getCandidateById(candidate.id);
-      console.log('Fresh candidate data response:', response);
-      if (response.success && response.data) {
-        setFreshCandidate(response.data.candidate);
-        console.log('Fresh candidate notes:', response.data.candidate.notes);
-      }
-    } catch (error) {
-      console.error('Error fetching fresh candidate data:', error);
-    }
+      if (response.success && response.data) setFreshCandidate(response.data.candidate);
+    } catch {}
   };
 
   const fetchAssignments = async () => {
     if (!candidate) return;
-    
+    const candidateId = String(candidate.id ?? '').trim();
+    if (!candidateId) {
+      setAssignments([]);
+      return;
+    }
     setAssignmentsLoading(true);
     try {
-      console.log('Fetching assignments for candidate ID:', candidate.id);
-      const response = await assignmentsAPI.getCandidateAssignments(Number(candidate.id));
-      console.log('Assignments API response:', response);
-      if (response.success && response.data) {
-        setAssignments(response.data);
-        console.log('Set assignments:', response.data);
-      } else {
-        console.log('No assignments data or API failed');
-        setAssignments([]);
-      }
-    } catch (error) {
-      console.error('Error fetching assignments:', error);
+      const response = await assignmentsAPI.getCandidateAssignments(candidateId);
+      setAssignments(response.success && response.data ? response.data : []);
+    } catch {
       setAssignments([]);
     } finally {
       setAssignmentsLoading(false);
@@ -64,458 +195,525 @@ export default function CandidateViewModal({ isOpen, onClose, candidate }: Candi
 
   if (!isOpen || !candidate) return null;
 
+  const c = freshCandidate || candidate;
+  const accent = STAGE_ACCENTS[candidate.stage] || '#6b7280';
+  const displayName = toTitleCase(c.name);
+  const displayRole = toTitleCase(c.position);
+  const displaySource = toCapitalizedWords(c.source);
+  const displayLocation = c.location ? toTitleCase(c.location) : '—';
+  const displayEmail = normalizeWhitespace(c.email || '').toLowerCase() || '—';
+  const displayPhone = normalizeWhitespace(c.phone || '') || '—';
+
   const getAssignmentStatusColor = (status: string) => {
-    switch (status) {
-      case 'Draft': return 'bg-gray-100 text-gray-800';
-      case 'Assigned': return 'bg-blue-100 text-blue-800';
-      case 'In Progress': return 'bg-yellow-100 text-yellow-800';
-      case 'Submitted': return 'bg-purple-100 text-purple-800';
-      case 'Approved': return 'bg-green-100 text-green-800';
-      case 'Rejected': return 'bg-red-100 text-red-800';
-      case 'Cancelled': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+    const map: Record<string, string> = {
+      Draft: 'bg-gray-100 text-gray-700',
+      Assigned: 'bg-blue-100 text-blue-700',
+      'In Progress': 'bg-yellow-100 text-yellow-700',
+      Submitted: 'bg-purple-100 text-purple-700',
+      Approved: 'bg-green-100 text-green-700',
+      Rejected: 'bg-red-100 text-red-700',
+      Cancelled: 'bg-gray-100 text-gray-700',
+    };
+    return map[status] || 'bg-gray-100 text-gray-700';
   };
 
   const handleDownloadResume = async () => {
     try {
       const blob = await candidatesAPI.downloadResume(candidate.id);
-      
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
-      // Get original filename from metadata
       const metadataResponse = await candidatesAPI.getResumeMetadata(candidate.id);
-      const filename = metadataResponse.data?.originalName || `resume_${candidate.id}.pdf`;
-      
-      link.download = filename;
+      link.download = metadataResponse.data?.originalName || `resume_${candidate.id}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Error downloading resume:', err);
+    } catch {
       alert('Failed to download resume');
     }
   };
 
+  const interviewerNotes = Array.isArray(c.notes) ? c.notes.filter((n: any) => n.user_role === 'Interviewer') : [];
+  const generalNotes = Array.isArray(c.notes) ? c.notes.filter((n: any) => n.user_role !== 'Interviewer') : [];
+
+  const initials = displayName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <User size={24} className="text-blue-600" />
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+
+        {/* ── Hero Header ── */}
+        <div
+          className="px-6 pt-5 pb-5 border-b"
+          style={{ background: `${accent}12`, borderColor: `${accent}30` }}
+        >
+          {/* Top row: avatar + name + stage pill + close */}
+          <div className="flex items-center gap-4">
+            {/* Avatar */}
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 border-2"
+              style={{ backgroundColor: `${accent}25`, borderColor: `${accent}50` }}
+            >
+              <span className="font-bold text-lg" style={{ color: accent }}>{initials}</span>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">{candidate.name}</h2>
-              <p className="text-gray-600">{candidate.position}</p>
+
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl font-bold text-gray-900 truncate">{displayName}</h2>
+              <p className="text-sm truncate font-medium" style={{ color: accent }}>{displayRole}</p>
+            </div>
+
+            {/* Stage pill + actions — inline so they never overlap */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span
+                className="px-3 py-1 rounded-full text-xs font-semibold"
+                style={{ backgroundColor: `${accent}18`, color: accent, outline: `1px solid ${accent}40` }}
+              >
+                {toTitleCase(candidate.stage)}
+              </span>
+              {onEdit && (
+                <button
+                  onClick={() => onEdit(c)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/90 hover:bg-white transition-colors border border-gray-200 text-gray-700 text-xs font-semibold"
+                >
+                  <Edit size={13} />
+                  Edit
+                </button>
+              )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X size={24} className="text-gray-500" />
-          </button>
+
+          {/* Quick stats row */}
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            {[
+              { label: 'Applied', value: new Date(c.appliedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
+              { label: 'Source', value: displaySource },
+              { label: 'Location', value: displayLocation },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                className="rounded-xl px-3 py-2 text-center border bg-white/60"
+                style={{ borderColor: `${accent}25` }}
+              >
+                <p className="text-xs mb-0.5 font-medium" style={{ color: accent }}>{label}</p>
+                <p className="text-gray-800 text-sm font-semibold truncate">{value}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column - Basic Info */}
-            <div className="space-y-6">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Contact Information</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <Mail size={16} className="text-gray-400" />
-                    <span className="text-gray-700">{candidate.email}</span>
+        {/* ── Tab Navigation ── */}
+        <div className="border-b border-gray-200 bg-white px-6">
+          <div className="flex gap-6">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'details'
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Candidate Details
+            </button>
+            <button
+              onClick={() => setActiveTab('hr-notes')}
+              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'hr-notes'
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              HR Notes
+            </button>
+          </div>
+        </div>
+
+        {/* ── Scrollable Body ── */}
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-5">
+          {activeTab === 'details' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+            {/* LEFT */}
+            <div className="space-y-4">
+
+              {/* Contact */}
+              <Section title="Contact" icon={<Mail size={15} />}>
+                <a href={`mailto:${displayEmail}`} className="flex items-center gap-3 py-2.5 border-b border-gray-100 group">
+                  <Mail size={15} className="text-indigo-400 shrink-0" />
+                  <span className="text-sm text-gray-700 group-hover:text-indigo-600 transition-colors truncate">{displayEmail}</span>
+                </a>
+                <a href={`tel:${displayPhone}`} className="flex items-center gap-3 py-2.5 border-b border-gray-100 group">
+                  <Phone size={15} className="text-indigo-400 shrink-0" />
+                  <span className="text-sm text-gray-700 group-hover:text-indigo-600 transition-colors">{displayPhone}</span>
+                </a>
+                {c.location && (
+                  <div className="flex items-center gap-3 py-2.5">
+                    <MapPin size={15} className="text-indigo-400 shrink-0" />
+                    <span className="text-sm text-gray-700">{displayLocation}</span>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <Phone size={16} className="text-gray-400" />
-                    <span className="text-gray-700">{candidate.phone}</span>
-                  </div>
-                  {candidate.source && (
-                    <div className="flex items-center space-x-3">
-                      <MapPin size={16} className="text-gray-400" />
-                      <span className="text-gray-700">Source: {candidate.source}</span>
-                    </div>
-                  )}
-                  {candidate.location && (
-                    <div className="flex items-center space-x-3">
-                      <MapPin size={16} className="text-gray-400" />
-                      <span className="text-gray-700">Location: {candidate.location}</span>
-                    </div>
-                  )}
+                )}
+              </Section>
+
+              {/* Work Preferences + floating Notes button */}
+              <div className="relative">
+                {c.workPreferences && (
+                  <Section title="Work Preferences" icon={<Briefcase size={15} />}>
+                    {c.workPreferences.workPreference && (
+                      <InfoRow label="Preference" value={
+                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                          {toTitleCase(c.workPreferences.workPreference)}
+                        </span>
+                      } />
+                    )}
+                    {c.workPreferences.currentCtc && (
+                      <InfoRow label="Current CTC" value={`₹${c.workPreferences.currentCtc} (${toTitleCase(c.workPreferences.ctcFrequency || 'Annual')})`} />
+                    )}
+                    <InfoRow label="Alternate Saturday" value={
+                      c.workPreferences.willingAlternateSaturday === true
+                        ? <span className="flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Yes</span>
+                        : c.workPreferences.willingAlternateSaturday === false
+                        ? <span className="flex items-center gap-1 text-red-500"><XCircle size={13} /> No</span>
+                        : <span className="text-gray-400">Not specified</span>
+                    } />
+                  </Section>
+                )}
+
+                {/* Floating pencil button — HR Notes */}
+                <div className="flex justify-end mt-4 pr-1">
+                  <button
+                    onClick={() => setNotesPanelOpen(true)}
+                    title="Add / View Notes"
+                    className="notes-fab group"
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: '50%',
+                      background: '#6366f1',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
+                      transition: 'transform 150ms ease, box-shadow 150ms ease',
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.transform = 'scale(1.08)';
+                      b.style.boxShadow = '0 6px 20px rgba(99,102,241,0.5)';
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.transform = 'scale(1)';
+                      b.style.boxShadow = '0 4px 14px rgba(99,102,241,0.35)';
+                    }}
+                    onMouseDown={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.95)';
+                    }}
+                    onMouseUp={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.08)';
+                    }}
+                  >
+                    <Pencil size={18} color="#fff" />
+                  </button>
                 </div>
               </div>
 
-              {candidate.workPreferences && (
-                 <div className="bg-gray-50 rounded-lg p-4">
-                   <h3 className="text-lg font-medium text-gray-900 mb-4">Work Preferences</h3>
-                   <div className="space-y-3">
-                     {candidate.workPreferences.workPreference && (
-                       <div className="flex items-center justify-between">
-                         <span className="text-gray-600">Work Preference:</span>
-                         <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                           {candidate.workPreferences.workPreference}
-                         </span>
-                       </div>
-                     )}
-                     {candidate.workPreferences.currentCtc && (
-                       <div className="flex items-center justify-between">
-                         <span className="text-gray-600">Current CTC:</span>
-                         <span className="text-gray-900">₹{candidate.workPreferences.currentCtc} ({candidate.workPreferences.ctcFrequency || 'Annual'})</span>
-                       </div>
-                     )}
-                     <div className="flex items-center justify-between">
-                       <span className="text-gray-600">Alternate Saturday:</span>
-                       <span className={`px-2 py-1 rounded-full text-sm ${
-                         candidate.workPreferences.willingAlternateSaturday === true
-                           ? 'bg-green-100 text-green-800'
-                           : candidate.workPreferences.willingAlternateSaturday === false
-                           ? 'bg-red-100 text-red-800'
-                           : 'bg-gray-100 text-gray-800'
-                       }`}>
-                         {candidate.workPreferences.willingAlternateSaturday === true ? 'Yes' : 
-                          candidate.workPreferences.willingAlternateSaturday === false ? 'No' : 'Not Specified'}
-                       </span>
-                     </div>
-                   </div>
-                 </div>
-               )}
-
-               {(candidate.skills && candidate.skills.length > 0) || candidate.expertise && (
-                 <div className="bg-gray-50 rounded-lg p-4">
-                   <h3 className="text-lg font-medium text-gray-900 mb-4">Skills & Expertise</h3>
-                   {candidate.expertise && (
-                     <div className="mb-3">
-                       <span className="text-sm text-gray-600">Primary Expertise:</span>
-                       <p className="text-gray-900 font-medium">{candidate.expertise}</p>
-                     </div>
-                   )}
-                   {candidate.skills && candidate.skills.length > 0 && (
-                     <div>
-                       <span className="text-sm text-gray-600 mb-2 block">Technical Skills:</span>
-                       <div className="flex flex-wrap gap-2">
-                         {candidate.skills.map((skill, index) => (
-                           <span
-                             key={index}
-                             className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                           >
-                             {skill}
-                           </span>
-                         ))}
-                       </div>
-                     </div>
-                   )}
-                 </div>
-               )}
-
-<div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Application Details</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Applied Date:</span>
-                    <span className="text-gray-900">{new Date(candidate.appliedDate).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Stage:</span>
-                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                      {candidate.stage}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-               {candidate.notes && Array.isArray(candidate.notes) && candidate.notes.length > 0 && (
-                 <div className="bg-gray-50 rounded-lg p-4">
-                   <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
-                   <div className="space-y-3">
-                     {candidate.notes.map((note: any, index: number) => (
-                       <div key={note.id || index} className="border-l-4 border-blue-200 pl-4 py-2 bg-white rounded">
-                         <div className="flex items-center justify-between mb-2">
-                           <div className="flex items-center space-x-2">
-                             <span className="text-sm font-medium text-gray-900">{note.user_name}</span>
-                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                               {note.user_role}
-                             </span>
-                           </div>
-                           <span className="text-xs text-gray-500">
-                             {new Date(note.created_at).toLocaleDateString()}
-                           </span>
-                         </div>
-                         {note.notes && (
-                           <p className="text-gray-700 text-sm whitespace-pre-wrap">{note.notes}</p>
-                         )}
-                         {note.rating && (
-                           <div className="mt-2 flex items-center space-x-2">
-                             <span className="text-sm text-gray-600">Rating:</span>
-                             <div className="flex items-center space-x-1">
-                               {[1, 2, 3, 4, 5].map((star) => (
-                                 <span
-                                   key={star}
-                                   className={`text-sm ${star <= note.rating ? 'text-yellow-500' : 'text-gray-300'}`}
-                                 >
-                                   ★
-                                 </span>
-                               ))}
-                               <span className="text-sm text-gray-600 ml-1">({note.rating}/5)</span>
-                             </div>
-                           </div>
-                         )}
-                         {note.rating_comments && (
-                           <p className="text-gray-600 text-sm mt-1 italic">"{note.rating_comments}"</p>
-                         )}
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
-
-              {/* Interview Details */}
-              {(() => {
-                const candidateToUse = freshCandidate || candidate;
-                const notes = candidateToUse?.notes;
-                console.log('Using candidate data:', candidateToUse);
-                console.log('All candidate notes:', notes);
-                
-                if (notes && Array.isArray(notes)) {
-                  const interviewerNotes = notes.filter((note: any) => note.user_role === 'Interviewer');
-                  console.log('Filtered interviewer notes:', interviewerNotes);
-                if (interviewerNotes.length > 0) {
-                  return (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <h3 className="text-lg font-medium text-gray-900 mb-4">Interview Details</h3>
-                      <div className="space-y-4">
-                        {interviewerNotes.map((note: any, index: number) => (
-                          <div key={note.id || index} className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center space-x-2">
-                                <span className="text-sm font-medium text-gray-900">{note.user_name}</span>
-                                <span className="text-xs text-gray-500 bg-blue-100 px-2 py-1 rounded-full">
-                                  Interviewer
-                                </span>
-                              </div>
-                              <span className="text-xs text-gray-500">
-                                {new Date(note.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            
-                            {/* Recommendation Badge */}
-                            {note.recommendation && (
-                              <div className="mb-3">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                  note.recommendation === 'Recommend' ? 'bg-green-100 text-green-800' :
-                                  note.recommendation === 'Don\'t Recommend' ? 'bg-red-100 text-red-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {note.recommendation === 'Recommend' ? '✓ Recommend for next round' :
-                                   note.recommendation === 'Don\'t Recommend' ? '✗ Don\'t recommend' :
-                                   '○ Neutral'}
-                                </span>
-                              </div>
-                            )}
-                            
-                            {/* Interview Notes */}
-                            {note.notes && (
-                              <div className="text-gray-700 text-sm">
-                                <p className="whitespace-pre-wrap">{note.notes}</p>
-                              </div>
-                            )}
-                            
-                            {/* Rating if available */}
-                            {note.rating && (
-                              <div className="mt-3 flex items-center space-x-2">
-                                <span className="text-sm text-gray-600">Rating:</span>
-                                <div className="flex items-center space-x-1">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <span
-                                      key={star}
-                                      className={`text-sm ${star <= note.rating ? 'text-yellow-500' : 'text-gray-300'}`}
-                                    >
-                                      ★
-                                    </span>
-                                  ))}
-                                  <span className="text-sm text-gray-600 ml-1">({note.rating}/5)</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+              {/* Skills */}
+              {((c.skills && c.skills.length > 0) || c.expertise) && (
+                <Section title="Skills & Expertise" icon={<Star size={15} />}>
+                  {c.expertise && (
+                    <div className="py-2.5 border-b border-gray-100">
+                      <p className="text-xs text-gray-500 mb-1">Primary Expertise</p>
+                      <p className="text-sm font-medium text-gray-800">{toTitleCase(c.expertise)}</p>
+                    </div>
+                  )}
+                  {c.skills && c.skills.length > 0 && (
+                    <div className="py-2.5">
+                      <p className="text-xs text-gray-500 mb-2">Technical Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.skills.map((skill, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium border border-indigo-100">
+                            {toCapitalizedWords(skill)}
+                          </span>
                         ))}
                       </div>
                     </div>
-                  );
-                }
-                  // Debug: Show all notes if no interviewer notes found
-                  console.log('No interviewer notes found, showing debug info');
-                  
-                }
-                return null;
-              })()}
+                  )}
+                </Section>
+              )}
 
+              {/* General Notes */}
+              {generalNotes.length > 0 && (
+                <Section title="Notes" icon={<FileText size={15} />}>
+                  <div className="space-y-3 py-2">
+                    {generalNotes.map((note: any, i: number) => (
+                      <div key={note.id || i} className="border-l-2 border-indigo-300 pl-3 py-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-gray-800">{note.user_name}</span>
+                          <span className="text-xs text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {note.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes}</p>}
+                        {note.rating && (
+                          <div className="flex items-center gap-1 mt-1.5">
+                            {[1,2,3,4,5].map(s => (
+                              <span key={s} className={`text-xs ${s <= note.rating ? 'text-yellow-400' : 'text-gray-200'}`}>★</span>
+                            ))}
+                            <span className="text-xs text-gray-400 ml-1">{note.rating}/5</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
             </div>
 
-            {/* Right Column - Additional Info */}
-            <div className="space-y-6">
-              {candidate.salary && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Salary Information</h3>
-                  <div className="space-y-3">
-                    {candidate.salary.expected && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Expected:</span>
-                        <span className="text-gray-900">₹{candidate.salary.expected}</span>
-                      </div>
-                    )}
-                    {candidate.salary.offered && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Offered:</span>
-                        <span className="text-gray-900">₹{candidate.salary.offered}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Negotiable:</span>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        candidate.salary.negotiable 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {candidate.salary.negotiable ? 'Yes' : 'No'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+            {/* RIGHT */}
+            <div className="space-y-4">
+
+              {/* Salary */}
+              {c.salary && (
+                <Section title="Salary" icon={<DollarSign size={15} />}>
+                  {c.salary.expected && (
+                    <InfoRow label="Expected CTC" value={`₹${c.salary.expected}`} />
+                  )}
+                  {c.salary.offered && (
+                    <InfoRow label="Offered CTC" value={`₹${c.salary.offered}`} />
+                  )}
+                  <InfoRow label="Negotiable" value={
+                    c.salary.negotiable
+                      ? <span className="flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Yes</span>
+                      : <span className="flex items-center gap-1 text-red-500"><XCircle size={13} /> No</span>
+                  } />
+                </Section>
               )}
 
-              {candidate.availability && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Availability</h3>
-                  <div className="space-y-3">
-                    {candidate.availability.joiningTime && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Joining Time:</span>
-                        <span className="text-gray-900">{candidate.availability.joiningTime}</span>
-                      </div>
-                    )}
-                    {candidate.availability.noticePeriod && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Notice Period:</span>
-                        <span className="text-gray-900">{candidate.availability.noticePeriod}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Immediate Joiner:</span>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        candidate.availability.immediateJoiner 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {candidate.availability.immediateJoiner ? 'Yes' : 'No'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              {/* Availability */}
+              {c.availability && (
+                <Section title="Availability" icon={<Clock size={15} />}>
+                  {c.availability.joiningTime && (
+                    <InfoRow label="Joining Time" value={toTitleCase(c.availability.joiningTime)} />
+                  )}
+                  {c.availability.noticePeriod && (
+                    <InfoRow label="Notice Period" value={`${c.availability.noticePeriod} days`} />
+                  )}
+                  <InfoRow label="Immediate Joiner" value={
+                    c.availability.immediateJoiner
+                      ? <span className="flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Yes</span>
+                      : <span className="flex items-center gap-1 text-yellow-600"><AlertCircle size={13} /> No</span>
+                  } />
+                </Section>
               )}
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Resume</h3>
-                {candidate.resumeFileId ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <FileText size={20} className="text-gray-400" />
-                      <span className="text-gray-700">Resume available</span>
+              {/* Resume */}
+              <Section title="Resume" icon={<FileText size={15} />}>
+                <div className="py-3">
+                  {candidate.resumeFileId ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 bg-indigo-50 rounded-lg flex items-center justify-center">
+                          <FileText size={16} className="text-indigo-500" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">Resume attached</p>
+                          <p className="text-xs text-gray-400">Click to download</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleDownloadResume}
+                        className="flex items-center gap-1.5 bg-indigo-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        <Download size={14} />
+                        Download
+                      </button>
                     </div>
-                    <button
-                      onClick={handleDownloadResume}
-                      className="flex items-center space-x-2 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <Download size={16} />
-                      <span>Download</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-3">
-                    <FileText size={20} className="text-gray-400" />
-                    <span className="text-gray-500">No resume uploaded</span>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="flex items-center gap-2.5 text-gray-400">
+                      <FileText size={16} />
+                      <span className="text-sm">No resume uploaded</span>
+                    </div>
+                  )}
+                </div>
+              </Section>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Assignment Details</h3>
-                {assignmentsLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                    <span className="ml-2 text-gray-600">Loading assignments...</span>
+              {/* Assignments */}
+              <Section title="Assignments" icon={<Calendar size={15} />}>
+                {(assignmentsLoading || caLoading) && candidateAssignmentsNew.length === 0 && assignments.length === 0 ? (
+                  <div className="flex items-center gap-2 py-4 text-gray-500">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600" />
+                    <span className="text-sm">Loading...</span>
+                  </div>
+                ) : candidateAssignmentsNew.length > 0 ? (
+                  <div className="space-y-3 py-2">
+                    {candidateAssignmentsNew.map((ca) => {
+                      const isOverdue = ca.is_overdue === 1 && ca.status !== 'Submitted';
+                      const statusLabel = isOverdue ? 'Overdue' : ca.status;
+                      const statusColor: Record<string, string> = {
+                        Assigned: 'bg-blue-100 text-blue-700',
+                        Submitted: 'bg-purple-100 text-purple-700',
+                        Reviewed: 'bg-green-100 text-green-700',
+                        Overdue: 'bg-red-100 text-red-700',
+                      };
+                      return (
+                        <div key={ca.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <p className="text-sm font-medium text-gray-800">{ca.assignment_title}</p>
+                            <span className={`shrink-0 px-2 py-0.5 text-xs rounded-full font-medium ${statusColor[statusLabel] || 'bg-gray-100 text-gray-700'}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          {ca.deadline && (
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+                              <Calendar size={12} />
+                              Deadline: {new Date(ca.deadline).toLocaleDateString()}
+                            </div>
+                          )}
+                          {ca.submitted_at && (
+                            <div className="flex items-center gap-1.5 text-xs text-green-600">
+                              <CheckCircle size={12} />
+                              Submitted: {new Date(ca.submitted_at).toLocaleDateString()}
+                            </div>
+                          )}
+                          {(ca.status === 'Submitted' || ca.status === 'Reviewed') && (
+                            <div className="mt-2 pt-2 border-t border-gray-200">
+                              <button
+                                onClick={() => fetchAssignmentFiles(ca.id)}
+                                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                              >
+                                <FileText size={12} />
+                                {loadingFiles[ca.id] ? 'Loading…' : expandedFiles[ca.id] ? 'Hide files' : 'View submitted files'}
+                              </button>
+                              {expandedFiles[ca.id] && expandedFiles[ca.id].length > 0 && (
+                                <div className="mt-1.5 space-y-1">
+                                  {expandedFiles[ca.id].map((file, fi) => (
+                                    <div key={file.id} className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={() => openFileViewer(expandedFiles[ca.id], fi)}
+                                        className="text-xs text-blue-600 hover:underline truncate max-w-[180px] text-left"
+                                      >
+                                        {file.original_filename}
+                                      </button>
+                                      <span className="text-gray-400 text-xs flex-shrink-0">({(file.file_size / 1024).toFixed(1)} KB)</span>
+                                      <a href={`/uploads/assignment-submissions/${file.stored_filename}`} download={file.original_filename} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                                        <Download size={11} />
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {expandedFiles[ca.id] && expandedFiles[ca.id].length === 0 && (
+                                <p className="text-xs text-gray-400 mt-1">No files found.</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : assignments.length > 0 ? (
-                  <div className="space-y-4">
-                    {assignments.map((assignment) => (
-                      <div key={assignment.id} className="border border-gray-200 rounded-lg p-4 bg-white">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-medium text-gray-900">{assignment.title}</h4>
-                          <span className={`px-2 py-1 text-xs rounded-full ${getAssignmentStatusColor(assignment.status)}`}>
-                            {assignment.status}
+                  <div className="space-y-3 py-2">
+                    {assignments.map((a) => (
+                      <div key={a.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <p className="text-sm font-medium text-gray-800">{a.title}</p>
+                          <span className={`shrink-0 px-2 py-0.5 text-xs rounded-full font-medium ${getAssignmentStatusColor(a.status)}`}>
+                            {a.status}
                           </span>
                         </div>
-                        {assignment.due_date && (
-                          <div className="flex items-center space-x-2 text-sm text-gray-600 mb-2">
-                            <Calendar size={14} />
-                            <span>Due: {new Date(assignment.due_date).toLocaleDateString()}</span>
-                          </div>
-                        )}
-                        {candidate.assignmentDetails?.inOfficeAssignment && (
-                          <div className="mb-2">
-                            <span className="text-sm text-gray-600 block mb-1">Assignment Notes:</span>
-                            <div className="text-sm text-gray-700 bg-white p-2 rounded border">
-                              {candidate.assignmentDetails.inOfficeAssignment}
-                            </div>
-                          </div>
-                        )}
-                        {candidate.assignmentLocation && (
-                          <div>
-                            <span className="text-sm text-gray-600 block mb-1">Assignment Location:</span>
-                            <a 
-                              href={candidate.assignmentLocation} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 text-sm break-all"
-                            >
-                              {candidate.assignmentLocation}
-                            </a>
+                        {a.due_date && (
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <Calendar size={12} />
+                            Due: {new Date(a.due_date).toLocaleDateString()}
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-4">
-                    <Clock size={32} className="mx-auto text-gray-400 mb-2" />
-                    <p className="text-gray-500 italic">No assignments assigned</p>
+                  <div className="flex flex-col items-center py-6 text-gray-400">
+                    <Clock size={28} className="mb-2 opacity-50" />
+                    <p className="text-sm">No assignments yet</p>
                   </div>
                 )}
-              </div>
+              </Section>
+
+              {/* Interview Notes */}
+              {interviewerNotes.length > 0 && (
+                <Section title="Interview Feedback" icon={<User size={15} />}>
+                  <div className="space-y-3 py-2">
+                    {interviewerNotes.map((note: any, i: number) => (
+                      <div key={note.id || i} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-800">{note.user_name}</span>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Interviewer</span>
+                          </div>
+                          <span className="text-xs text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {note.recommendation && (
+                          <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full mb-2 ${
+                            note.recommendation === 'Recommend' ? 'bg-green-100 text-green-700' :
+                            note.recommendation === "Don't Recommend" ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {note.recommendation === 'Recommend' ? <CheckCircle size={11} /> : note.recommendation === "Don't Recommend" ? <XCircle size={11} /> : null}
+                            {note.recommendation}
+                          </span>
+                        )}
+                        {note.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes}</p>}
+                        {note.rating && (
+                          <div className="flex items-center gap-1 mt-2">
+                            {[1,2,3,4,5].map(s => (
+                              <span key={s} className={`text-sm ${s <= note.rating ? 'text-yellow-400' : 'text-gray-200'}`}>★</span>
+                            ))}
+                            <span className="text-xs text-gray-400 ml-1">{note.rating}/5</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
 
             </div>
           </div>
+          )}
+
+          {/* HR Notes Tab */}
+          {activeTab === 'hr-notes' && (
+            <div className="max-w-4xl mx-auto">
+              <HRNotesTimeline key={hrNotesKey} candidateId={candidate.id} />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-200">
+        <div className="px-5 py-3.5 border-t border-gray-100 bg-white flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-5 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
             Close
           </button>
         </div>
       </div>
+
+      {viewerFiles && (
+        <FileViewer
+          files={viewerFiles}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerFiles(null)}
+        />
+      )}
+
+      <NotesPanel
+        candidateId={candidate.id}
+        candidateName={displayName}
+        isOpen={notesPanelOpen}
+        onClose={() => setNotesPanelOpen(false)}
+      />
     </div>
   );
 }
-

@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Search, User, Mail, Phone, ArrowRight, UserPlus, Upload, Clock, Eye, Edit, Trash2, Download } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
-import BulkImportModal from './BulkImportModal';
+import CandidateImportContainer from './import/CandidateImportContainer';
 import CandidateViewModal from './CandidateViewModal';
+
+const PAGE_SIZE = 50;
 
 export default function Candidates() {
   const { hasPermission } = useAuth();
@@ -23,8 +25,10 @@ export default function Candidates() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ApiCandidate | null>(null);
   const [editingCandidate, setEditingCandidate] = useState<ApiCandidate | null>(null);
+  const [listPage, setListPage] = useState(1);
+  const [kanbanPageByStage, setKanbanPageByStage] = useState<Record<string, number>>({});
 
-  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding'];
 
   // Load candidates and jobs from backend
   useEffect(() => {
@@ -75,20 +79,26 @@ export default function Candidates() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showJobFilter]);
-  
-  const filteredCandidates = candidates.filter((candidate) => {
-    const matchesSearch = candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         candidate.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         candidate.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         candidate.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (candidate.location && candidate.location.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStage = stageFilter === 'All' || candidate.stage === stageFilter;
-    const matchesJob = jobFilter.length === 0 || (candidate.job_id && jobFilter.includes(Number(candidate.job_id)));
-    
-    // Debug logging removed
-    
-    return matchesSearch && matchesStage && matchesJob;
-  });
+
+  // Reset pagination when filters/search change
+  useEffect(() => {
+    setListPage(1);
+    setKanbanPageByStage({});
+  }, [searchTerm, stageFilter, jobFilter]);
+
+  const filteredCandidates = useMemo(() => {
+    return candidates.filter((candidate) => {
+      const matchesSearch = candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           candidate.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           candidate.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           candidate.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (candidate.location && candidate.location.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesStage = stageFilter === 'All' || candidate.stage === stageFilter;
+      const matchesJob = jobFilter.length === 0 || (candidate.job_id && jobFilter.includes(Number(candidate.job_id)));
+      
+      return matchesSearch && matchesStage && matchesJob;
+    });
+  }, [candidates, searchTerm, stageFilter, jobFilter]);
 
   const getStageColor = (stage: string) => {
     switch (stage) {
@@ -122,6 +132,21 @@ export default function Candidates() {
         badge: 'bg-red-100 text-red-800 border-red-200',
         accent: 'border-red-200'
       };
+      case 'On Hold': return {
+        header: 'bg-gradient-to-r from-gray-500 to-gray-600 text-white',
+        badge: 'bg-gray-100 text-gray-800 border-gray-200',
+        accent: 'border-gray-200'
+      };
+      case 'No Show - Interview': return {
+        header: 'bg-gradient-to-r from-orange-600 to-orange-700 text-white',
+        badge: 'bg-orange-100 text-orange-800 border-orange-200',
+        accent: 'border-orange-200'
+      };
+      case 'No Show - Onboarding': return {
+        header: 'bg-gradient-to-r from-pink-500 to-pink-600 text-white',
+        badge: 'bg-pink-100 text-pink-800 border-pink-200',
+        accent: 'border-pink-200'
+      };
       default: return {
         header: 'bg-gradient-to-r from-gray-500 to-gray-600 text-white',
         badge: 'bg-gray-100 text-gray-800 border-gray-200',
@@ -131,10 +156,25 @@ export default function Candidates() {
   };
 
 
-  const candidatesByStage = stages.reduce((acc, stage) => {
-    acc[stage] = filteredCandidates.filter(candidate => candidate.stage === stage);
-    return acc;
-  }, {} as Record<string, Candidate[]>);
+  const candidatesByStage = useMemo(() => {
+    return stages.reduce((acc, stage) => {
+      const stageCandidates = filteredCandidates.filter(candidate => candidate.stage === stage);
+      // Sort by newest first (appliedDate descending)
+      acc[stage] = stageCandidates.sort((a, b) => {
+        const dateA = new Date(a.appliedDate).getTime();
+        const dateB = new Date(b.appliedDate).getTime();
+        return dateB - dateA; // Descending order (newest first)
+      });
+      return acc;
+    }, {} as Record<string, ApiCandidate[]>);
+  }, [stages, filteredCandidates]);
+
+  // List view pagination calculations
+  const totalListPages = Math.max(1, Math.ceil((filteredCandidates.length || 0) / PAGE_SIZE));
+  const safeListPage = Math.min(listPage, totalListPages);
+  const listStartIndex = (safeListPage - 1) * PAGE_SIZE;
+  const visibleListCandidates = filteredCandidates.slice(listStartIndex, listStartIndex + PAGE_SIZE);
+  const listEndIndex = Math.min(listStartIndex + PAGE_SIZE, filteredCandidates.length || 0);
 
   // Job filter functions
   const handleJobFilterChange = (jobId: number, checked: boolean) => {
@@ -160,26 +200,17 @@ export default function Candidates() {
 
   // Handler functions
 
-  const handleBulkImport = async (candidatesData: any[]) => {
+  const handleImportComplete = async () => {
     try {
       setLoading(true);
-      
-      // Use the bulk import endpoint
-      const response = await candidatesAPI.bulkImportCandidates(candidatesData);
-      
-      if (response.success) {
-        setError('');
-        // Reload candidates
-        const candidatesResponse = await candidatesAPI.getCandidates();
-        if (candidatesResponse.success && candidatesResponse.data) {
-          setCandidates(candidatesResponse.data.candidates || []);
-        }
-        setShowBulkImportModal(false);
-      } else {
-        setError('Failed to import candidates');
+      // Reload candidates after import
+      const candidatesResponse = await candidatesAPI.getCandidates();
+      if (candidatesResponse.success && candidatesResponse.data) {
+        setCandidates(candidatesResponse.data.candidates || []);
       }
     } catch (err) {
-      setError('Failed to import candidates');
+      console.error('Error reloading candidates:', err);
+      setError('Failed to reload candidates');
     } finally {
       setLoading(false);
     }
@@ -612,6 +643,10 @@ export default function Candidates() {
             {stages.map((stage) => {
               const stageColors = getStageColor(stage);
               const stageCandidates = candidatesByStage[stage] || [];
+              const totalStagePages = Math.max(1, Math.ceil((stageCandidates.length || 0) / PAGE_SIZE));
+              const currentStagePage = Math.min(kanbanPageByStage[stage] || 1, totalStagePages);
+              const stageStartIndex = (currentStagePage - 1) * PAGE_SIZE;
+              const visibleStageCandidates = stageCandidates.slice(stageStartIndex, stageStartIndex + PAGE_SIZE);
               
               return (
                 <div key={stage} className="flex-shrink-0 w-80">
@@ -644,12 +679,53 @@ export default function Candidates() {
                       </div>
                     ) : (
                       <div className="space-y-3 pr-2">
-                        {stageCandidates.map((candidate) => (
+                        {visibleStageCandidates.map((candidate) => (
                           <CandidateCard key={candidate.id} candidate={candidate} />
                         ))}
                       </div>
                     )}
                   </div>
+                  {totalStagePages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200 rounded-b-xl text-xs text-gray-600">
+                      <span>
+                        Page {currentStagePage} of {totalStagePages}
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          disabled={currentStagePage === 1}
+                          onClick={() =>
+                            setKanbanPageByStage(prev => ({
+                              ...prev,
+                              [stage]: Math.max(1, currentStagePage - 1),
+                            }))
+                          }
+                          className={`px-2 py-1 rounded-md border ${
+                            currentStagePage === 1
+                              ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                              : 'border-gray-300 hover:bg-gray-100'
+                          }`}
+                        >
+                          Prev
+                        </button>
+                        <button
+                          disabled={currentStagePage === totalStagePages}
+                          onClick={() =>
+                            setKanbanPageByStage(prev => ({
+                              ...prev,
+                              [stage]: Math.min(totalStagePages, currentStagePage + 1),
+                            }))
+                          }
+                          className={`px-2 py-1 rounded-md border ${
+                            currentStagePage === totalStagePages
+                              ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                              : 'border-gray-300 hover:bg-gray-100'
+                          }`}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -707,7 +783,7 @@ export default function Candidates() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredCandidates.map((candidate) => (
+                {visibleListCandidates.map((candidate) => (
                   <tr key={candidate.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
@@ -746,6 +822,41 @@ export default function Candidates() {
               </tbody>
             </table>
           </div>
+          {totalListPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <p className="text-sm text-gray-600">
+                Showing {filteredCandidates.length === 0 ? 0 : listStartIndex + 1}–
+                {listEndIndex} of {filteredCandidates.length} candidates
+              </p>
+              <div className="flex items-center space-x-2">
+                <button
+                  disabled={safeListPage === 1}
+                  onClick={() => setListPage(prev => Math.max(1, prev - 1))}
+                  className={`px-3 py-1.5 rounded-md border text-sm ${
+                    safeListPage === 1
+                      ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-700">
+                  Page {safeListPage} of {totalListPages}
+                </span>
+                <button
+                  disabled={safeListPage === totalListPages}
+                  onClick={() => setListPage(prev => Math.min(totalListPages, prev + 1))}
+                  className={`px-3 py-1.5 rounded-md border text-sm ${
+                    safeListPage === totalListPages
+                      ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -769,12 +880,11 @@ export default function Candidates() {
         editingCandidate={editingCandidate}
       />
 
-      {/* Bulk Import Modal */}
-      <BulkImportModal
+      {/* Intelligent Candidate Import */}
+      <CandidateImportContainer
         isOpen={showBulkImportModal}
         onClose={() => setShowBulkImportModal(false)}
-        onImport={handleBulkImport}
-        jobs={jobs}
+        onImportComplete={handleImportComplete}
       />
 
       {/* Candidate View Modal */}
@@ -785,6 +895,11 @@ export default function Candidates() {
           setSelectedCandidate(null);
         }}
         candidate={selectedCandidate}
+        onEdit={(candidate) => {
+          setShowViewModal(false);
+          setSelectedCandidate(null);
+          handleEditCandidate(candidate as ApiCandidate);
+        }}
       />
 
     </div>

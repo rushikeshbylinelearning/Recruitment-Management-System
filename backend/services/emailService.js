@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { emailConfig } from '../email-config.js';
+import { query } from '../config/database.js';
 
 // Load environment variables
 dotenv.config();
@@ -23,6 +24,8 @@ class EmailService {
         return;
       }
       console.log('📧 Email Service config for host:', smtpHost);
+      console.log('📧 EMAIL_USER:', emailUser ? emailUser : '(not set)');
+      console.log('📧 EMAIL_PASS:', emailPass ? '***set***' : '(not set)');
 
       this.transporter = nodemailer.createTransport({
         host: smtpHost,
@@ -183,6 +186,107 @@ class EmailService {
 
     console.log(`Bulk email sending completed: ${results.sent} sent, ${results.failed} failed`);
     return results;
+  }
+  /**
+   * Send assignment dispatch email to a candidate with retry + exponential backoff.
+   * Substitutes {{candidate_name}}, {{submission_link}}, {{deadline}}, {{expiry_warning}}
+   * (and any other {{variable}}) in the HR-provided email body.
+   *
+   * @param {Object} candidateAssignment
+   * @param {number} candidateAssignment.id
+   * @param {string} candidateAssignment.candidate_name
+   * @param {string} candidateAssignment.candidate_email
+   * @param {string} candidateAssignment.assignment_title
+   * @param {string} candidateAssignment.deadline
+   * @param {string} candidateAssignment.expiry_at
+   * @param {string} candidateAssignment.submission_link
+   * @param {string} candidateAssignment.email_body  - HR template with {{variables}}
+   */
+  async sendAssignmentEmail(candidateAssignment) {
+    const {
+      id,
+      candidate_name,
+      candidate_email,
+      assignment_title,
+      deadline,
+      expiry_at,
+      submission_link,
+      email_body
+    } = candidateAssignment;
+
+    const subject = 'Next Step in Your Application';
+
+    // Build expiry warning string
+    const expiryDate = new Date(expiry_at);
+    const expiryWarning = `Your submission link will expire on ${expiryDate.toUTCString()}.`;
+
+    // Substitute all known template variables in the HR-provided body
+    const variables = {
+      candidate_name: candidate_name || '',
+      submission_link: submission_link || '',
+      deadline: deadline || '',
+      expiry_warning: expiryWarning,
+      assignment_title: assignment_title || ''
+    };
+
+    let processedBody = email_body || '';
+    Object.keys(variables).forEach(key => {
+      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      processedBody = processedBody.replace(regex, variables[key]);
+    });
+
+    // Retry with exponential backoff: delays 1s, 2s, 4s
+    const maxRetries = 3;
+    const baseDelay = 1000;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await this.sendEmail(candidate_email, subject, processedBody);
+      if (result.success) {
+        return result;
+      }
+
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * baseDelay;
+        console.warn(`Assignment email attempt ${attempt + 1} failed. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // All retries exhausted — mark as Failed in DB
+        console.error(`All ${maxRetries} retries exhausted for candidateAssignment id=${id}. Marking email_status=Failed.`);
+        try {
+          await query(
+            `UPDATE candidate_assignments SET email_status = 'Failed' WHERE id = ?`,
+            [id]
+          );
+        } catch (dbError) {
+          console.error('Failed to update email_status to Failed:', dbError.message);
+        }
+        return { success: false, message: 'Email delivery failed after retries', error: result.error };
+      }
+    }
+  }
+
+  /**
+   * Send submission notification email to the HR user when a candidate submits.
+   *
+   * @param {Object} candidateAssignment
+   * @param {number} candidateAssignment.id
+   * @param {string} candidateAssignment.candidate_name
+   * @param {string} candidateAssignment.assignment_title
+   * @param {string} candidateAssignment.assigned_by_email
+   */
+  async sendSubmissionNotificationEmail(candidateAssignment) {
+    const { candidate_name, assignment_title, assigned_by_email } = candidateAssignment;
+
+    const subject = 'Candidate has submitted assignment';
+    const assignmentViewLink = '/assignments';
+
+    const body =
+      `Hello,\n\n` +
+      `${candidate_name} has submitted their assignment: "${assignment_title}".\n\n` +
+      `You can review the submission in the Assignment View:\n${assignmentViewLink}\n\n` +
+      `Regards,\nHR Workflow Management`;
+
+    return await this.sendEmail(assigned_by_email, subject, body);
   }
 }
 

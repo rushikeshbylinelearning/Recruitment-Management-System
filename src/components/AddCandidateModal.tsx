@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Plus, Trash2, FileText, Loader } from 'lucide-react';
+import { X, Upload, Plus, Trash2, FileText } from 'lucide-react';
 import { JobPosting } from '../types';
-import { filesAPI } from '../services/api';
-import { parseResume, ParsedCandidateData } from '../utils/resumeParser';
+import { filesAPI, candidatesAPI } from '../services/api';
 
 interface AddCandidateModalProps {
   isOpen: boolean;
@@ -54,6 +53,13 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     originalName: string;
     size: number;
   } | null>(null);
+  
+  // State for managing individual notes
+  const [individualNotes, setIndividualNotes] = useState<Array<{
+    id?: number;
+    text: string;
+    isNew?: boolean;
+  }>>([]);
 
   // Helper function to handle numeric input
   const handleNumericInput = (value: string, allowDecimals: boolean = false) => {
@@ -113,8 +119,6 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   };
 
   const [uploading, setUploading] = useState(false);
-  const [parsingResume, setParsingResume] = useState(false);
-  const [parseError, setParseError] = useState<string>('');
 
   // Populate form when editing
   useEffect(() => {
@@ -127,7 +131,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         jobId: editingCandidate.jobId || (jobs.length > 0 ? jobs[0].id : 0),
         source: editingCandidate.source || 'Manual Entry',
         stage: editingCandidate.stage || 'Applied',
-        notes: editingCandidate.notes || '',
+        notes: '', // Clear the single notes field since we're using individual notes
         score: editingCandidate.score || 0,
         skills: Array.isArray(editingCandidate.skills) 
           ? editingCandidate.skills.join(', ') 
@@ -176,6 +180,19 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
           size: 0 // We don't have size info in the candidate object
         });
       }
+
+      // Populate individual notes from existing notes
+      if (Array.isArray(editingCandidate.notes)) {
+        setIndividualNotes(
+          editingCandidate.notes.map((note: any) => ({
+            id: note.id,
+            text: note.notes || note,
+            isNew: false
+          }))
+        );
+      } else {
+        setIndividualNotes([]);
+      }
     } else {
       // Reset form for new candidate
       setFormData({
@@ -212,6 +229,9 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         assignmentLocation: '',
         resumeLocation: ''
       });
+      
+      // Reset individual notes for new candidate
+      setIndividualNotes([]);
       setUploadedFile(null);
     }
   }, [editingCandidate, jobs]);
@@ -235,7 +255,10 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     'Interview',
     'Offer',
     'Hired',
-    'Rejected'
+    'On Hold',
+    'Rejected',
+    'No Show - Interview',
+    'No Show - Onboarding'
   ];
 
   if (!isOpen) return null;
@@ -244,13 +267,11 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
     if (!formData.jobId) newErrors.jobId = 'Job position is required';
     if (!formData.experience.trim()) newErrors.experience = 'Experience is required';
 
-    // Email validation - support multiple emails separated by commas
-    if (formData.email) {
+    // Email validation - support multiple emails separated by commas (only if provided)
+    if (formData.email && formData.email.trim()) {
       const emails = formData.email.split(',').map(email => email.trim()).filter(Boolean);
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       
@@ -286,6 +307,14 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       assignedTo: editingCandidate ? (editingCandidate.assignedToId || 'Unassigned') : (selectedJob?.assignedTo[0] || 'Unassigned'),
       communications: [],
       resumeFileId: uploadedFile?.fileId || null,
+      // Include individual notes
+      // For existing candidates, only send newly added notes to avoid duplicating older notes
+      notes: (editingCandidate
+        ? individualNotes.filter(note => note.isNew && note.text.trim() !== '')
+        : individualNotes.filter(note => note.text.trim() !== '')
+      )
+        .map(note => note.text)
+        .join('\n\n'), // Combine notes with double newline
       // Send salary fields as flat fields for backend compatibility
       salaryExpected: formData.expectedSalary,
       salaryOffered: formData.offeredSalary,
@@ -350,6 +379,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     });
     setErrors({});
     setUploadedFile(null);
+    setIndividualNotes([]); // Reset individual notes
     onClose();
   };
 
@@ -403,62 +433,38 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     }));
   };
 
-  const handleParseResume = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  // Handler functions for individual notes
+  const handleNoteChange = (index: number, text: string) => {
+    setIndividualNotes(prev => 
+      prev.map((note, i) => 
+        i === index ? { ...note, text } : note
+      )
+    );
+  };
 
-    // Check file type
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
-    ];
-    
-    const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt'];
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-    
-    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
-      setParseError('Please select a PDF, Word document, or text file.');
-      return;
-    }
+  const handleAddNote = () => {
+    setIndividualNotes(prev => [
+      ...prev,
+      { text: '', isNew: true }
+    ]);
+  };
 
-    try {
-      setParsingResume(true);
-      setParseError('');
-      
-      // Parse the resume
-      const parsedData: ParsedCandidateData = await parseResume(file);
-      
-      // Update form data with parsed information
-      setFormData(prev => ({
-        ...prev,
-        name: parsedData.name || prev.name,
-        email: parsedData.email || prev.email,
-        phone: parsedData.phone || prev.phone,
-        location: parsedData.location || prev.location,
-        experience: parsedData.experience || prev.experience,
-        skills: parsedData.skills ? parsedData.skills.join(', ') : prev.skills,
-        expertise: parsedData.expertise || prev.expertise,
-        expectedSalary: parsedData.expectedSalary || prev.expectedSalary,
-        currentCtc: parsedData.currentCtc || prev.currentCtc,
-        noticePeriod: parsedData.noticePeriod || prev.noticePeriod,
-        immediateJoiner: parsedData.immediateJoiner !== undefined ? parsedData.immediateJoiner : prev.immediateJoiner,
-        workPreference: parsedData.workPreference || prev.workPreference,
-        willingAlternateSaturday: parsedData.willingAlternateSaturday !== undefined ? parsedData.willingAlternateSaturday : prev.willingAlternateSaturday,
-        notes: parsedData.notes ? (prev.notes ? `${prev.notes}\n\nParsed from resume:\n${parsedData.notes}` : `Parsed from resume:\n${parsedData.notes}`) : prev.notes
-      }));
-      
-      // Also upload the file
-      await handleFileUpload(event);
-      
-    } catch (error) {
-      console.error('Resume parsing error:', error);
-      setParseError(error instanceof Error ? error.message : 'Failed to parse resume');
-    } finally {
-      setParsingResume(false);
-      // Reset the file input
-      event.target.value = '';
+  const handleRemoveNote = async (index: number) => {
+    const noteToRemove = individualNotes[index];
+
+    // Optimistically remove from UI
+    setIndividualNotes(prev => 
+      prev.filter((_, i) => i !== index)
+    );
+
+    // If this is an existing note on an existing candidate, delete it in the backend
+    if (editingCandidate && noteToRemove?.id && !noteToRemove.isNew) {
+      try {
+        await candidatesAPI.deleteCandidateNote(editingCandidate.id, noteToRemove.id);
+      } catch (error) {
+        console.error('Failed to delete candidate note:', error);
+        // Optional: in a future enhancement, we could restore the note or show a toast
+      }
     }
   };
 
@@ -471,514 +477,570 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">
+            <h2 className="text-2xl font-bold text-gray-900">
               {editingCandidate ? (editingCandidate.id === 0 ? 'Add Candidate from Resume' : 'Edit Candidate') : 'Add New Candidate'}
             </h2>
             {editingCandidate?.id === 0 && (
-              <p className="text-sm text-blue-600 mt-1 flex items-center">
+              <p className="text-sm text-indigo-600 mt-1 flex items-center">
                 <FileText size={16} className="mr-1" />
                 Information extracted from resume - please review and edit as needed
               </p>
             )}
+            <p className="text-sm text-gray-500 mt-1">Fields marked with * are required</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full p-2 transition-all"
           >
             <X size={24} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Personal Information */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.name ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="Enter candidate's full name"
-              />
-              {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
+          <div className="p-6 space-y-8">
+            {/* Personal Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center border-b pb-2">
+                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
+                  <span className="text-indigo-600 font-bold">1</span>
+                </div>
+                Personal Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                      errors.name ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                    placeholder="Enter candidate's full name"
+                  />
+                  {errors.name && <p className="text-red-500 text-sm mt-1 flex items-center"><span className="mr-1">⚠</span>{errors.name}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                      errors.email ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                    placeholder="candidate@email.com (separate multiple with commas)"
+                  />
+                  {errors.email && <p className="text-red-500 text-sm mt-1 flex items-center"><span className="mr-1">⚠</span>{errors.email}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => {
+                      const numericValue = handleNumericInput(e.target.value);
+                      setFormData(prev => ({ ...prev, phone: numericValue }));
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="e.g., 1234567890"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Job Position <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.jobId}
+                    onChange={(e) => handleJobChange(e.target.value)}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                      errors.jobId ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    <option value="">Select a job position</option>
+                    {jobs.filter(job => job.status === 'Active').map(job => (
+                      <option key={job.id} value={job.id}>
+                        {job.title} - {job.department}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.jobId && <p className="text-red-500 text-sm mt-1 flex items-center"><span className="mr-1">⚠</span>{errors.jobId}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Source
+                  </label>
+                  <select
+                    value={formData.source}
+                    onChange={(e) => setFormData(prev => ({ ...prev, source: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  >
+                    {sources.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Current Stage
+                  </label>
+                  <select
+                    value={formData.stage}
+                    onChange={(e) => setFormData(prev => ({ ...prev, stage: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  >
+                    {stages.map(stage => (
+                      <option key={stage} value={stage}>{stage}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address *
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.email ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="candidate@email.com (separate multiple emails with commas)"
-              />
-              {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
-            </div>
+            {/* Experience and Skills Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center border-b pb-2">
+                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                  <span className="text-purple-600 font-bold">2</span>
+                </div>
+                Professional Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Years of Experience <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.experience}
+                    onChange={(e) => {
+                      const numericValue = handleNumericInput(e.target.value, true);
+                      setFormData(prev => ({ ...prev, experience: numericValue }));
+                    }}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                      errors.experience ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                    placeholder="e.g., 5.5"
+                  />
+                  {errors.experience && <p className="text-red-500 text-sm mt-1 flex items-center"><span className="mr-1">⚠</span>{errors.experience}</p>}
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number *
-              </label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => {
-                  const numericValue = handleNumericInput(e.target.value);
-                  setFormData(prev => ({ ...prev, phone: numericValue }));
-                }}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.phone ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="e.g., 1234567890"
-              />
-              {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Job Position *
-              </label>
-              <select
-                value={formData.jobId}
-                onChange={(e) => handleJobChange(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.jobId ? 'border-red-300' : 'border-gray-300'
-                }`}
-              >
-                <option value="">Select a job position</option>
-                {jobs.filter(job => job.status === 'Active').map(job => (
-                  <option key={job.id} value={job.id}>
-                    {job.title} - {job.department}
-                  </option>
-                ))}
-              </select>
-              {errors.jobId && <p className="text-red-500 text-sm mt-1">{errors.jobId}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Source
-              </label>
-              <select
-                value={formData.source}
-                onChange={(e) => setFormData(prev => ({ ...prev, source: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {sources.map(source => (
-                  <option key={source} value={source}>{source}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Current Stage
-              </label>
-              <select
-                value={formData.stage}
-                onChange={(e) => setFormData(prev => ({ ...prev, stage: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {stages.map(stage => (
-                  <option key={stage} value={stage}>{stage}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Experience and Skills */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Years of Experience *
-              </label>
-              <input
-                type="text"
-                value={formData.experience}
-                onChange={(e) => {
-                  const numericValue = handleNumericInput(e.target.value, true);
-                  setFormData(prev => ({ ...prev, experience: numericValue }));
-                }}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.experience ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="e.g., 5.5"
-              />
-              {errors.experience && <p className="text-red-500 text-sm mt-1">{errors.experience}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Resume/CV
-              </label>
-              
-              {uploadedFile ? (
-                <div className="border border-green-200 bg-green-50 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                        <Upload size={16} className="text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{uploadedFile.originalName}</p>
-                        <p className="text-xs text-gray-500">{formatFileSize(uploadedFile.size)}</p>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Resume/CV
+                  </label>
+                  
+                  {uploadedFile ? (
+                    <div className="border-2 border-green-300 bg-green-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                            <Upload size={18} className="text-green-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{uploadedFile.originalName}</p>
+                            <p className="text-xs text-gray-500">{formatFileSize(uploadedFile.size)}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveFile}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-100 p-2 rounded-lg transition-all"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          value={formData.resume}
+                          onChange={(e) => setFormData(prev => ({ ...prev, resume: e.target.value }))}
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                          placeholder="Resume filename or URL"
+                        />
+                        <label className={`px-4 py-3 bg-indigo-100 text-indigo-600 rounded-xl transition-all cursor-pointer ${uploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-200'}`}>
+                          {uploading ? (
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+                          ) : (
+                            <Upload size={20} />
+                          )}
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.txt"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                            disabled={uploading}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {errors.resume && (
+                    <p className="text-red-500 text-sm mt-1 flex items-center"><span className="mr-1">⚠</span>{errors.resume}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Salary and Availability Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center border-b pb-2">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+                  <span className="text-green-600 font-bold">3</span>
+                </div>
+                Compensation & Availability
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Expected Salary (LPA)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.expectedSalary}
+                    onChange={(e) => {
+                      const lpaValue = handleLPAInput(e.target.value);
+                      setFormData(prev => ({ ...prev, expectedSalary: lpaValue }));
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="e.g., 8 or 8.5 or 8LPA"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Offered Salary (LPA)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.offeredSalary}
+                    onChange={(e) => {
+                      const lpaValue = handleLPAInput(e.target.value);
+                      setFormData(prev => ({ ...prev, offeredSalary: lpaValue }));
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="e.g., 9 or 9.5 or 9LPA"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Joining Time
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.joiningTime}
+                    onChange={(e) => setFormData(prev => ({ ...prev, joiningTime: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="e.g., 2 weeks, 1 month"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Notice Period (days)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.noticePeriod}
+                    onChange={(e) => {
+                      const numericValue = handleNumericInput(e.target.value, true);
+                      setFormData(prev => ({ ...prev, noticePeriod: numericValue }));
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="e.g., 30"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="immediateJoiner"
+                    checked={formData.immediateJoiner}
+                    onChange={(e) => setFormData(prev => ({ ...prev, immediateJoiner: e.target.checked }))}
+                    className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <label htmlFor="immediateJoiner" className="text-sm font-medium text-gray-700">
+                    Immediate Joiner
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="salaryNegotiable"
+                    checked={formData.salaryNegotiable}
+                    onChange={(e) => setFormData(prev => ({ ...prev, salaryNegotiable: e.target.checked }))}
+                    className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <label htmlFor="salaryNegotiable" className="text-sm font-medium text-gray-700">
+                    Salary is negotiable
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Skills Section */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Skills (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={formData.skills}
+                  onChange={(e) => setFormData(prev => ({ ...prev, skills: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  placeholder="React, TypeScript, Node.js, Python"
+                />
+              </div>
+            </div>
+
+            {/* Additional Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center border-b pb-2">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                  <span className="text-blue-600 font-bold">4</span>
+                </div>
+                Additional Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="Current location"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Expertise
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.expertise}
+                    onChange={(e) => setFormData(prev => ({ ...prev, expertise: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="Primary expertise/domain"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Work Preference
+                  </label>
+                  <select
+                    value={formData.workPreference}
+                    onChange={(e) => setFormData(prev => ({ ...prev, workPreference: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  >
+                    <option value="">Select work preference</option>
+                    <option value="Onsite">Onsite</option>
+                    <option value="WFH">Work From Home</option>
+                    <option value="Hybrid">Hybrid</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Willing to work on Alternate Saturday
+                  </label>
+                  <select
+                    value={formData.willingAlternateSaturday === null ? '' : formData.willingAlternateSaturday.toString()}
+                    onChange={(e) => setFormData(prev => ({ 
+                      ...prev, 
+                      willingAlternateSaturday: e.target.value === '' ? null : e.target.value === 'true' 
+                    }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  >
+                    <option value="">Select</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Current CTC (LPA)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.currentCtc}
+                    onChange={(e) => {
+                      const lpaValue = handleLPAInput(e.target.value);
+                      setFormData(prev => ({ ...prev, currentCtc: lpaValue }));
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="e.g., 7 or 7.5 or 7LPA"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    CTC Frequency
+                  </label>
+                  <select
+                    value={formData.ctcFrequency}
+                    onChange={(e) => setFormData(prev => ({ ...prev, ctcFrequency: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  >
+                    <option value="Annual">Annual</option>
+                    <option value="Monthly">Monthly</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    In House Assignment Status
+                  </label>
+                  <select
+                    value={formData.inHouseAssignmentStatus}
+                    onChange={(e) => setFormData(prev => ({ ...prev, inHouseAssignmentStatus: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  >
+                    <option value="Draft">Draft</option>
+                    <option value="Assigned">Assigned</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Submitted">Submitted</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Interview Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.interviewDate}
+                    onChange={(e) => setFormData(prev => ({ ...prev, interviewDate: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    In Office Assignment
+                  </label>
+                  <textarea
+                    value={formData.inOfficeAssignment}
+                    onChange={(e) => setFormData(prev => ({ ...prev, inOfficeAssignment: e.target.value }))}
+                    rows={3}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="Details about in-office assignment..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Assignment Location/Link
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.assignmentLocation}
+                    onChange={(e) => setFormData(prev => ({ ...prev, assignmentLocation: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="File path or URL to assignment file"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Resume Location/Link
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.resumeLocation}
+                    onChange={(e) => setFormData(prev => ({ ...prev, resumeLocation: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    placeholder="File path or URL to resume file"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Notes Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center border-b pb-2">
+                <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center mr-3">
+                  <span className="text-amber-600 font-bold">5</span>
+                </div>
+                Notes
+              </h3>
+              <div className="space-y-3">
+                {individualNotes.map((note, index) => (
+                  <div key={index} className="flex gap-2">
+                    <textarea
+                      value={note.text}
+                      onChange={(e) => handleNoteChange(index, e.target.value)}
+                      rows={3}
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                      placeholder="Enter note..."
+                    />
                     <button
                       type="button"
-                      onClick={handleRemoveFile}
-                      className="text-red-500 hover:text-red-700 transition-colors"
+                      onClick={() => handleRemoveNote(index)}
+                      className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-all"
+                      title="Remove note"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={18} />
                     </button>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={formData.resume}
-                      onChange={(e) => setFormData(prev => ({ ...prev, resume: e.target.value }))}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Resume filename or URL"
-                    />
-                    <label className={`px-3 py-2 bg-gray-100 text-gray-600 rounded-lg transition-colors cursor-pointer ${uploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200'}`}>
-                      {uploading ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                      ) : (
-                        <Upload size={16} />
-                      )}
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.txt"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        disabled={uploading}
-                      />
-                    </label>
-                  </div>
-                </div>
-              )}
-              
-              {errors.resume && (
-                <p className="text-red-500 text-sm mt-1">{errors.resume}</p>
-              )}
-              
-              {parseError && (
-                <p className="text-red-500 text-sm mt-1">{parseError}</p>
-              )}
+                ))}
+                <button
+                  type="button"
+                  onClick={handleAddNote}
+                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex items-center justify-center space-x-2"
+                >
+                  <Plus size={18} />
+                  <span className="font-medium">Add Note</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Salary and Availability */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Expected Salary (LPA)
-              </label>
-              <input
-                type="text"
-                value={formData.expectedSalary}
-                onChange={(e) => {
-                  const lpaValue = handleLPAInput(e.target.value);
-                  setFormData(prev => ({ ...prev, expectedSalary: lpaValue }));
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 8 or 8.5 or 8LPA"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Offered Salary (LPA)
-              </label>
-              <input
-                type="text"
-                value={formData.offeredSalary}
-                onChange={(e) => {
-                  const lpaValue = handleLPAInput(e.target.value);
-                  setFormData(prev => ({ ...prev, offeredSalary: lpaValue }));
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 9 or 9.5 or 9LPA"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Joining Time
-              </label>
-              <input
-                type="text"
-                value={formData.joiningTime}
-                onChange={(e) => setFormData(prev => ({ ...prev, joiningTime: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 2 weeks, 1 month"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Notice Period
-              </label>
-              <input
-                type="text"
-                value={formData.noticePeriod}
-                onChange={(e) => {
-                  const numericValue = handleNumericInput(e.target.value, true);
-                  setFormData(prev => ({ ...prev, noticePeriod: numericValue }));
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 30"
-              />
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <input
-                type="checkbox"
-                id="immediateJoiner"
-                checked={formData.immediateJoiner}
-                onChange={(e) => setFormData(prev => ({ ...prev, immediateJoiner: e.target.checked }))}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <label htmlFor="immediateJoiner" className="text-sm text-gray-700">
-                Immediate Joiner
-              </label>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            <input
-              type="checkbox"
-              id="salaryNegotiable"
-              checked={formData.salaryNegotiable}
-              onChange={(e) => setFormData(prev => ({ ...prev, salaryNegotiable: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="salaryNegotiable" className="text-sm text-gray-700">
-              Salary is negotiable
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Skills (comma-separated)
-            </label>
-            <input
-              type="text"
-              value={formData.skills}
-              onChange={(e) => setFormData(prev => ({ ...prev, skills: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="React, TypeScript, Node.js, Python"
-            />
-          </div>
-
-          {/* New Fields Section */}
-          <div className="col-span-2">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Additional Information</h3>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Location
-            </label>
-            <input
-              type="text"
-              value={formData.location}
-              onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Current location"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Expertise
-            </label>
-            <input
-              type="text"
-              value={formData.expertise}
-              onChange={(e) => setFormData(prev => ({ ...prev, expertise: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Primary expertise/domain"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Work Preference
-            </label>
-            <select
-              value={formData.workPreference}
-              onChange={(e) => setFormData(prev => ({ ...prev, workPreference: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Select work preference</option>
-              <option value="Onsite">Onsite</option>
-              <option value="WFH">Work From Home</option>
-              <option value="Hybrid">Hybrid</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Willing to work on Alternate Saturday
-            </label>
-            <select
-              value={formData.willingAlternateSaturday === null ? '' : formData.willingAlternateSaturday.toString()}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                willingAlternateSaturday: e.target.value === '' ? null : e.target.value === 'true' 
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Select</option>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Current CTC (LPA)
-            </label>
-            <input
-              type="text"
-              value={formData.currentCtc}
-              onChange={(e) => {
-                const lpaValue = handleLPAInput(e.target.value);
-                setFormData(prev => ({ ...prev, currentCtc: lpaValue }));
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 7 or 7.5 or 7LPA"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              CTC Frequency
-            </label>
-            <select
-              value={formData.ctcFrequency}
-              onChange={(e) => setFormData(prev => ({ ...prev, ctcFrequency: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="Annual">Annual</option>
-              <option value="Monthly">Monthly</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              In House Assignment Status
-            </label>
-            <select
-              value={formData.inHouseAssignmentStatus}
-              onChange={(e) => setFormData(prev => ({ ...prev, inHouseAssignmentStatus: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="Draft">Draft</option>
-              <option value="Assigned">Assigned</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Submitted">Submitted</option>
-              <option value="Approved">Approved</option>
-              <option value="Rejected">Rejected</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Interview Date
-            </label>
-            <input
-              type="date"
-              value={formData.interviewDate}
-              onChange={(e) => setFormData(prev => ({ ...prev, interviewDate: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              In Office Assignment
-            </label>
-            <textarea
-              value={formData.inOfficeAssignment}
-              onChange={(e) => setFormData(prev => ({ ...prev, inOfficeAssignment: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Details about in-office assignment..."
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Assignment Location/Link
-            </label>
-            <input
-              type="text"
-              value={formData.assignmentLocation}
-              onChange={(e) => setFormData(prev => ({ ...prev, assignmentLocation: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="File path or URL to assignment file"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Resume Location/Link
-            </label>
-            <input
-              type="text"
-              value={formData.resumeLocation}
-              onChange={(e) => setFormData(prev => ({ ...prev, resumeLocation: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="File path or URL to resume file"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notes
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Additional notes about the candidate..."
-            />
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+          {/* Footer Actions */}
+          <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-6 py-3 text-gray-700 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-100 hover:border-gray-400 transition-all font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center space-x-2 shadow-lg hover:shadow-xl font-medium"
             >
-              <Plus size={16} />
-              <span>{editingCandidate ? 'Edit Candidate' : 'Add Candidate'}</span>
+              <Plus size={18} />
+              <span>{editingCandidate ? 'Update Candidate' : 'Add Candidate'}</span>
             </button>
           </div>
         </form>

@@ -22,12 +22,12 @@ export interface JobPortal {
 }
 
 export interface Candidate {
-  id: number;
+  id: string; // UUID
   name: string;
   email: string;
   phone: string;
   position: string;
-  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'Rejected';
+  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out';
   source: string;
   appliedDate: string;
   resume: string;

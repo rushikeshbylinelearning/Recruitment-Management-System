@@ -69,7 +69,7 @@ export default function AdvancedSearch({
 
   if (!isOpen) return null;
 
-  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding'];
   const sources = ['LinkedIn', 'Indeed', 'Naukri.com', 'Company Website', 'Referral', 'Glassdoor', 'AngelList', 'Monster.com'];
 
   const handleStageToggle = (stage: string) => {

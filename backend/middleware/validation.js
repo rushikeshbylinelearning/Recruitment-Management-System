@@ -107,7 +107,7 @@ export const validateCandidate = [
   
   body('stage')
     .optional()
-    .isIn(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'])
+    .isIn(['Applied', 'Screening', 'Assignment Sent', 'Assignment Submitted', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'])
     .withMessage('Invalid stage'),
   
   body('source')
@@ -158,7 +158,7 @@ export const validateCandidatePartial = [
   
   body('stage')
     .optional()
-    .isIn(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'])
+    .isIn(['Applied', 'Screening', 'Assignment Sent', 'Assignment Submitted', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'])
     .withMessage('Invalid stage'),
   
   body('source')
@@ -209,8 +209,8 @@ export const validateCandidatePartial = [
 // Interview validation rules
 export const validateInterview = [
   body('candidate_id')
-    .isInt({ min: 1 })
-    .withMessage('Candidate ID must be a valid integer'),
+    .matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    .withMessage('Candidate ID must be a valid UUID'),
   
   body('interviewer_id')
     .isInt({ min: 1 })
@@ -288,8 +288,8 @@ export const validateTask = [
 // Communication validation rules
 export const validateCommunication = [
   body('candidateId')
-    .isInt({ min: 1 })
-    .withMessage('Candidate ID must be a valid integer'),
+    .matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    .withMessage('Candidate ID must be a valid UUID'),
   
   body('type')
     .isIn(['Email', 'Phone', 'WhatsApp', 'LinkedIn'])
@@ -340,6 +340,13 @@ export const validateId = (paramName) => [
     .withMessage(`${paramName} must be a valid integer`)
 ];
 
+// UUID parameter validation
+export const validateUUID = (paramName) => [
+  param(paramName)
+    .matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    .withMessage(`${paramName} must be a valid UUID`)
+];
+
 // Pagination validation
 export const validatePagination = [
   query('page')
@@ -361,4 +368,5 @@ export const validateSearch = [
     .withMessage('Search term must be between 2 and 100 characters')
     .trim()
 ];
+
 

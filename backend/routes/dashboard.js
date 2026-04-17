@@ -70,7 +70,7 @@ router.get('/metrics', authenticateToken, async (req, res) => {
 // Get hiring pipeline data
 router.get('/pipeline', authenticateToken, async (req, res) => {
   try {
-    const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+    const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'];
     const pipeline = {};
 
     for (const stage of stages) {
@@ -214,7 +214,7 @@ router.get('/overview', authenticateToken, async (req, res) => {
     `);
 
     // Get pipeline data
-    const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+    const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'];
     const pipeline = {};
     for (const stage of stages) {
       const result = await query('SELECT COUNT(*) as count FROM candidates WHERE stage = ?', [stage]);

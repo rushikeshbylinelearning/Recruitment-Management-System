@@ -19,7 +19,11 @@ export const authenticateToken = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, config.jwt.secret);
+    const verifyOptions = {};
+    if (config.jwt.issuer) verifyOptions.issuer = config.jwt.issuer;
+    if (config.jwt.audience) verifyOptions.audience = config.jwt.audience;
+
+    const decoded = jwt.verify(token, config.jwt.secret, verifyOptions);
     
     // Get user from database
     const users = await query(

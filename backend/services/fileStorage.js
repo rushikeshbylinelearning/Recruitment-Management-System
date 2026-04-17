@@ -87,8 +87,16 @@ class FileStorageService {
       const filename = this.generateFileName(file.originalname);
       const filepath = path.join(uploadsDir, filename);
 
-      // Save file to disk
-      await fs.writeFile(filepath, file.buffer);
+      // Save file to disk - handle both memoryStorage (buffer) and diskStorage (path)
+      if (file.buffer) {
+        await fs.writeFile(filepath, file.buffer);
+      } else if (file.path) {
+        await fs.copyFile(file.path, filepath);
+        // Clean up the temp file multer wrote
+        await fs.unlink(file.path).catch(() => {});
+      } else {
+        throw new Error('No file data available (neither buffer nor path)');
+      }
 
       // Return file metadata
       return {

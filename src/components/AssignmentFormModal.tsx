@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Send, Upload, FileText, Calendar, User, Briefcase } from 'lucide-react';
-import { assignmentsAPI, candidatesAPI, jobsAPI, Assignment } from '../services/api';
+import { X, Save, Send, Upload, FileText, Calendar, Briefcase, Link, ChevronDown } from 'lucide-react';
+import { assignmentsAPI, jobsAPI, Assignment } from '../services/api';
 import RichTextEditor from './RichTextEditor';
 
 interface AssignmentFormModalProps {
@@ -12,53 +12,41 @@ interface AssignmentFormModalProps {
 const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
   assignment,
   onClose,
-  onSave
+  onSave,
 }) => {
   const [formData, setFormData] = useState({
-    candidateId: '',
     jobId: '',
     title: '',
     descriptionHtml: '',
     dueDate: '',
     assignmentLocation: '',
-    assignmentNotes: ''
+    assignmentNotes: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-  const [currentCandidate, setCurrentCandidate] = useState<any>(null);
+  const [visible, setVisible] = useState(false);
+
+  // Animate in
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
-    fetchCandidates();
     fetchJobs();
-    
     if (assignment) {
       setFormData({
-        candidateId: assignment.candidate_id.toString(),
         jobId: assignment.job_id?.toString() || '',
         title: assignment.title,
         descriptionHtml: assignment.description_html || '',
         dueDate: assignment.due_date ? assignment.due_date.split('T')[0] : '',
         assignmentLocation: '',
-        assignmentNotes: ''
+        assignmentNotes: '',
       });
-      // Fetch candidate data to populate assignment location and notes
-      fetchCandidateData(assignment.candidate_id.toString());
     }
   }, [assignment]);
-
-  const fetchCandidates = async () => {
-    try {
-      const response = await candidatesAPI.getCandidates({ page: 1, limit: 100 });
-      if (response.success && response.data) {
-        setCandidates(response.data.candidates || []);
-      }
-    } catch (err) {
-      console.error('Error fetching candidates:', err);
-    }
-  };
 
   const fetchJobs = async () => {
     try {
@@ -71,50 +59,32 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     }
   };
 
-  const fetchCandidateData = async (candidateId: string) => {
-    try {
-      const response = await candidatesAPI.getCandidate(parseInt(candidateId));
-      if (response.success && response.data) {
-        setCurrentCandidate(response.data);
-        setFormData(prev => ({
-          ...prev,
-          assignmentLocation: response.data.assignmentLocation || '',
-          assignmentNotes: response.data.assignmentDetails?.inOfficeAssignment || ''
-        }));
-      }
-    } catch (err) {
-      console.error('Error fetching candidate data:', err);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // If candidate selection changed, fetch their data
-    if (name === 'candidateId' && value) {
-      fetchCandidateData(value);
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setSelectedFiles(e.target.files);
-    }
+    if (e.target.files) setSelectedFiles(e.target.files);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.title.trim()) {
+      setError('Assignment title is required.');
+      return;
+    }
     setLoading(true);
     setError(null);
 
     try {
       const assignmentData = {
-        candidateId: parseInt(formData.candidateId),
         jobId: formData.jobId ? parseInt(formData.jobId) : undefined,
         title: formData.title,
-        descriptionHtml: formData.descriptionHtml,
-        dueDate: formData.dueDate || undefined
+        descriptionHtml: formData.descriptionHtml || undefined,
+        dueDate: formData.dueDate || undefined,
       };
 
       let response;
@@ -125,24 +95,9 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
       }
 
       if (response.success) {
-        // Upload files if any
         if (selectedFiles && selectedFiles.length > 0 && response.data) {
           await assignmentsAPI.uploadFiles(response.data.id, selectedFiles);
         }
-        
-        // Update candidate's assignment location and notes
-        if (formData.candidateId) {
-          try {
-            await candidatesAPI.updateCandidatePartial(parseInt(formData.candidateId), {
-              assignmentLocation: formData.assignmentLocation,
-              inOfficeAssignment: formData.assignmentNotes
-            });
-          } catch (err) {
-            console.error('Error updating candidate assignment details:', err);
-            // Don't fail the whole operation if candidate update fails
-          }
-        }
-        
         onSave();
       } else {
         setError(response.message || 'Failed to save assignment');
@@ -156,10 +111,8 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
 
   const handleSendAssignment = async () => {
     if (!assignment) return;
-    
     setLoading(true);
     setError(null);
-
     try {
       const response = await assignmentsAPI.sendAssignment(assignment.id);
       if (response.success) {
@@ -174,78 +127,58 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     }
   };
 
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  const isEdit = !!assignment;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {assignment ? 'Edit Assignment' : 'Create Assignment'}
-          </h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={handleBackdropClick}
+    >
+      <div
+        className={`relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl transition-all duration-200 ${
+          visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+              <FileText size={18} className="text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {isEdit ? 'Edit Assignment' : 'Create Assignment'}
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {isEdit ? 'Update assignment details' : 'Define a reusable assignment template'}
+              </p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            <X size={24} />
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
+            <div className="flex items-start gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+              <span className="mt-0.5 shrink-0">⚠</span>
+              <span>{error}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Candidate Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <User size={16} className="inline mr-2" />
-                Candidate *
-              </label>
-              <select
-                name="candidateId"
-                value={formData.candidateId}
-                onChange={handleInputChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select a candidate</option>
-                {candidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name} ({candidate.email})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Job Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Briefcase size={16} className="inline mr-2" />
-                Job (Optional)
-              </label>
-              <select
-                name="jobId"
-                value={formData.jobId}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select a job</option>
-                {jobs.map((job) => (
-                  <option key={job.id} value={job.id}>
-                    {job.title} - {job.department}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <FileText size={16} className="inline mr-2" />
-              Assignment Title *
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+              Assignment Title <span className="text-red-400">*</span>
             </label>
             <input
               type="text"
@@ -253,144 +186,150 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
               value={formData.title}
               onChange={handleInputChange}
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter assignment title"
+              placeholder="e.g. Frontend Take-Home Task"
+              className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
             />
+          </div>
+
+          {/* Job (optional) */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+              <span className="flex items-center gap-1">
+                <Briefcase size={12} /> Linked Job (optional)
+              </span>
+            </label>
+            <div className="relative">
+              <select
+                name="jobId"
+                value={formData.jobId}
+                onChange={handleInputChange}
+                className="w-full appearance-none px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow pr-8"
+              >
+                <option value="">No job linked</option>
+                {jobs.map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.title}{job.department ? ` — ${job.department}` : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
           </div>
 
           {/* Due Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar size={16} className="inline mr-2" />
-              Due Date
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+              <span className="flex items-center gap-1">
+                <Calendar size={12} /> Default Due Date (optional)
+              </span>
             </label>
             <input
               type="date"
               name="dueDate"
               value={formData.dueDate}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Assignment Description
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+              Description
             </label>
             <RichTextEditor
               value={formData.descriptionHtml}
-              onChange={(value) => setFormData(prev => ({ ...prev, descriptionHtml: value }))}
-              placeholder="Enter assignment description..."
-              height={200}
+              onChange={(value) => setFormData((prev) => ({ ...prev, descriptionHtml: value }))}
+              placeholder="Describe the assignment tasks, expectations, and deliverables…"
+              height={180}
             />
-            <p className="text-sm text-gray-500 mt-1">
-              Use the toolbar above to format your text with bold, italic, lists, links, and more.
-            </p>
           </div>
 
-          {/* Assignment Location and Notes Section */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Candidate Assignment Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Assignment Location */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Assignment Location/Link
-                </label>
-                <input
-                  type="text"
-                  name="assignmentLocation"
-                  value={formData.assignmentLocation}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="File path or URL to assignment file"
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  This will be stored in the candidate's profile
-                </p>
-              </div>
-
-              {/* Assignment Notes */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Assignment Notes
-                </label>
-                <textarea
-                  name="assignmentNotes"
-                  value={formData.assignmentNotes}
-                  onChange={handleInputChange}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Additional notes about the assignment..."
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  This will be stored in the candidate's profile
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* File Upload */}
+          {/* Assignment Link */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Upload size={16} className="inline mr-2" />
-              Attachments
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+              <span className="flex items-center gap-1">
+                <Link size={12} /> Assignment Link / Location (optional)
+              </span>
             </label>
             <input
-              type="file"
-              multiple
-              onChange={handleFileChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              accept=".pdf,.doc,.docx,.txt"
+              type="text"
+              name="assignmentLocation"
+              value={formData.assignmentLocation}
+              onChange={handleInputChange}
+              placeholder="e.g. https://drive.google.com/… or /files/task.pdf"
+              className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
             />
-            <p className="text-sm text-gray-500 mt-1">
-              Supported formats: PDF, DOC, DOCX, TXT
-            </p>
-            {selectedFiles && selectedFiles.length > 0 && (
-              <div className="mt-2">
-                <p className="text-sm text-gray-600">Selected files:</p>
-                <ul className="text-sm text-gray-500">
-                  {Array.from(selectedFiles).map((file, index) => (
-                    <li key={index}>{file.name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-            >
-              <Save size={16} />
-              {loading ? 'Saving...' : (assignment ? 'Update' : 'Save Draft')}
-            </button>
-
-            {assignment && assignment.status === 'Draft' && (
-              <button
-                type="button"
-                onClick={handleSendAssignment}
-                disabled={loading}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                <Send size={16} />
-                {loading ? 'Sending...' : 'Send Assignment'}
-              </button>
+          {/* Attachments */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+              <span className="flex items-center gap-1">
+                <Upload size={12} /> Attachments (optional)
+              </span>
+            </label>
+            <label className="flex flex-col items-center justify-center w-full px-4 py-5 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/40 transition-colors">
+              <Upload size={20} className="text-gray-400 mb-1.5" />
+              <span className="text-sm text-gray-500">
+                {selectedFiles && selectedFiles.length > 0
+                  ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`
+                  : 'Click to upload — PDF, DOC, DOCX, TXT'}
+              </span>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileChange}
+                className="hidden"
+                accept=".pdf,.doc,.docx,.txt"
+              />
+            </label>
+            {selectedFiles && selectedFiles.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {Array.from(selectedFiles).map((file, i) => (
+                  <li key={i} className="flex items-center gap-2 text-xs text-gray-600">
+                    <FileText size={12} className="text-indigo-400 shrink-0" />
+                    {file.name}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </form>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-2xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+
+          {isEdit && assignment?.status === 'Draft' && (
+            <button
+              type="button"
+              onClick={handleSendAssignment}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-60"
+            >
+              <Send size={14} />
+              {loading ? 'Sending…' : 'Send'}
+            </button>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+          >
+            <Save size={14} />
+            {loading ? 'Saving…' : isEdit ? 'Update' : 'Save Draft'}
+          </button>
+        </div>
       </div>
     </div>
   );

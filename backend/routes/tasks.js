@@ -4,6 +4,7 @@ import { authenticateToken, checkPermission } from '../middleware/auth.js';
 import { validateTask, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 import emailService from '../services/emailService.js';
+import { createNotification } from '../services/inAppNotifications.js';
 
 const router = express.Router();
 
@@ -153,6 +154,11 @@ router.post('/', authenticateToken, checkPermission('tasks', 'create'), validate
     status,
     dueDate
   } = req.body;
+
+  // Restriction: Recruiters can only assign tasks to themselves
+  if (req.user.role === 'Recruiter' && assignedTo !== req.user.id) {
+    throw new ValidationError('Recruiters can only assign tasks to themselves');
+  }
 
   // Validate assigned user exists
   const users = await query('SELECT id FROM users WHERE id = ?', [assignedTo]);
@@ -338,6 +344,14 @@ HR Team
         `;
         
         emailResult = await emailService.sendEmail(assigneeEmail, subject, textTemplate, htmlTemplate);
+        
+        // Create in-app notification for the assignee
+        await createNotification(assignedTo, {
+          type: 'task_assigned',
+          title: 'New Task Assigned',
+          message: `${creatorName} assigned you a task: "${title}"`,
+          link: '/tasks'
+        });
       }
     }
   } catch (e) {
@@ -388,6 +402,11 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
     throw new NotFoundError('Task not found');
   }
   const previousAssignee = existingTasks[0].assigned_to;
+
+  // Restriction: Recruiters can only assign tasks to themselves
+  if (req.user.role === 'Recruiter' && assignedTo !== req.user.id) {
+    throw new ValidationError('Recruiters can only assign tasks to themselves');
+  }
 
   // Validate assigned user exists
   const users = await query('SELECT id FROM users WHERE id = ?', [assignedTo]);

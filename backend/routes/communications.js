@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
-import { validateCommunication, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
+import { validateCommunication, validateId, validateUUID, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -189,7 +189,7 @@ router.delete('/:id', authenticateToken, checkPermission('communications', 'dele
 }));
 
 // Get candidate communications
-router.get('/candidate/:candidateId', authenticateToken, checkPermission('communications', 'view'), validateId('candidateId'), handleValidationErrors, asyncHandler(async (req, res) => {
+router.get('/candidate/:candidateId', authenticateToken, checkPermission('communications', 'view'), validateUUID('candidateId'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.candidateId;
 
   // Validate candidate exists

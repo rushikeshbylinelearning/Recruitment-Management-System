@@ -24,6 +24,18 @@ import settingsRoutes from './routes/settings.js';
 import fileRoutes from './routes/files.js';
 import dashboardRoutes from './routes/dashboard.js';
 import assignmentRoutes from './routes/assignments.js';
+import candidateAssignmentRoutes from './routes/candidateAssignments.js';
+import automationRoutes from './routes/automations.js';
+import activityLogRoutes from './routes/activityLogs.js';
+import workflowRoutes from './routes/workflows.js';
+import publicFormRoutes from './routes/publicForms.js';
+import publicSubmissionRoutes from './routes/publicSubmission.js';
+import formBuilderRoutes from './routes/formBuilder.js';
+import notificationsRouter from './routes/notifications.js';
+import candidateNotesRoutes from './routes/candidateNotes.js';
+import interactionMemoryRoutes from './routes/interactionMemory.js';
+import candidateImportRoutes from './routes/candidateImport.js';
+import { startNotificationCron, startAssignmentNotificationCron } from './services/notificationCron.js';
 import emailService from './services/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +115,17 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/assignments', assignmentRoutes);
+app.use('/api/candidate-assignments', candidateAssignmentRoutes);
+app.use('/api/automations', automationRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/public', publicFormRoutes); // Public form routes (no auth)
+app.use('/api/public/submit-assignment', publicSubmissionRoutes); // Public submission routes (no auth)
+app.use('/api/form-builder', formBuilderRoutes); // Admin form builder routes (auth required)
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/candidate-notes', candidateNotesRoutes);
+app.use('/api/interaction', interactionMemoryRoutes);
+app.use('/api/candidates/import', candidateImportRoutes);
 
 // API documentation endpoint
 app.get('/health', (req, res) => {
@@ -121,7 +144,9 @@ app.get('/health', (req, res) => {
       analytics: '/api/analytics',
       settings: '/api/settings',
       files: '/api/files',
-      assignments: '/api/assignments'
+      assignments: '/api/assignments',
+      automations: '/api/automations',
+      activityLogs: '/api/activity-logs'
     },
   });
 });
@@ -167,6 +192,31 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
+// Interview email isolation test — GET /api/test-interview-email?to=your@email.com
+app.get('/api/test-interview-email', async (req, res) => {
+  try {
+    const { sendScheduledEmails } = await import('./services/interviewEmailService.js');
+    const to = req.query.to || process.env.EMAIL_USER;
+    await sendScheduledEmails({
+      candidate_name: 'Test Candidate',
+      candidate_email: to,
+      interviewer_name: 'Test Interviewer',
+      interviewer_email: to,
+      job_role: 'Software Engineer',
+      date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // tomorrow
+      time: '10:00',
+      duration: 60,
+      type: 'Technical',
+      mode: 'Virtual',
+      meeting_link: 'https://meet.example.com/test',
+    });
+    res.json({ success: true, message: `Interview test emails dispatched to ${to}` });
+  } catch (err) {
+    console.error('[test-interview-email]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 404 handler for undefined routes
 app.use(notFoundHandler);
 
@@ -200,6 +250,10 @@ const startServer = async () => {
       console.log(`📊 Environment: ${config.nodeEnv}`);
       console.log(`🔗 API Base URL: http://localhost:${config.port}/api`);
       console.log(`❤️  Health Check: http://localhost:${config.port}/health`);
+
+      // Start background jobs
+      startNotificationCron();
+      startAssignmentNotificationCron();
     });
 
     // Handle server errors

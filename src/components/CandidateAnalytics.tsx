@@ -52,7 +52,7 @@ export default function CandidateAnalytics({ candidates, isOpen, onClose }: Cand
   const uniqueSources = [...new Set(candidates.map(c => c.source))];
   const uniquePositions = [...new Set(candidates.map(c => c.position))];
   const uniqueDepartments = [...new Set(candidates.map(c => c.position.split(' ')[0]))]; // Simple department extraction
-  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding'];
 
   // Apply filters to candidates
   const filteredCandidates = useMemo(() => {
