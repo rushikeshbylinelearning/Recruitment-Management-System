@@ -1,0 +1,508 @@
+/* ============================================
+   AddJobModal — Clean Minimal White Design
+   ============================================ */
+
+/* Overlay — upgraded to match candidate modal blur backdrop
+   (entry animation overridden by JobModalAnimations.css) */
+.ajm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1.25rem;
+}
+
+/* Modal shell — entry animation handled by JobModalAnimations.css */
+.ajm-modal {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.06),
+    0 8px 24px rgba(0,0,0,0.08),
+    0 32px 64px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────── */
+.ajm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1.1rem;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.ajm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ajm-header-icon {
+  width: 34px;
+  height: 34px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.ajm-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.ajm-subtitle {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+}
+
+.ajm-close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.ajm-close-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* ── Body (scrollable) ───────────────────── */
+.ajm-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.ajm-body::-webkit-scrollbar { width: 5px; }
+.ajm-body::-webkit-scrollbar-track { background: transparent; }
+.ajm-body::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 99px;
+}
+.ajm-body::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+/* ── Sections ────────────────────────────── */
+.ajm-section {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ajm-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ajm-section-label svg {
+  color: #94a3b8;
+}
+
+.ajm-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 0 1.5rem;
+}
+
+/* ── Layout helpers ──────────────────────── */
+.ajm-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.875rem;
+}
+
+.ajm-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 0.875rem;
+}
+
+@media (max-width: 580px) {
+  .ajm-row-2,
+  .ajm-row-3 { grid-template-columns: 1fr; }
+}
+
+/* ── Field ───────────────────────────────── */
+.ajm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ajm-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  display: flex;
+  align-items: center;
+}
+
+.ajm-required {
+  color: #f43f5e;
+  margin-left: 2px;
+}
+
+.ajm-hint {
+  color: #94a3b8;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.ajm-error-msg {
+  font-size: 11px;
+  color: #ef4444;
+  font-weight: 500;
+}
+
+/* ── Input / Select / Textarea ───────────── */
+.ajm-input,
+.ajm-select,
+.ajm-textarea {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.ajm-input,
+.ajm-select {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.ajm-textarea {
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.55;
+  min-height: 80px;
+}
+
+.ajm-textarea-mono {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.ajm-input:focus,
+.ajm-select:focus,
+.ajm-textarea:focus {
+  background: #ffffff;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.ajm-input::placeholder,
+.ajm-textarea::placeholder {
+  color: #bfc9d5;
+}
+
+.ajm-field-error .ajm-input,
+.ajm-field-error .ajm-select,
+.ajm-field-error .ajm-textarea {
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.ajm-field-error .ajm-input:focus,
+.ajm-field-error .ajm-select:focus,
+.ajm-field-error .ajm-textarea:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  background: #ffffff;
+}
+
+/* Custom select wrapper */
+.ajm-select-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ajm-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+.ajm-select-icon {
+  position: absolute;
+  right: 9px;
+  color: #94a3b8;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* ── Job Type Pills ──────────────────────── */
+.ajm-type-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.ajm-pill {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.ajm-pill:hover {
+  border-color: #c7d2fe;
+  color: #6366f1;
+  background: #eef2ff;
+}
+
+.ajm-pill-active {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+/* ── Portal chips ────────────────────────── */
+.ajm-portals-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ajm-portal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.ajm-portal-chip:hover {
+  border-color: #c7d2fe;
+  color: #6366f1;
+  background: #f5f3ff;
+}
+
+.ajm-portal-chip-active {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #4f46e5;
+}
+
+.ajm-portal-checkbox {
+  display: none; /* hidden — chip border shows state */
+}
+
+.ajm-portal-count {
+  margin-left: 6px;
+  background: #eef2ff;
+  color: #6366f1;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+
+/* ── Footer ──────────────────────────────── */
+.ajm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 1.1rem 1.5rem;
+  border-top: 1px solid #f1f5f9;
+  background: #fafbfc;
+  flex-shrink: 0;
+}
+
+.ajm-btn-cancel {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ajm-btn-cancel:hover {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.ajm-btn-submit {
+  height: 36px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #4f46e5;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  letter-spacing: -0.01em;
+}
+
+.ajm-btn-submit:hover {
+  background: #4338ca;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.ajm-btn-submit:active {
+  background: #3730a3;
+  box-shadow: none;
+}
+
+/* ── Dark mode ───────────────────────────── */
+html.dark .ajm-modal {
+  background: #1e1e2e;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 8px 24px rgba(0,0,0,0.4),
+    0 32px 64px rgba(0,0,0,0.4);
+}
+
+html.dark .ajm-header {
+  border-bottom-color: #2e2e4a;
+}
+
+html.dark .ajm-header-icon {
+  background: #2e2e4a;
+  border-color: #3e3e5a;
+  color: #94a3b8;
+}
+
+html.dark .ajm-title { color: #e2e8f0; }
+html.dark .ajm-subtitle { color: #475569; }
+
+html.dark .ajm-close-btn { color: #475569; }
+html.dark .ajm-close-btn:hover { background: #2e2e4a; color: #94a3b8; }
+
+html.dark .ajm-divider { background: #2e2e4a; }
+html.dark .ajm-section-label { color: #475569; }
+
+html.dark .ajm-input,
+html.dark .ajm-select,
+html.dark .ajm-textarea {
+  background: #2a2a3e;
+  border-color: #3e3e5a;
+  color: #e2e8f0;
+}
+
+html.dark .ajm-input:focus,
+html.dark .ajm-select:focus,
+html.dark .ajm-textarea:focus {
+  background: #2e2e4a;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+html.dark .ajm-input::placeholder,
+html.dark .ajm-textarea::placeholder { color: #3e4a5a; }
+
+html.dark .ajm-label { color: #64748b; }
+
+html.dark .ajm-pill {
+  background: #2a2a3e;
+  border-color: #3e3e5a;
+  color: #64748b;
+}
+
+html.dark .ajm-pill:hover,
+html.dark .ajm-pill-active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: #6366f1;
+  color: #818cf8;
+}
+
+html.dark .ajm-portal-chip {
+  background: #2a2a3e;
+  border-color: #3e3e5a;
+  color: #64748b;
+}
+
+html.dark .ajm-portal-chip:hover,
+html.dark .ajm-portal-chip-active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: #6366f1;
+  color: #818cf8;
+}
+
+html.dark .ajm-footer {
+  background: #1a1a2a;
+  border-top-color: #2e2e4a;
+}
+
+html.dark .ajm-btn-cancel {
+  color: #64748b;
+  border-color: #3e3e5a;
+}
+
+html.dark .ajm-btn-cancel:hover {
+  background: #2e2e4a;
+  color: #94a3b8;
+}

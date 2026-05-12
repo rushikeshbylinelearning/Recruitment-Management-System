@@ -55,15 +55,16 @@ async function seedDefaultForm() {
       { label: 'Notice Period (Days)', field_key: 'notice_period', field_type: 'number', is_required: true, placeholder: 'e.g., 30', order_index: 6 },
       { label: 'Current CTC', field_key: 'current_ctc', field_type: 'text', is_required: false, placeholder: 'e.g., $50,000', order_index: 7 },
       { label: 'Expected CTC', field_key: 'expected_ctc', field_type: 'text', is_required: true, placeholder: 'e.g., $60,000', order_index: 8 },
-      { label: 'Resume', field_key: 'resume', field_type: 'file', is_required: false, placeholder: null, order_index: 9 },
-      { label: 'Additional Comments', field_key: 'notes', field_type: 'textarea', is_required: false, placeholder: 'Any additional information...', order_index: 10 }
+      { label: 'Source', field_key: 'source', field_type: 'select', is_required: false, placeholder: null, order_index: 9, options: JSON.stringify(['Job Portal', 'LinkedIn', 'Referral', 'Company Website', 'Walk-in', 'Campus Recruitment', 'Recruitment Agency', 'Other']) },
+      { label: 'Resume', field_key: 'resume', field_type: 'file', is_required: false, placeholder: null, order_index: 10 },
+      { label: 'Additional Comments', field_key: 'notes', field_type: 'textarea', is_required: false, placeholder: 'Any additional information...', order_index: 11 }
     ];
 
     for (const field of fields) {
       await connection.query(`
-        INSERT INTO form_fields (form_id, label, field_key, field_type, is_required, placeholder, order_index)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [formId, field.label, field.field_key, field.field_type, field.is_required, field.placeholder, field.order_index]);
+        INSERT INTO form_fields (form_id, label, field_key, field_type, is_required, options, placeholder, order_index)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [formId, field.label, field.field_key, field.field_type, field.is_required, field.options || null, field.placeholder, field.order_index]);
     }
 
     console.log(`✅ Created ${fields.length} default form fields`);
@@ -78,7 +79,8 @@ async function seedDefaultForm() {
       { field_key: 'notice_period', db_column: 'notice_period', excel_column: 'Notice Period (Days)' },
       { field_key: 'current_ctc', db_column: 'current_ctc', excel_column: 'Current CTC' },
       { field_key: 'expected_ctc', db_column: 'expected_salary', excel_column: 'Expected CTC' },
-      { field_key: 'notes', db_column: 'notes', excel_column: 'Comments' }
+      { field_key: 'notes', db_column: 'notes', excel_column: 'Comments' },
+      { field_key: 'source', db_column: 'source', excel_column: 'Source' }
     ];
 
     for (const mapping of mappings) {

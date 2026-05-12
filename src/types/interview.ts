@@ -1,6 +1,6 @@
 export interface Interview {
   id: number;
-  candidate_id: number;
+  candidate_id: number | string;
   job_role: string;
   interviewer_id: number;
   date: string;           // 'YYYY-MM-DD'
@@ -22,7 +22,7 @@ export interface Interview {
 }
 
 export interface InterviewFormPayload {
-  candidate_id: number;
+  candidate_id: number | string;
   job_role: string;
   interviewer_id: number;
   date: string;

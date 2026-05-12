@@ -79,13 +79,16 @@ class FileParserService {
    * Parse Excel file (.xlsx or .xls)
    * @param {Buffer} fileBuffer - Excel file content
    * @param {number} sheetIndex - Sheet index to read (default: 0)
-   * @returns {Promise<ParsedFileResult>} - Parsed Excel data
+   * @returns {Promise<ParsedFileResult>} - Parsed Excel data with color metadata
    * @private
    */
   async _parseExcel(fileBuffer, sheetIndex = 0) {
     try {
-      // Read workbook from buffer
-      const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      // Read workbook from buffer WITH cell styles for color extraction
+      const workbook = XLSX.read(fileBuffer, { 
+        type: 'buffer',
+        cellStyles: true  // Enable style/color extraction
+      });
       
       // Get sheet names
       const sheetNames = workbook.SheetNames;
@@ -112,9 +115,20 @@ class FileParserService {
       // Get headers from first row
       const headers = jsonData.length > 0 ? Object.keys(jsonData[0]) : [];
 
+      // Extract colors for each row
+      const rowsWithColors = jsonData.map((row, rowIndex) => {
+        const actualRowIndex = rowIndex + 2; // +2 because: 0-indexed + header row
+        const rowColors = this._extractRowColors(worksheet, headers, actualRowIndex);
+        
+        return {
+          ...row,
+          __cellColors: rowColors  // Metadata field for colors
+        };
+      });
+
       // Filter out completely empty rows
-      const filteredRows = jsonData.filter(row => {
-        return Object.values(row).some(value => value !== '');
+      const filteredRows = rowsWithColors.filter(row => {
+        return Object.values(row).some(value => value !== '' && value !== undefined);
       });
 
       // Determine file type from workbook
@@ -132,6 +146,55 @@ class FileParserService {
       console.error('Excel parsing error:', error);
       throw new Error(`Failed to parse Excel file: ${error.message}`);
     }
+  }
+
+  /**
+   * Extract cell colors from a worksheet row
+   * 
+   * IMPORTANT: Extracts colors from ALL columns for flexibility,
+   * but the color detection engine will ONLY use the CANDIDATE NAME column color.
+   * 
+   * @param {Object} worksheet - XLSX worksheet object
+   * @param {string[]} headers - Column headers
+   * @param {number} rowIndex - Row index (1-based, accounting for header)
+   * @returns {Object} Map of column name to hex color
+   * @private
+   */
+  _extractRowColors(worksheet, headers, rowIndex) {
+    const colors = {};
+    
+    headers.forEach((header, colIndex) => {
+      // Convert column index to Excel column letter (A, B, C, ...)
+      const colLetter = XLSX.utils.encode_col(colIndex);
+      const cellAddress = `${colLetter}${rowIndex}`;
+      const cell = worksheet[cellAddress];
+      
+      if (cell && cell.s) {
+        // Extract fill color (background color)
+        // Try fgColor first (foreground/fill), then bgColor
+        const fillColor = cell.s.fgColor?.rgb || cell.s.bgColor?.rgb;
+        
+        if (fillColor) {
+          // Handle both formats: "RRGGBB" and "AARRGGBB" (Excel ARGB)
+          let hexColor = fillColor;
+          
+          // Remove any existing # prefix
+          hexColor = hexColor.replace(/^#/, '');
+          
+          // If 8 characters (ARGB format), extract RGB part
+          if (hexColor.length === 8) {
+            hexColor = hexColor.substring(2);
+          }
+          
+          // Add # prefix
+          hexColor = `#${hexColor}`;
+          
+          colors[header] = hexColor;
+        }
+      }
+    });
+    
+    return colors;
   }
 
   /**

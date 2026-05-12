@@ -197,6 +197,173 @@ router.get('/activities', authenticateToken, async (req, res) => {
   }
 });
 
+// Get daily metrics (candidates uploaded today)
+router.get('/daily-metrics', authenticateToken, async (req, res) => {
+  try {
+    // Get total candidates uploaded today
+    const todayTotalResult = await query(`
+      SELECT COUNT(*) as count 
+      FROM candidates 
+      WHERE DATE(created_at) = CURDATE()
+    `);
+
+    // Get candidates uploaded today by stage
+    const todayByStageResult = await query(`
+      SELECT stage, COUNT(*) as count 
+      FROM candidates 
+      WHERE DATE(created_at) = CURDATE()
+      GROUP BY stage
+      ORDER BY count DESC
+    `);
+
+    // Get candidates uploaded today by role/position
+    const todayByRoleResult = await query(`
+      SELECT position, COUNT(*) as count 
+      FROM candidates 
+      WHERE DATE(created_at) = CURDATE()
+      GROUP BY position
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+
+    // Get profile not found count (candidates with missing or incomplete profiles - ALL candidates, not just today)
+    const profileNotFoundResult = await query(`
+      SELECT COUNT(*) as count 
+      FROM candidates 
+      WHERE (
+        email IS NULL OR email = '' OR
+        phone IS NULL OR phone = '' OR
+        (email IS NULL OR email = '') AND (phone IS NULL OR phone = '')
+      )
+    `);
+
+    // Get follow-ups count (candidates in On Hold stage or with follow-up notes - ALL candidates, not just today)
+    const followUpsResult = await query(`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM candidates c
+      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
+      WHERE (
+        c.stage = 'On Hold' OR
+        hn.note_text LIKE '%follow up%' OR
+        hn.note_text LIKE '%follow-up%' OR
+        hn.note_text LIKE '%callback%' OR
+        hn.note_text LIKE '%call back%'
+      )
+    `);
+
+    const dailyMetrics = {
+      total: todayTotalResult[0].count,
+      byStage: todayByStageResult.map(row => ({
+        stage: row.stage,
+        count: row.count
+      })),
+      byRole: todayByRoleResult.map(row => ({
+        role: row.position,
+        count: row.count
+      })),
+      profileNotFound: profileNotFoundResult[0].count,
+      followUps: followUpsResult[0].count
+    };
+
+    res.json({
+      success: true,
+      data: dailyMetrics
+    });
+  } catch (error) {
+    console.error('Error fetching daily metrics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch daily metrics'
+    });
+  }
+});
+
+// Get metrics timeline (daily aggregated metrics for last 7 days)
+router.get('/metrics/daily', authenticateToken, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 7;
+
+    // Get daily candidate uploads for the last N days
+    const dailyUploadsResult = await query(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as uploadedCandidates
+      FROM candidates
+      WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+      LIMIT ?
+    `, [limit, limit]);
+
+    // Get daily profile not found count
+    const dailyProfileNotFoundResult = await query(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as profileNotFound
+      FROM candidates
+      WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      AND (
+        email IS NULL OR email = '' OR
+        phone IS NULL OR phone = '' OR
+        (email IS NULL OR email = '') AND (phone IS NULL OR phone = '')
+      )
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+      LIMIT ?
+    `, [limit, limit]);
+
+    // Get daily follow-ups count
+    const dailyFollowUpsResult = await query(`
+      SELECT 
+        DATE(c.created_at) as date,
+        COUNT(DISTINCT c.id) as followUps
+      FROM candidates c
+      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
+      WHERE c.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      AND (
+        c.stage = 'On Hold' OR
+        hn.note_text LIKE '%follow up%' OR
+        hn.note_text LIKE '%follow-up%' OR
+        hn.note_text LIKE '%callback%' OR
+        hn.note_text LIKE '%call back%'
+      )
+      GROUP BY DATE(c.created_at)
+      ORDER BY date DESC
+      LIMIT ?
+    `, [limit, limit]);
+
+    // Create a map for easy lookup
+    const profileNotFoundMap = new Map(
+      dailyProfileNotFoundResult.map(row => [row.date.toISOString().split('T')[0], row.profileNotFound])
+    );
+    const followUpsMap = new Map(
+      dailyFollowUpsResult.map(row => [row.date.toISOString().split('T')[0], row.followUps])
+    );
+
+    // Format the results with all metrics
+    const metricsTimeline = dailyUploadsResult.map(row => {
+      const dateStr = row.date.toISOString().split('T')[0];
+      return {
+        date: row.date,
+        uploadedCandidates: row.uploadedCandidates,
+        profileNotFound: profileNotFoundMap.get(dateStr) || 0,
+        followUps: followUpsMap.get(dateStr) || 0
+      };
+    });
+
+    res.json({
+      success: true,
+      data: metricsTimeline
+    });
+  } catch (error) {
+    console.error('Error fetching metrics timeline:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch metrics timeline'
+    });
+  }
+});
+
 // Get dashboard overview (all data in one call)
 router.get('/overview', authenticateToken, async (req, res) => {
   try {
@@ -211,6 +378,55 @@ router.get('/overview', authenticateToken, async (req, res) => {
       SELECT AVG(DATEDIFF(updated_at, applied_date)) as avg_days 
       FROM candidates 
       WHERE stage = 'Hired' AND updated_at IS NOT NULL
+    `);
+
+    // Get daily metrics
+    const todayTotalResult = await query(`
+      SELECT COUNT(*) as count 
+      FROM candidates 
+      WHERE DATE(created_at) = CURDATE()
+    `);
+
+    const todayByStageResult = await query(`
+      SELECT stage, COUNT(*) as count 
+      FROM candidates 
+      WHERE DATE(created_at) = CURDATE()
+      GROUP BY stage
+      ORDER BY count DESC
+    `);
+
+    const todayByRoleResult = await query(`
+      SELECT position, COUNT(*) as count 
+      FROM candidates 
+      WHERE DATE(created_at) = CURDATE()
+      GROUP BY position
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+
+    // Get profile not found count (ALL candidates, not just today)
+    const profileNotFoundResult = await query(`
+      SELECT COUNT(*) as count 
+      FROM candidates 
+      WHERE (
+        email IS NULL OR email = '' OR
+        phone IS NULL OR phone = '' OR
+        (email IS NULL OR email = '') AND (phone IS NULL OR phone = '')
+      )
+    `);
+
+    // Get follow-ups count (candidates in On Hold stage or with follow-up notes - ALL candidates, not just today)
+    const followUpsResult = await query(`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM candidates c
+      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
+      WHERE (
+        c.stage = 'On Hold' OR
+        hn.note_text LIKE '%follow up%' OR
+        hn.note_text LIKE '%follow-up%' OR
+        hn.note_text LIKE '%callback%' OR
+        hn.note_text LIKE '%call back%'
+      )
     `);
 
     // Get pipeline data
@@ -326,7 +542,20 @@ router.get('/overview', authenticateToken, async (req, res) => {
         }
       },
       pipeline,
-      activities: recentActivities
+      activities: recentActivities,
+      dailyMetrics: {
+        total: todayTotalResult[0].count,
+        byStage: todayByStageResult.map(row => ({
+          stage: row.stage,
+          count: row.count
+        })),
+        byRole: todayByRoleResult.map(row => ({
+          role: row.position,
+          count: row.count
+        })),
+        profileNotFound: profileNotFoundResult[0].count,
+        followUps: followUpsResult[0].count
+      }
     };
 
     res.json({

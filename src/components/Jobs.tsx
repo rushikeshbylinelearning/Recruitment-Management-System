@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase, ChevronLeft, ChevronRight, Upload, AlertCircle, Filter } from 'lucide-react';
 import { JobPosting } from '../types';
 import { jobsAPI, JobPosting as ApiJobPosting, candidatesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +9,8 @@ import AddJobModal from './AddJobModal';
 import JobDetailsModal from './JobDetailsModal';
 import JobApplicantsModal from './JobApplicantsModal';
 import ApplicantDetailsModal from './ApplicantDetailsModal';
+import CandidateImportContainer from './import/CandidateImportContainer';
+import '../styles/Jobs.css';
 
 const JOBS_PAGE_SIZE = 10;
 
@@ -22,6 +24,7 @@ export default function Jobs() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<{ page: number; limit: number; total: number; pages: number } | null>(null);
   const [showAddJobModal, setShowAddJobModal] = useState(false);
+  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
   const [showJobDetailsModal, setShowJobDetailsModal] = useState(false);
   const [showEditJobModal, setShowEditJobModal] = useState(false);
@@ -31,6 +34,10 @@ export default function Jobs() {
   const [showApplicantDetails, setShowApplicantDetails] = useState(false);
   const [selectedApplicant, setSelectedApplicant] = useState<any>(null);
   const [editingCandidate, setEditingCandidate] = useState<any>(null);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showArchivedJobs, setShowArchivedJobs] = useState(false);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
 
   // Load jobs from backend with pagination and filters
   const loadJobs = useCallback(async (pageNum: number) => {
@@ -38,7 +45,7 @@ export default function Jobs() {
       setLoading(true);
       const response = await jobsAPI.getJobs({
         page: pageNum,
-        limit: JOBS_PAGE_SIZE,
+        limit: 100, // Maximum allowed by backend validation
         search: searchTerm.trim() || undefined,
         status: statusFilter === 'All' ? undefined : statusFilter,
       });
@@ -65,11 +72,20 @@ export default function Jobs() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Active': return 'bg-green-100 text-green-800';
-      case 'Paused': return 'bg-yellow-100 text-yellow-800';
-      case 'Closed': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Active': return 'job-status-active';
+      case 'Paused': return 'job-status-paused';
+      case 'Closed': return 'job-status-closed';
+      default: return 'job-status-default';
     }
+  };
+
+  // Check if deadline is within 30 days
+  const isDeadlineNear = (deadline: string) => {
+    const deadlineDate = new Date(deadline);
+    const today = new Date();
+    const diffTime = deadlineDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 30 && diffDays >= 0;
   };
 
   const handleAddCandidateToJob = (job: JobPosting) => {
@@ -178,280 +194,385 @@ export default function Jobs() {
       setError('Failed to create job');
     }
   };
+
+  // Toggle job selection for bulk actions
+  const toggleJobSelection = (jobId: number) => {
+    const newSelected = new Set(selectedJobIds);
+    if (newSelected.has(jobId)) {
+      newSelected.delete(jobId);
+    } else {
+      newSelected.add(jobId);
+    }
+    setSelectedJobIds(newSelected);
+  };
+
+  // Select all visible jobs
+  const selectAllJobs = () => {
+    const allIds = new Set(displayJobs.map(job => job.id));
+    setSelectedJobIds(allIds);
+  };
+
+  // Clear all selections
+  const clearSelection = () => {
+    setSelectedJobIds(new Set());
+    setBulkSelectMode(false);
+  };
+
+  // Deactivate selected jobs
+  const deactivateSelectedJobs = async () => {
+    try {
+      setLoading(true);
+      // Update each selected job to set status as 'Closed' or add an 'archived' flag
+      for (const jobId of selectedJobIds) {
+        await jobsAPI.updateJob(jobId, { status: 'Closed' });
+      }
+      clearSelection();
+      await loadJobs(page);
+    } catch (err) {
+      console.error('Error deactivating jobs:', err);
+      setError('Failed to deactivate jobs');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   return (
     <ProtectedComponent module="jobs" action="view">
-      <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Job Openings</h1>
-          <p className="text-gray-600 mt-1">Manage all your job postings and requirements</p>
-        </div>
+      <div className="jobs-page-container">
+        {/* Floating Action Buttons - Right Corner */}
         {hasPermission('jobs', 'create') && (
-          <button
-            onClick={() => setShowAddJobModal(true)}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
-            <span>Post New Job</span>
-          </button>
+          <div className="fab-container">
+            <button
+              onClick={() => setShowAddJobModal(true)}
+              className="fab fab-primary"
+              title="Post New Job"
+            >
+              <Plus size={24} />
+            </button>
+            <button
+              onClick={() => setShowBulkImportModal(true)}
+              className="fab fab-secondary"
+              title="Bulk Import"
+            >
+              <Upload size={22} />
+            </button>
+          </div>
         )}
-      </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2 text-gray-600">Loading jobs...</span>
-        </div>
-      )}
+        {/* Floating Filter & Archive Buttons - Bottom Right Stack */}
+        <div className="fab-bottom-right-stack">
+          {/* Filter Button */}
+          <div className="fab-filter-container">
+            <button
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              className={`fab fab-filter ${showFilterMenu ? 'active' : ''}`}
+              title="Filter by Status"
+            >
+              <Filter size={22} />
+            </button>
+            
+            {/* Filter Menu */}
+            {showFilterMenu && (
+              <div className="filter-menu">
+                <div className="filter-menu-header">Filter by Status</div>
+                <button
+                  onClick={() => {
+                    setStatusFilter('All');
+                    setPage(1);
+                    setShowFilterMenu(false);
+                  }}
+                  className={`filter-menu-item ${statusFilter === 'All' ? 'active' : ''}`}
+                >
+                  All Status
+                </button>
+                <button
+                  onClick={() => {
+                    setStatusFilter('Active');
+                    setPage(1);
+                    setShowFilterMenu(false);
+                  }}
+                  className={`filter-menu-item ${statusFilter === 'Active' ? 'active' : ''}`}
+                >
+                  Active
+                </button>
+                <button
+                  onClick={() => {
+                    setStatusFilter('Paused');
+                    setPage(1);
+                    setShowFilterMenu(false);
+                  }}
+                  className={`filter-menu-item ${statusFilter === 'Paused' ? 'active' : ''}`}
+                >
+                  Paused
+                </button>
+                <button
+                  onClick={() => {
+                    setStatusFilter('Closed');
+                    setPage(1);
+                    setShowFilterMenu(false);
+                  }}
+                  className={`filter-menu-item ${statusFilter === 'Closed' ? 'active' : ''}`}
+                >
+                  Closed
+                </button>
+              </div>
+            )}
+          </div>
 
-      {/* Error State */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+          {/* Archived Jobs Button */}
+          <button
+            onClick={() => setShowArchivedJobs(!showArchivedJobs)}
+            className={`fab fab-archive ${showArchivedJobs ? 'active' : ''}`}
+            title="Archived Jobs"
+          >
+            <Briefcase size={22} />
+          </button>
 
-      {/* Filters and Jobs List */}
-      {!loading && (
-        <>
-          {/* Filters */}
-          <div className="flex space-x-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search jobs..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setPage(1);
+          {/* Bulk Select Button */}
+          <button
+            onClick={() => {
+              setBulkSelectMode(!bulkSelectMode);
+              if (bulkSelectMode) clearSelection();
             }}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+            className={`fab fab-bulk-select ${bulkSelectMode ? 'active' : ''}`}
+            title="Bulk Select"
+          >
+            <MoreVertical size={22} />
+          </button>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setPage(1);
-          }}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="All">All Status</option>
-          <option value="Active">Active</option>
-          <option value="Paused">Paused</option>
-          <option value="Closed">Closed</option>
-        </select>
-      </div>
 
-      {/* Jobs Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {displayJobs.map((job) => (
-          <div key={job.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">{job.title}</h3>
-                <p className="text-sm text-gray-600">{job.department} • {job.location}</p>
-              </div>
-              <div className="flex space-x-2">
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
-                  {job.status}
-                </span>
-                <button className="text-gray-400 hover:text-gray-600">
-                  <MoreVertical size={16} />
-                </button>
-              </div>
+
+
+        {/* Loading State */}
+        {loading && (
+          <div className="jobs-loading">
+            <div className="spinner"></div>
+            <span>Loading jobs...</span>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="jobs-error">
+            {error}
+          </div>
+        )}
+
+        {/* Jobs Grid - Full Screen */}
+        {!loading && (
+          <>
+            {/* Jobs Grid */}
+            <div className="jobs-grid jobs-grid-compact">
+              {displayJobs.map((job) => (
+                <div key={job.id} className={`job-card job-card-compact ${bulkSelectMode ? 'selectable' : ''} ${selectedJobIds.has(job.id) ? 'selected' : ''}`}>
+                  {/* Bulk Select Checkbox */}
+                  {bulkSelectMode && (
+                    <div className="job-card-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={selectedJobIds.has(job.id)}
+                        onChange={() => toggleJobSelection(job.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
+
+                  <div className="job-card-header">
+                    <div className="job-card-title-section">
+                      <span className="job-department-tag">{job.department}</span>
+                      <h3 className="job-title">{job.title}</h3>
+                      <p className="job-location">{job.location}</p>
+                    </div>
+                    <div className="job-card-badges">
+                      <span className={getStatusColor(job.status)}>
+                        {job.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="job-card-meta">
+                    <div className="job-meta-row">
+                      <span className="job-meta-label">Type:</span>
+                      <span className="job-meta-value">{job.jobType}</span>
+                    </div>
+                    <div className="job-meta-row">
+                      <span className="job-meta-label">Posted:</span>
+                      <span className="job-meta-value">{new Date(job.postedDate).toLocaleDateString()}</span>
+                    </div>
+                    <div className="job-meta-row">
+                      <span className="job-meta-label">Deadline:</span>
+                      <span className="job-meta-value job-deadline">
+                        {isDeadlineNear(job.deadline) && (
+                          <AlertCircle size={12} className="deadline-warning-icon" />
+                        )}
+                        {new Date(job.deadline).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="job-card-stats">
+                    <div className="job-applicant-count">
+                      <Users size={14} />
+                      <span>{job.applicantCount || 0} applicants</span>
+                    </div>
+                  </div>
+
+                  <div className="job-card-actions">
+                    <button
+                      onClick={() => handleViewJobDetails(job)}
+                      className="btn-ghost btn-compact"
+                    >
+                      <Eye size={14} />
+                      <span>Details</span>
+                    </button>
+                    <button
+                      onClick={() => handleViewApplicants(job)}
+                      className="btn-lavender btn-compact"
+                    >
+                      <Users size={14} />
+                      <span>Applicants</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-3 mb-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Job Type:</span>
-                <span className="text-gray-900">{job.jobType}</span>
+            {(displayJobs?.length || 0) === 0 && (
+              <div className="jobs-empty-state">
+                <Briefcase size={48} className="empty-icon" />
+                <h3 className="empty-title">No jobs found</h3>
+                <p className="empty-description">Try adjusting your filters or create a new job posting.</p>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Posted:</span>
-                <span className="text-gray-900">{new Date(job.postedDate).toLocaleDateString()}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Deadline:</span>
-                <span className="text-gray-900">{new Date(job.deadline).toLocaleDateString()}</span>
-              </div>
-            </div>
+            )}
+          </>
+        )}
 
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <Users size={16} className="text-blue-600" />
-                <span className="text-sm text-gray-600">{job.applicantCount} applicants</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span className="text-xs text-gray-500">{job.portals.length} portals</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => handleViewJobDetails(job)}
-                  className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  <Eye size={16} />
-                  <span>View Details</span>
+        {/* Archived Jobs Modal */}
+        {showArchivedJobs && (
+          <div className="archived-jobs-modal">
+            <div className="archived-jobs-content">
+              <div className="archived-jobs-header">
+                <h2>Archived Jobs</h2>
+                <button onClick={() => setShowArchivedJobs(false)} className="close-btn">
+                  ×
                 </button>
-                {hasPermission('jobs', 'edit') && (
-                  <button 
-                    onClick={() => handleEditJob(job)}
-                    className="flex items-center justify-center px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                    title="Edit job"
-                  >
-                    <Edit size={16} className="text-gray-600" />
-                  </button>
-                )}
               </div>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => handleViewApplicants(job)}
-                  className="flex-1 flex items-center justify-center space-x-2 bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                >
-                  <Users size={16} />
-                  <span>View Applicants</span>
-                </button>
-                {hasPermission('candidates', 'create') && (
-                  <button 
-                    onClick={() => handleAddCandidateToJob(job)}
-                    className="flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    title="Add candidate to this job"
-                  >
-                    <UserPlus size={16} />
-                  </button>
-                )}
+              <div className="archived-jobs-body">
+                <p className="archived-jobs-info">Closed and deactivated jobs appear here.</p>
+                {/* Placeholder for archived jobs - would need separate API call */}
+                <div className="archived-jobs-list">
+                  {displayJobs.filter(job => job.status === 'Closed').map((job) => (
+                    <div key={job.id} className="archived-job-item">
+                      <div className="archived-job-info">
+                        <h4>{job.title}</h4>
+                        <p>{job.department} • {job.location}</p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await jobsAPI.updateJob(job.id, { status: 'Active' });
+                          loadJobs(page);
+                        }}
+                        className="btn-reactivate"
+                      >
+                        Reactivate
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        ))}
-      </div>
+        )}
 
-          {(displayJobs?.length || 0) === 0 && (
-            <div className="text-center py-12">
-              <Briefcase size={48} className="mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs found</h3>
-              <p className="text-gray-600">Try adjusting your search criteria or create a new job posting.</p>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-gray-200">
-              <p className="text-sm text-gray-600">
-                Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} jobs
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={pagination.page <= 1}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft size={18} />
-                  Previous
-                </button>
-                <span className="px-3 py-2 text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
-                  disabled={pagination.page >= pagination.pages}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Add Job Modal */}
-      <AddJobModal
-        isOpen={showAddJobModal}
-        onClose={() => setShowAddJobModal(false)}
-        onSubmit={handleAddJobSubmit}
-      />
-
-      {/* Job Details Modal */}
-      {showJobDetailsModal && selectedJob && (
-        <JobDetailsModal
-          job={selectedJob}
-          onClose={() => {
-            setShowJobDetailsModal(false);
-            setSelectedJob(null);
-          }}
-          onEdit={(job) => {
-            setShowJobDetailsModal(false);
-            handleEditJob(job);
-          }}
-        />
-      )}
-
-      {/* Edit Job Modal */}
-      {showEditJobModal && selectedJob && (
+        {/* Add Job Modal */}
         <AddJobModal
-          isOpen={showEditJobModal}
-          onClose={() => {
-            setShowEditJobModal(false);
-            setSelectedJob(null);
-          }}
-          onSubmit={handleEditJobSubmit}
-          editingJob={selectedJob}
+          isOpen={showAddJobModal}
+          onClose={() => setShowAddJobModal(false)}
+          onSubmit={handleAddJobSubmit}
         />
-      )}
-      {/* Add Candidate Modal */}
-      <AddCandidateModal
-        isOpen={showAddCandidateModal}
-        onClose={() => {
-          setShowAddCandidateModal(false);
-          setSelectedJobForCandidate(null);
-          setEditingCandidate(null);
-        }}
-        onSubmit={handleCandidateSubmit}
-        jobs={selectedJobForCandidate ? [selectedJobForCandidate] : jobs}
-        editingCandidate={editingCandidate}
-      />
 
-      {/* Job Applicants Modal */}
-      {selectedJob && (
-        <JobApplicantsModal
-          isOpen={showApplicantsModal}
+        {/* Job Details Modal */}
+        {showJobDetailsModal && selectedJob && (
+          <JobDetailsModal
+            job={selectedJob}
+            onClose={() => {
+              setShowJobDetailsModal(false);
+              setSelectedJob(null);
+            }}
+            onEdit={(job) => {
+              setShowJobDetailsModal(false);
+              handleEditJob(job);
+            }}
+          />
+        )}
+
+        {/* Edit Job Modal */}
+        {showEditJobModal && selectedJob && (
+          <AddJobModal
+            isOpen={showEditJobModal}
+            onClose={() => {
+              setShowEditJobModal(false);
+              setSelectedJob(null);
+            }}
+            onSubmit={handleEditJobSubmit}
+            editingJob={selectedJob}
+          />
+        )}
+        {/* Add Candidate Modal */}
+        <AddCandidateModal
+          isOpen={showAddCandidateModal}
           onClose={() => {
-            setShowApplicantsModal(false);
-            setSelectedJob(null);
+            setShowAddCandidateModal(false);
+            setSelectedJobForCandidate(null);
+            setEditingCandidate(null);
           }}
-          job={selectedJob}
-          onAddCandidate={() => {
-            setShowApplicantsModal(false);
-            setSelectedJobForCandidate(selectedJob);
-            setShowAddCandidateModal(true);
-          }}
-          onViewApplicantDetails={(applicant) => {
-            setSelectedApplicant(applicant);
-            setShowApplicantDetails(true);
-          }}
-          onEditApplicant={handleEditCandidate}
+          onSubmit={handleCandidateSubmit}
+          jobs={selectedJobForCandidate ? [selectedJobForCandidate] : jobs}
+          editingCandidate={editingCandidate}
         />
-      )}
 
-      {/* Applicant Details Modal */}
-      <ApplicantDetailsModal
-        isOpen={showApplicantDetails}
-        onClose={() => {
-          setShowApplicantDetails(false);
-          setSelectedApplicant(null);
-        }}
-        applicant={selectedApplicant}
-      />
+        {/* Job Applicants Modal */}
+        {selectedJob && (
+          <JobApplicantsModal
+            isOpen={showApplicantsModal}
+            onClose={() => {
+              setShowApplicantsModal(false);
+              setSelectedJob(null);
+            }}
+            job={selectedJob}
+            onAddCandidate={() => {
+              setShowApplicantsModal(false);
+              setSelectedJobForCandidate(selectedJob);
+              setShowAddCandidateModal(true);
+            }}
+            onViewApplicantDetails={(applicant) => {
+              setSelectedApplicant(applicant);
+              setShowApplicantDetails(true);
+            }}
+            onEditApplicant={handleEditCandidate}
+            onBulkImport={() => setShowBulkImportModal(true)}
+          />
+        )}
 
+        {/* Applicant Details Modal */}
+        <ApplicantDetailsModal
+          isOpen={showApplicantDetails}
+          onClose={() => {
+            setShowApplicantDetails(false);
+            setSelectedApplicant(null);
+          }}
+          applicant={selectedApplicant}
+        />
+
+        {/* Bulk Import Modal */}
+        <CandidateImportContainer
+          isOpen={showBulkImportModal}
+          onClose={() => setShowBulkImportModal(false)}
+          onImportComplete={() => {
+            setShowBulkImportModal(false);
+            loadJobs(page);
+          }}
+        />
       </div>
     </ProtectedComponent>
   );

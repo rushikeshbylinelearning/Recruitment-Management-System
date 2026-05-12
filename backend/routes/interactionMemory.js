@@ -460,20 +460,44 @@ router.get('/admin/recruiters', authenticateToken, asyncHandler(async (req, res)
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // Ensure the daily_snapshots table exists before querying
+  await ensureDailySnapshotsTable();
+
+  // Check whether optional tables exist so we can degrade gracefully
+  const [snapshotExists, notesExists, icExists] = await Promise.all([
+    query("SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'daily_snapshots'"),
+    query("SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'interaction_notes'"),
+    query("SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'interaction_candidates'"),
+  ]);
+
+  const hasSnapshots = snapshotExists[0].cnt > 0;
+  const hasNotes = notesExists[0].cnt > 0 && icExists[0].cnt > 0;
+
+  const snapshotJoin = hasSnapshots
+    ? `LEFT JOIN daily_snapshots ds ON ds.user_id = u.id AND ds.snap_date = '${today}'`
+    : '';
+
+  const snapshotCols = hasSnapshots
+    ? `COALESCE(ds.total_calls, 0)  AS today_calls,
+       COALESCE(ds.interested, 0)   AS today_interested,
+       COALESCE(ds.no_response, 0)  AS today_no_response,
+       COALESCE(ds.follow_ups, 0)   AS today_follow_ups,`
+    : `0 AS today_calls, 0 AS today_interested, 0 AS today_no_response, 0 AS today_follow_ups,`;
+
+  const notesSub = hasNotes
+    ? `(SELECT COUNT(*) FROM interaction_notes n
+         JOIN interaction_candidates ic ON ic.id = n.candidate_id
+         WHERE ic.created_by = u.id) AS total_notes`
+    : `0 AS total_notes`;
+
   const recruiters = await query(
     `SELECT u.id, u.name, u.email, u.role,
-            COALESCE(ds.total_calls, 0)  AS today_calls,
-            COALESCE(ds.interested, 0)   AS today_interested,
-            COALESCE(ds.no_response, 0)  AS today_no_response,
-            COALESCE(ds.follow_ups, 0)   AS today_follow_ups,
-            (SELECT COUNT(*) FROM interaction_notes n
-               JOIN interaction_candidates ic ON ic.id = n.candidate_id
-               WHERE ic.created_by = u.id) AS total_notes
+            ${snapshotCols}
+            ${notesSub}
      FROM users u
-     LEFT JOIN daily_snapshots ds ON ds.user_id = u.id AND ds.snap_date = ?
+     ${snapshotJoin}
      WHERE u.role IN ('Recruiter','HR Manager','Admin')
-     ORDER BY today_calls DESC`,
-    [today]
+     ORDER BY today_calls DESC`
   );
 
   res.json({ success: true, data: recruiters });

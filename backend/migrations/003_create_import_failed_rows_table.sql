@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS import_failed_rows (
   id INT AUTO_INCREMENT PRIMARY KEY,
   import_log_id INT NOT NULL,
-  row_number INT NOT NULL,
+  `row_number` INT NOT NULL,
   candidate_name VARCHAR(255) NULL,
   error_message TEXT NOT NULL,
   row_data JSON NOT NULL COMMENT 'Original row data as JSON',

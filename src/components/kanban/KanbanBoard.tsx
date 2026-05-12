@@ -13,6 +13,8 @@ import {
   TouchSensor,
 } from '@dnd-kit/core';
 import KanbanColumn from './KanbanColumn';
+import UmbrellaStageColumn from './UmbrellaStageColumn';
+import NestedKanbanOverlay from './NestedKanbanOverlay';
 import CandidateCard from './CandidateCard';
 import { ErrorToast } from './ErrorToast';
 import InterviewModal from '../InterviewModal';
@@ -23,6 +25,7 @@ import { InterviewFormPayload } from '../../types/interview';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { useSyncManager } from '../../hooks/useSyncManager';
 import { useToastManager } from '../../hooks/useToastManager';
+import { DEFAULT_STAGE_CONFIG, UmbrellaStage } from '../../types/umbrellaStage';
 
 interface KanbanBoardProps {
   stages: string[];
@@ -34,11 +37,16 @@ interface KanbanBoardProps {
   onDownloadResume: (candidateId: string) => void;
   hasEditPermission: boolean;
   hasDeletePermission: boolean;
+  // Selection mode
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (candidateId: string) => void;
 }
 
 // Flat, minimal accent colors — one per stage
 const STAGE_ACCENTS: Record<string, string> = {
   Applied: '#6366f1',
+  'Follow Up': '#06b6d4',
   Screening: '#f59e0b',
   Interview: '#f97316',
   Offer: '#8b5cf6',
@@ -48,6 +56,7 @@ const STAGE_ACCENTS: Record<string, string> = {
   'No Show - Interview': '#ea580c',
   'No Show - Onboarding': '#ec4899',
   'Last Minute Back Out': '#dc2626',
+  'Profile Not Matched': '#64748b',
 };
 
 export default function KanbanBoard({
@@ -60,6 +69,9 @@ export default function KanbanBoard({
   onDownloadResume,
   hasEditPermission,
   hasDeletePermission,
+  selectionMode = false,
+  selectedIds = new Set(),
+  onToggleSelect = () => {},
 }: KanbanBoardProps) {
   const [optimisticCandidatesByStage, setOptimisticCandidatesByStage] =
     useState<Record<string, ApiCandidate[]>>(candidatesByStage);
@@ -74,6 +86,10 @@ export default function KanbanBoard({
   const [pendingAssignmentCandidate, setPendingAssignmentCandidate] = useState<ApiCandidate | null>(null);
   const [candidateAssignments, setCandidateAssignments] = useState<Map<string, { status: string; deadline: string; emailFailed: boolean }>>(new Map());
   const [notesPanelCandidate, setNotesPanelCandidate] = useState<ApiCandidate | null>(null);
+  
+  // Umbrella stage overlay state
+  const [expandedUmbrellaStage, setExpandedUmbrellaStage] = useState<UmbrellaStage | null>(null);
+  const [umbrellaOriginRect, setUmbrellaOriginRect] = useState<DOMRect | null>(null);
 
   // All useRef hooks
   const boardRef = useRef<HTMLDivElement>(null);
@@ -482,7 +498,7 @@ export default function KanbanBoard({
   );
 
   const handleAssignmentSubmit = useCallback(
-    async (payload: any) => {
+    async (_payload: any) => {
       const candidate = pendingAssignmentCandidate!;
       const currentStage = Object.entries(candidatesByStage).find(([, candidates]) =>
         candidates.some((c) => c.id === candidate.id)
@@ -509,9 +525,114 @@ export default function KanbanBoard({
     ? STAGE_ACCENTS[activeCandidate.stage] || '#6366f1'
     : '#6366f1';
 
+  const handleStageChange = useCallback(
+    async (candidateId: string, newStage: string) => {
+      // Validate stage
+      if (!stages.includes(newStage)) {
+        console.error('Invalid stage:', newStage);
+        return;
+      }
+
+      const currentStage = Object.entries(optimisticCandidatesByStage).find(([, candidates]) =>
+        candidates.some((c) => c.id === candidateId)
+      )?.[0];
+
+      if (!currentStage) return;
+      if (currentStage === newStage) return;
+
+      // Check for modal-gated stages
+      if (newStage === 'Interview') {
+        const candidate =
+          Object.values(optimisticCandidatesByStage).flat().find((c) => c.id === candidateId) ??
+          null;
+        setPendingInterviewCandidate(candidate);
+        return;
+      }
+
+      if (newStage === 'Screening') {
+        const candidate =
+          Object.values(optimisticCandidatesByStage).flat().find((c) => c.id === candidateId) ??
+          null;
+        setPendingAssignmentCandidate(candidate);
+        return;
+      }
+
+      const rollbackSnapshot = optimisticRef.current;
+
+      // Optimistic UI update
+      setOptimisticCandidatesByStage((prev) => {
+        const sourceList = Array.from(prev[currentStage] ?? []);
+        const destList = Array.from(prev[newStage] ?? []);
+
+        const sourceIndex = sourceList.findIndex((c) => c.id === candidateId);
+        if (sourceIndex === -1) return prev;
+
+        const [moved] = sourceList.splice(sourceIndex, 1);
+        const movedWithStage = { ...moved, stage: newStage } as ApiCandidate;
+
+        // Add to beginning of destination column
+        destList.unshift(movedWithStage);
+
+        return {
+          ...prev,
+          [currentStage]: sourceList,
+          [newStage]: destList,
+        };
+      });
+
+      // Backend sync with retry
+      try {
+        await syncDrop(candidateId, newStage, currentStage);
+      } catch {
+        // Revert optimistic update back to last known good state
+        setOptimisticCandidatesByStage(rollbackSnapshot ?? lastStableRef.current);
+        showToast(`Failed to move candidate to ${newStage}`, () =>
+          manualRetry(candidateId, newStage, currentStage)
+        );
+      }
+    },
+    [optimisticCandidatesByStage, stages, syncDrop, showToast, manualRetry]
+  );
+
   const handleOpenNotes = useCallback((candidate: ApiCandidate) => {
     setNotesPanelCandidate(candidate);
   }, []);
+
+  // Handle umbrella stage expansion
+  const handleExpandUmbrella = useCallback((umbrellaStage: UmbrellaStage, originElement: HTMLElement) => {
+    const rect = originElement.getBoundingClientRect();
+    setUmbrellaOriginRect(rect);
+    setExpandedUmbrellaStage(umbrellaStage);
+  }, []);
+
+  const handleCloseUmbrella = useCallback(() => {
+    setExpandedUmbrellaStage(null);
+    setUmbrellaOriginRect(null);
+  }, []);
+
+  // Get candidates for expanded umbrella stage
+  const getUmbrellaCandidates = useCallback((umbrellaStage: UmbrellaStage): ApiCandidate[] => {
+    if (!umbrellaStage.subStages) return [];
+    
+    // Collect all candidates from sub-stages
+    const allCandidates: ApiCandidate[] = [];
+    
+    if (umbrellaStage.id === 'rejected') {
+      // Map legacy stage names to umbrella sub-stages
+      const rejectedStages = ['Rejected', 'On Hold', 'Profile Not Matched', 'Last Minute Back Out'];
+      
+      rejectedStages.forEach(stageName => {
+        const candidates = optimisticCandidatesByStage[stageName] || [];
+        allCandidates.push(...candidates);
+      });
+    } else if (umbrellaStage.id === 'interview') {
+      // Interview umbrella: get all Interview stage candidates
+      const candidates = optimisticCandidatesByStage['Interview'] || [];
+      allCandidates.push(...candidates);
+    }
+    
+    return allCandidates;
+  }, [optimisticCandidatesByStage]);
 
   // Detect mobile for enhanced visual feedback
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -539,30 +660,89 @@ export default function KanbanBoard({
 
         <div
           ref={boardRef}
-          className="flex gap-3 overflow-x-auto pb-4 px-1 min-h-[600px] bg-gradient-to-b from-gray-50 to-white rounded-xl border border-gray-100"
-          style={{ scrollbarWidth: 'thin' }}
+          className="flex gap-3 overflow-x-auto px-1 h-full bg-gradient-to-b from-gray-50 to-white rounded-xl border border-gray-100 kanban-board-scroll"
         >
-          {stages.map((stage) => (
-            <KanbanColumn
-              key={stage}
-              stage={stage}
-              candidates={optimisticCandidatesByStage[stage] || []}
-              accentColor={STAGE_ACCENTS[stage] || '#6b7280'}
-              onCandidateClick={onCandidateClick}
-              onCandidateEdit={onCandidateEdit}
-              onCandidateDelete={onCandidateDelete}
-              onDownloadResume={onDownloadResume}
-              onOpenNotes={handleOpenNotes}
-              hasEditPermission={hasEditPermission}
-              hasDeletePermission={hasDeletePermission}
-              isDragging={isDragging}
-              isOver={overColumn === stage}
-              dropIndex={overColumn === stage ? dropIndex : null}
-              syncingCards={syncState.syncingCards}
-              columnRef={columnRefs.current.get(stage)!}
-              candidateAssignments={candidateAssignments}
-            />
-          ))}
+          {DEFAULT_STAGE_CONFIG.mainStages.map((stageConfig) => {
+            // Get candidates for this stage
+            let stageCandidates: ApiCandidate[] = [];
+            
+            if (stageConfig.isUmbrella && stageConfig.subStages) {
+              // Umbrella stage: collect all candidates from sub-stages
+              if (stageConfig.id === 'rejected') {
+                const rejectedStages = ['Rejected', 'On Hold', 'Profile Not Matched', 'Last Minute Back Out'];
+                rejectedStages.forEach(stageName => {
+                  stageCandidates.push(...(optimisticCandidatesByStage[stageName] || []));
+                });
+              } else if (stageConfig.id === 'interview') {
+                // Interview umbrella: collect all Interview stage candidates
+                stageCandidates = optimisticCandidatesByStage['Interview'] || [];
+              }
+            } else {
+              // Regular stage: map to legacy stage name
+              const legacyStageName = stageConfig.name;
+              stageCandidates = optimisticCandidatesByStage[legacyStageName] || [];
+            }
+
+            if (stageConfig.isUmbrella) {
+              return (
+                <div key={stageConfig.id} data-umbrella-stage={stageConfig.id}>
+                  <UmbrellaStageColumn
+                    stage={stageConfig}
+                    candidates={stageCandidates}
+                    onCandidateClick={selectionMode ? (c) => onToggleSelect(c.id) : onCandidateClick}
+                    onCandidateEdit={onCandidateEdit}
+                    onCandidateDelete={onCandidateDelete}
+                    onDownloadResume={onDownloadResume}
+                    onOpenNotes={handleOpenNotes}
+                    onStageChange={handleStageChange}
+                    availableStages={stages}
+                    hasEditPermission={hasEditPermission && !selectionMode}
+                    hasDeletePermission={hasDeletePermission && !selectionMode}
+                    isDragging={isDragging}
+                    isOver={overColumn === stageConfig.id}
+                    dropIndex={overColumn === stageConfig.id ? dropIndex : null}
+                    syncingCards={syncState.syncingCards}
+                    candidateAssignments={candidateAssignments}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={onToggleSelect}
+                    onExpandUmbrella={() => {
+                      const element = document.querySelector(`[data-umbrella-stage="${stageConfig.id}"]`) as HTMLElement;
+                      if (element) {
+                        handleExpandUmbrella(stageConfig, element);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <KanbanColumn
+                key={stageConfig.id}
+                stage={stageConfig.name}
+                candidates={stageCandidates}
+                accentColor={stageConfig.accentColor}
+                onCandidateClick={selectionMode ? (c) => onToggleSelect(c.id) : onCandidateClick}
+                onCandidateEdit={onCandidateEdit}
+                onCandidateDelete={onCandidateDelete}
+                onDownloadResume={onDownloadResume}
+                onOpenNotes={handleOpenNotes}
+                onStageChange={handleStageChange}
+                availableStages={stages}
+                hasEditPermission={hasEditPermission && !selectionMode}
+                hasDeletePermission={hasDeletePermission && !selectionMode}
+                isDragging={isDragging}
+                isOver={overColumn === stageConfig.name}
+                dropIndex={overColumn === stageConfig.name ? dropIndex : null}
+                syncingCards={syncState.syncingCards}
+                candidateAssignments={candidateAssignments}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleSelect={onToggleSelect}
+              />
+            );
+          })}
         </div>
 
         <DragOverlay
@@ -635,6 +815,27 @@ export default function KanbanBoard({
         isOpen={notesPanelCandidate !== null}
         onClose={() => setNotesPanelCandidate(null)}
       />
+
+      {/* Nested Kanban Overlay for Umbrella Stages */}
+      {expandedUmbrellaStage && (
+        <NestedKanbanOverlay
+          isOpen={true}
+          umbrellaStage={expandedUmbrellaStage}
+          candidates={getUmbrellaCandidates(expandedUmbrellaStage)}
+          onClose={handleCloseUmbrella}
+          onStageChange={handleStageChange}
+          onCandidateClick={onCandidateClick}
+          onCandidateEdit={onCandidateEdit}
+          onCandidateDelete={onCandidateDelete}
+          onDownloadResume={onDownloadResume}
+          onOpenNotes={handleOpenNotes}
+          hasEditPermission={hasEditPermission}
+          hasDeletePermission={hasDeletePermission}
+          syncingCards={syncState.syncingCards}
+          candidateAssignments={candidateAssignments}
+          originRect={umbrellaOriginRect}
+        />
+      )}
     </>
   );
 }

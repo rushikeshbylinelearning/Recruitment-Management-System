@@ -1,3 +1,4 @@
+import '../styles/JobApplicantsModal.css';
 import React, { useState, useEffect } from 'react';
 import { X, Save, Send, Upload, FileText, Calendar, Briefcase, Link, ChevronDown } from 'lucide-react';
 import { assignmentsAPI, jobsAPI, Assignment } from '../services/api';
@@ -139,12 +140,10 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div
-        className={`relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl transition-all duration-200 ${
-          visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-        }`}
+        className={`shared-modal-shell transition-all duration-200 ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+        <div className="shared-modal-header">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
               <FileText size={18} className="text-indigo-600" />
@@ -167,7 +166,7 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="shared-modal-form-body space-y-5">
           {error && (
             <div className="flex items-start gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
               <span className="mt-0.5 shrink-0">⚠</span>
@@ -298,7 +297,7 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-2xl">
+        <div className="shared-modal-footer shared-modal-footer-end">
           <button
             type="button"
             onClick={onClose}

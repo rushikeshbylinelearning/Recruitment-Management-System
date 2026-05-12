@@ -3,19 +3,26 @@ import { Search, User, Mail, Phone, ArrowRight, UserPlus, Upload, Clock, Eye, Ed
 import { Candidate } from '../types';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useOutletContext } from 'react-router-dom';
 import AddCandidateModal from './AddCandidateModal';
 import CandidateImportContainer from './import/CandidateImportContainer';
 import CandidateViewModal from './CandidateViewModal';
 
 const PAGE_SIZE = 50;
 
+interface OutletContext {
+  globalSearchTerm: string;
+  setGlobalSearchTerm: (term: string) => void;
+}
+
 export default function Candidates() {
   const { hasPermission } = useAuth();
+  const { globalSearchTerm = '', setGlobalSearchTerm } = useOutletContext<OutletContext>() || {};
   const [candidates, setCandidates] = useState<ApiCandidate[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [stageFilter, setStageFilter] = useState('All');
   const [jobFilter, setJobFilter] = useState<number[]>([]);
   const [showJobFilter, setShowJobFilter] = useState(false);
@@ -27,6 +34,9 @@ export default function Candidates() {
   const [editingCandidate, setEditingCandidate] = useState<ApiCandidate | null>(null);
   const [listPage, setListPage] = useState(1);
   const [kanbanPageByStage, setKanbanPageByStage] = useState<Record<string, number>>({});
+
+  // Use global search term if available, otherwise use local
+  const searchTerm = globalSearchTerm || localSearchTerm;
 
   const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding'];
 
@@ -88,10 +98,10 @@ export default function Candidates() {
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((candidate) => {
-      const matchesSearch = candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           candidate.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           candidate.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           candidate.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = (candidate.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (candidate.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (candidate.phone || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (candidate.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (candidate.location && candidate.location.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchesStage = stageFilter === 'All' || candidate.stage === stageFilter;
       const matchesJob = jobFilter.length === 0 || (candidate.job_id && jobFilter.includes(Number(candidate.job_id)));
@@ -481,12 +491,8 @@ export default function Candidates() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Candidates</h1>
-          <p className="text-gray-600 mt-1">Track and manage all your job applicants</p>
-        </div>
+      {/* Action Buttons */}
+      <div className="flex justify-end items-center">
         <div className="flex items-center space-x-4">
           {/* Action Buttons */}
           <div className="flex items-center space-x-3">
@@ -545,7 +551,13 @@ export default function Candidates() {
             type="text"
             placeholder="Search candidates..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setLocalSearchTerm(value);
+              if (setGlobalSearchTerm) {
+                setGlobalSearchTerm(value);
+              }
+            }}
             className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white shadow-sm transition-all duration-200"
           />
         </div>

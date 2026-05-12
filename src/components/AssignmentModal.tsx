@@ -1,8 +1,9 @@
+import '../styles/JobApplicantsModal.css';
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, FileText, Calendar, Clock, Link, Mail, Bell, ChevronDown, Loader2 } from 'lucide-react';
 
 interface AssignmentModalProps {
-  candidate: { id: number; name: string; email?: string } | null;
+  candidate: { id: number | string; name: string; email?: string } | null;
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (payload: any | null) => void;
@@ -216,14 +217,10 @@ export default function AssignmentModal({
       onClick={handleBackdropClick}
     >
       <div
-        className={`
-          relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl
-          transition-all duration-200
-          ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        `}
+        className={`shared-modal-shell transition-all duration-200 ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+        <div className="shared-modal-header">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
               <FileText size={18} className="text-indigo-600" />
@@ -244,7 +241,7 @@ export default function AssignmentModal({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="shared-modal-form-body space-y-5">
 
           {/* Assignment multi-select */}
           <div>
@@ -496,7 +493,7 @@ export default function AssignmentModal({
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-2xl">
+        <div className="shared-modal-footer">
           <button
             type="button"
             onClick={onClose}

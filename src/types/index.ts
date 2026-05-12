@@ -27,7 +27,7 @@ export interface Candidate {
   email: string;
   phone: string;
   position: string;
-  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out';
+  stage: 'Applied' | 'Follow Up' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out' | 'Profile Not Matched';
   source: string;
   appliedDate: string;
   resume: string;

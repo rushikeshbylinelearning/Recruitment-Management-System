@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { SlidersHorizontal, Download } from 'lucide-react';
+import { SlidersHorizontal, Download, Trash2, CheckSquare, Square, X } from 'lucide-react';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
@@ -10,7 +10,27 @@ import KanbanBoard from './kanban/KanbanBoard';
 import FilterPanel, { FilterState, DEFAULT_FILTERS } from './kanban/FilterPanel';
 import Toast from './ui/Toast';
 
-const STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'Last Minute Back Out'] as const;
+const STAGES = [
+  // Main stages
+  'Applied',
+  'Follow Up',
+  'Screening',
+  'Interview',
+  // Interview sub-stages
+  'Follow Up (Interview)',
+  'Came Down',
+  'Didn\'t Come',
+  'Selected (Interview)',
+  'Rejected (Interview)',
+  // Continue main stages
+  'Offer',
+  'Hired',
+  'Rejected',
+  // Rejected sub-stages
+  'On Hold',
+  'Profile Not Matched',
+  'Last Minute Back Out',
+] as const;
 
 function useDebounced<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -45,6 +65,9 @@ export default function CandidatesNew() {
   const [editingCandidate, setEditingCandidate] = useState<ApiCandidate | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const candidatesRef = useRef<ApiCandidate[]>([]);
   candidatesRef.current = candidates;
@@ -98,10 +121,10 @@ export default function CandidatesNew() {
     const term = debouncedSearch.toLowerCase();
     return candidates.filter((c) => {
       if (term && !(
-        c.name.toLowerCase().includes(term) ||
-        c.email.toLowerCase().includes(term) ||
-        c.phone.toLowerCase().includes(term) ||
-        c.position.toLowerCase().includes(term)
+        (c.name || '').toLowerCase().includes(term) ||
+        (c.email || '').toLowerCase().includes(term) ||
+        (c.phone || '').toLowerCase().includes(term) ||
+        (c.position || '').toLowerCase().includes(term)
       )) return false;
 
       if (filters.stages.length > 0 && !filters.stages.includes(c.stage)) return false;
@@ -162,8 +185,8 @@ export default function CandidatesNew() {
 
   const handleStageChange = useCallback(async (candidateId: string, newStage: string) => {
     const validStages: ApiCandidate['stage'][] = [
-      'Applied', 'Screening', 'Interview', 'Offer', 'Hired',
-      'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out',
+      'Applied', 'Follow Up', 'Screening', 'Interview', 'Offer', 'Hired',
+      'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out', 'Profile Not Matched',
     ];
     if (!validStages.includes(newStage as ApiCandidate['stage'])) {
       setToast({ message: 'Invalid stage', type: 'error' });
@@ -223,6 +246,49 @@ export default function CandidatesNew() {
       setToast({ message: 'Failed to delete candidate', type: 'error' });
     }
   }, []);
+
+  const handleToggleSelect = useCallback((candidateId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedIds(new Set(filteredCandidates.map(c => c.id)));
+  }, [filteredCandidates]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleExitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} candidate(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      const response = await candidatesAPI.bulkDeleteCandidates(Array.from(selectedIds));
+      if (response.success) {
+        setCandidates(prev => prev.filter(c => !selectedIds.has(c.id)));
+        setToast({ message: `${response.data?.deletedCount ?? selectedIds.size} candidates deleted`, type: 'success' });
+        setSelectedIds(new Set());
+        setSelectionMode(false);
+      } else {
+        setToast({ message: 'Failed to delete candidates', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Failed to delete candidates', type: 'error' });
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [selectedIds]);
 
   const handleDownloadResume = useCallback(async (candidateId: string) => {
     try {
@@ -437,14 +503,14 @@ export default function CandidatesNew() {
   return (
     <div className="flex flex-col h-full">
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex-shrink-0">
           {error}
         </div>
       )}
 
       {/* Active Filter Chips */}
       {activeChips.length > 0 && (
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-2 mb-3 flex-wrap flex-shrink-0">
           <span className="text-xs font-medium text-gray-500">Active Filters:</span>
           {activeChips.map((chip, idx) => (
             <span
@@ -472,7 +538,7 @@ export default function CandidatesNew() {
       )}
 
       {/* Kanban Board */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0">
         <KanbanBoard
           stages={stages as unknown as string[]}
           candidatesByStage={candidatesByStage}
@@ -483,11 +549,25 @@ export default function CandidatesNew() {
           onDownloadResume={handleDownloadResume}
           hasEditPermission={hasPermission('candidates', 'edit')}
           hasDeletePermission={hasPermission('candidates', 'delete')}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
         />
       </div>
 
       {/* Floating Action Buttons - BOTTOM RIGHT */}
       <div className="fixed bottom-6 right-6 z-30 flex flex-col items-center gap-3">
+        {/* Select Mode Toggle */}
+        {hasPermission('candidates', 'delete') && !selectionMode && (
+          <button
+            onClick={() => setSelectionMode(true)}
+            className="w-14 h-14 bg-white text-gray-700 rounded-full shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center group border border-gray-200"
+            title="Select candidates to delete"
+          >
+            <CheckSquare size={20} className="text-gray-600" />
+          </button>
+        )}
+
         {/* Filter Button */}
         <button
           onClick={() => setFilterPanelOpen(true)}
@@ -513,6 +593,56 @@ export default function CandidatesNew() {
           <Download size={20} />
         </button>
       </div>
+
+      {/* Bulk Delete Action Bar — appears at bottom when in selection mode */}
+      {selectionMode && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-2xl px-6 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleExitSelectionMode}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Exit selection mode"
+            >
+              <X size={20} />
+            </button>
+            <span className="text-sm font-semibold text-gray-700">
+              {selectedIds.size > 0
+                ? `${selectedIds.size} candidate${selectedIds.size > 1 ? 's' : ''} selected`
+                : 'Click cards to select'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSelectAll}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              <CheckSquare size={16} />
+              Select All ({filteredCandidates.length})
+            </button>
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleClearSelection}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                <Square size={16} />
+                Clear
+              </button>
+            )}
+            <button
+              onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0 || bulkDeleting}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors shadow-sm"
+            >
+              {bulkDeleting ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Trash2 size={16} />
+              )}
+              {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size > 0 ? selectedIds.size : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter Panel */}
       <FilterPanel

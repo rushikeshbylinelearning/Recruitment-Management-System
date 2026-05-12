@@ -9,6 +9,7 @@ interface HRNotesTimelineProps {
 // Stage order for timeline display
 const STAGE_ORDER = [
   'Applied',
+  'Follow Up',
   'Screening',
   'Interview',
   'Offer',
@@ -16,7 +17,9 @@ const STAGE_ORDER = [
   'On Hold',
   'Rejected',
   'No Show - Interview',
-  'No Show - Onboarding'
+  'No Show - Onboarding',
+  'Last Minute Back Out',
+  'Profile Not Matched',
 ];
 
 // Stage colors matching the Kanban board
@@ -30,6 +33,9 @@ const STAGE_COLORS: Record<string, string> = {
   'On Hold': '#6b7280',
   'No Show - Interview': '#ea580c',
   'No Show - Onboarding': '#ec4899',
+  'Last Minute Back Out': '#dc2626',
+  'Profile Not Matched': '#9333ea',
+  'Follow Up': '#0891b2',
 };
 
 // Interaction type icons and colors

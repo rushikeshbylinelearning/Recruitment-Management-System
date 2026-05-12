@@ -79,10 +79,8 @@ export default function FileUploadComponent({ onUploadSuccess, onCancel }: FileU
 
     setSelectedFile(file);
     
-    // Auto-upload for single-sheet files or CSV
-    if (file.name.endsWith('.csv')) {
-      uploadFile(file);
-    }
+    // Auto-upload for all supported file types
+    uploadFile(file);
   };
 
   const uploadFile = async (file: File, sheetIndex?: number) => {

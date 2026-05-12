@@ -164,7 +164,13 @@ router.get('/:id', authenticateToken, checkPermission('jobs', 'view'), validateI
   // Convert snake_case to camelCase for frontend compatibility
   job.jobType = job.job_type;
   job.postedDate = job.posted_date;
-  job.applicantCount = job.applicant_count;
+
+  // Compute applicant count dynamically (same as job list endpoint)
+  const applicantCountResult = await query(
+    'SELECT COUNT(*) as count FROM candidates WHERE job_id = ?',
+    [jobId]
+  );
+  job.applicantCount = applicantCountResult[0].count;
   
   // Remove snake_case fields
   delete job.job_type;
@@ -381,9 +387,9 @@ router.get('/:id/candidates', authenticateToken, checkPermission('candidates', '
     `SELECT c.*, u.name as assigned_to_name 
      FROM candidates c
      LEFT JOIN users u ON c.assigned_to = u.id
-     WHERE c.position = ?
+     WHERE c.job_id = ?
      ORDER BY c.applied_date DESC`,
-    [existingJobs[0].title]
+    [jobId]
   );
 
   // Parse JSON fields and add communications count
@@ -400,6 +406,40 @@ router.get('/:id/candidates', authenticateToken, checkPermission('candidates', '
       [candidate.id]
     );
     candidate.communicationsCount = commCount[0].count;
+
+    // Convert snake_case to camelCase for frontend compatibility
+    candidate.appliedDate = candidate.applied_date;
+    candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
+    candidate.assignedToId = candidate.assigned_to || null;
+    candidate.salary = {
+      expected: candidate.salary_expected || '',
+      offered: candidate.salary_offered || '',
+      negotiable: !!candidate.salary_negotiable,
+    };
+    candidate.availability = {
+      joiningTime: candidate.joining_time || '',
+      noticePeriod: candidate.notice_period || '',
+      immediateJoiner: !!candidate.immediate_joiner,
+    };
+    candidate.workPreferences = {
+      workPreference: candidate.work_preference || undefined,
+    };
+    candidate.assignmentDetails = {
+      inHouseAssignmentStatus: candidate.in_house_assignment_status || undefined,
+    };
+
+    // Remove snake_case fields
+    delete candidate.applied_date;
+    delete candidate.assigned_to_name;
+    delete candidate.assigned_to;
+    delete candidate.salary_expected;
+    delete candidate.salary_offered;
+    delete candidate.salary_negotiable;
+    delete candidate.joining_time;
+    delete candidate.notice_period;
+    delete candidate.immediate_joiner;
+    delete candidate.work_preference;
+    delete candidate.in_house_assignment_status;
   }
 
   res.json({
@@ -421,19 +461,17 @@ router.get('/:id/stats', authenticateToken, checkPermission('jobs', 'view'), val
     throw new NotFoundError('Job posting not found');
   }
 
-  const jobTitle = existingJobs[0].title;
-
-  // Get statistics
+  // Get statistics using job_id for accurate counts
   const stats = await query(
     `SELECT 
-       (SELECT COUNT(*) FROM candidates WHERE position = ?) as total_applications,
-       (SELECT COUNT(*) FROM candidates WHERE position = ? AND stage = 'Applied') as applied,
-       (SELECT COUNT(*) FROM candidates WHERE position = ? AND stage = 'Interview') as interviewing,
-       (SELECT COUNT(*) FROM candidates WHERE position = ? AND stage = 'Offer') as offers,
-       (SELECT COUNT(*) FROM candidates WHERE position = ? AND stage = 'Hired') as hired,
-       (SELECT COUNT(*) FROM candidates WHERE position = ? AND stage = 'Rejected') as rejected,
-       (SELECT AVG(score) FROM candidates WHERE position = ? AND score > 0) as avg_score`,
-    [jobTitle, jobTitle, jobTitle, jobTitle, jobTitle, jobTitle, jobTitle]
+       (SELECT COUNT(*) FROM candidates WHERE job_id = ?) as total_applications,
+       (SELECT COUNT(*) FROM candidates WHERE job_id = ? AND stage = 'Applied') as applied,
+       (SELECT COUNT(*) FROM candidates WHERE job_id = ? AND stage = 'Interview') as interviewing,
+       (SELECT COUNT(*) FROM candidates WHERE job_id = ? AND stage = 'Offer') as offers,
+       (SELECT COUNT(*) FROM candidates WHERE job_id = ? AND stage = 'Hired') as hired,
+       (SELECT COUNT(*) FROM candidates WHERE job_id = ? AND stage = 'Rejected') as rejected,
+       (SELECT AVG(score) FROM candidates WHERE job_id = ? AND score > 0) as avg_score`,
+    [jobId, jobId, jobId, jobId, jobId, jobId, jobId]
   );
 
   res.json({

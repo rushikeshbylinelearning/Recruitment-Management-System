@@ -378,6 +378,113 @@ router.delete('/forms/:id', async (req, res) => {
   }
 });
 
+// POST /api/form-builder/forms/:id/generate-share-link
+// Generates a unique shareable link token for this form.
+// Each call produces a distinct token so every distributed link is unique.
+router.post('/forms/:id/generate-share-link', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [form] = await query('SELECT id, slug FROM forms WHERE id = ?', [id]);
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'Form not found' });
+    }
+
+    // Ensure the share tokens table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS form_share_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        form_id INT NOT NULL,
+        token VARCHAR(64) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NULL,
+        used_count INT DEFAULT 0,
+        is_active BOOLEAN DEFAULT TRUE,
+        INDEX idx_token (token),
+        INDEX idx_form_id (form_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    const shareToken = crypto.randomBytes(32).toString('hex');
+    // Share links are valid for 30 days by default
+    await query(
+      `INSERT INTO form_share_tokens (form_id, token, expires_at)
+       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))`,
+      [id, shareToken]
+    );
+
+    // Use FRONTEND_URL env var so the link points to the correct frontend
+    // (dev: http://localhost:5173, prod: https://hr.bylinelms.com)
+    // Falls back to the request origin only if FRONTEND_URL is not set.
+    // When behind a reverse proxy (nginx/Apache), req.protocol may be 'http'
+    // even though the public URL is https — use X-Forwarded-Proto to detect the real protocol.
+    const detectedProtocol = req.headers['x-forwarded-proto']?.split(',')[0]?.trim() || req.protocol;
+    const frontendBase = (process.env.FRONTEND_URL || `${detectedProtocol}://${req.get('host')}`)
+      .split(',')[0]   // FRONTEND_URL may be comma-separated; take the first entry
+      .trim()
+      .replace(/\/$/, ''); // strip trailing slash
+
+    const link = `${frontendBase}/apply/${form.slug}?share=${shareToken}`;
+    console.log('[FormBuilder] Generated share link:', link);
+
+    res.json({
+      success: true,
+      data: { shareToken, link }
+    });
+  } catch (error) {
+    console.error('Error generating share link:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate share link' });
+  }
+});
+
+// GET /api/form-builder/forms/:id/share-links - List all share tokens for a form
+router.get('/forms/:id/share-links', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [form] = await query('SELECT id, slug FROM forms WHERE id = ?', [id]);
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'Form not found' });
+    }
+
+    const tokens = await query(
+      `SELECT id, token, created_at, expires_at, used_count, is_active
+       FROM form_share_tokens
+       WHERE form_id = ?
+       ORDER BY created_at DESC`,
+      [id]
+    );
+
+    const detectedProtocol = req.headers['x-forwarded-proto']?.split(',')[0]?.trim() || req.protocol;
+    const frontendBase = (process.env.FRONTEND_URL || `${detectedProtocol}://${req.get('host')}`)
+      .split(',')[0]
+      .trim()
+      .replace(/\/$/, '');
+
+    const links = tokens.map(t => ({
+      ...t,
+      link: `${frontendBase}/apply/${form.slug}?share=${t.token}`
+    }));
+
+    res.json({ success: true, data: { links } });
+  } catch (error) {
+    console.error('Error fetching share links:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch share links' });
+  }
+});
+
+// PATCH /api/form-builder/share-links/:tokenId/revoke - Revoke a share token
+router.patch('/share-links/:tokenId/revoke', async (req, res) => {
+  try {
+    const { tokenId } = req.params;
+    await query('UPDATE form_share_tokens SET is_active = FALSE WHERE id = ?', [tokenId]);
+    res.json({ success: true, message: 'Share link revoked successfully' });
+  } catch (error) {
+    console.error('Error revoking share link:', error);
+    res.status(500).json({ success: false, message: 'Failed to revoke share link' });
+  }
+});
+
 // POST /api/form-builder/forms/:id/regenerate-token - Regenerate access token
 router.post('/forms/:id/regenerate-token', async (req, res) => {
   try {

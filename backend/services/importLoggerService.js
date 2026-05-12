@@ -63,7 +63,7 @@ async function insertFailedRows(importLogId, failedRows) {
 
   const query = `
     INSERT INTO import_failed_rows 
-    (import_log_id, row_number, candidate_name, error_message, row_data)
+    (import_log_id, \`row_number\`, candidate_name, error_message, row_data)
     VALUES (?, ?, ?, ?, ?)
   `;
 
@@ -171,13 +171,13 @@ async function getFailedRows(importId) {
     const [rows] = await db.query(
       `SELECT 
         id,
-        row_number,
+        \`row_number\`,
         candidate_name,
         error_message,
         row_data
        FROM import_failed_rows
        WHERE import_log_id = ?
-       ORDER BY row_number`,
+       ORDER BY \`row_number\``,
       [importId]
     );
 

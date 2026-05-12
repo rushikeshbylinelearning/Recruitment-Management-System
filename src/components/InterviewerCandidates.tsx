@@ -77,9 +77,9 @@ export default function InterviewerCandidates() {
         // Apply search filter
         if (searchTerm) {
           assignedCandidates = assignedCandidates.filter(candidate =>
-            candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            candidate.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            candidate.email.toLowerCase().includes(searchTerm.toLowerCase())
+            (candidate.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (candidate.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (candidate.email || '').toLowerCase().includes(searchTerm.toLowerCase())
           );
         }
         
@@ -252,12 +252,6 @@ export default function InterviewerCandidates() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Your Assigned Candidates</h1>
-        <p className="text-gray-600 mt-1">Review candidates assigned to you for interviews and manage interview notes</p>
-      </div>
-
       {/* Search and Filters */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <form onSubmit={handleSearch} className="flex flex-col lg:flex-row gap-4">

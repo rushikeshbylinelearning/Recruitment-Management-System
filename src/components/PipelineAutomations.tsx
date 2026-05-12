@@ -90,11 +90,8 @@ export default function PipelineAutomations() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-end items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Pipeline Automations</h1>
-          <p className="text-gray-600 mt-1">Automate actions when candidates move through stages</p>
-        </div>
         {hasPermission('settings', 'edit') && (
           <button
             className="flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"

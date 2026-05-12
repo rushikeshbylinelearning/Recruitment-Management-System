@@ -31,9 +31,9 @@ const OPTIONAL_FIELDS = [
  * @param {Array} rows - Array of raw data rows
  * @param {Array} mappings - Array of FieldMapping objects
  * @param {number} maxRows - Maximum number of rows to preview
- * @returns {Object} PreviewResult
+ * @returns {Promise<Object>} PreviewResult
  */
-function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
+async function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
   const previewRows = [];
   const statistics = {
     totalRows: rows.length,
@@ -53,6 +53,15 @@ function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
     mappingMap.set(m.sourceColumn, m.targetField);
   });
 
+  // Import stage detection service
+  let detectStage = null;
+  try {
+    const stageMappingModule = await import('./stageMappingService.js');
+    detectStage = stageMappingModule.detectStage;
+  } catch (err) {
+    console.warn('Stage mapping service not available:', err.message);
+  }
+
   // Process rows for preview
   const rowsToPreview = rows.slice(0, maxRows);
 
@@ -66,8 +75,26 @@ function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
       }
     }
 
-    // Normalize the mapped data
-    const normalized = dataNormalizerService.normalize({ normalized: mappedData });
+    // Normalize the mapped data (pass flat object directly)
+    const normalized = dataNormalizerService.normalize(mappedData);
+
+    // Detect stage if stage mapping service is available
+    let stageDetection = null;
+    if (detectStage && (normalized.normalized.stage || row.__cellColors)) {
+      const cellColors = row.__cellColors || {};
+      const stageColor = cellColors.stage || 
+                         cellColors.Stage || 
+                         cellColors.Status || 
+                         cellColors.Workflow ||
+                         Object.values(cellColors)[0];
+
+      stageDetection = detectStage({
+        cellValue: normalized.normalized.stage || '',
+        cellColor: stageColor,
+        allowFuzzyMatch: true,
+        confidenceThreshold: 0.7
+      });
+    }
 
     // Identify missing fields
     const missingRequired = REQUIRED_FIELDS.filter(
@@ -86,7 +113,14 @@ function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
       mappedData: normalized.normalized,
       missingRequired,
       missingOptional,
-      validationIssues
+      validationIssues,
+      stageDetection: stageDetection ? {
+        detectedStage: stageDetection.legacyStage,
+        mainStage: stageDetection.mainStage,
+        subStage: stageDetection.subStage,
+        confidence: stageDetection.confidence,
+        matchMethod: stageDetection.matchMethod
+      } : null
     });
 
     // Update statistics
@@ -132,7 +166,11 @@ function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
   // Check for unmapped columns
   const allSourceColumns = new Set();
   rows.forEach(row => {
-    Object.keys(row).forEach(col => allSourceColumns.add(col));
+    Object.keys(row).forEach(col => {
+      if (!col.startsWith('__')) { // Exclude metadata fields
+        allSourceColumns.add(col);
+      }
+    });
   });
 
   const unmappedColumns = Array.from(allSourceColumns).filter(

@@ -1,0 +1,81 @@
+# ============================================================
+#  hr.bylinelms.com — Frontend (React SPA) + API Proxy
+#  Apache / cPanel / Passenger
+# ============================================================
+
+Options -Indexes
+Options -MultiViews
+
+# ── Security headers ────────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options    "nosniff"
+    Header always set X-Frame-Options           "SAMEORIGIN"
+    Header always set X-XSS-Protection          "1; mode=block"
+    Header always set Referrer-Policy           "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy        "camera=(), microphone=(), geolocation=()"
+    # HSTS — only enable once HTTPS is confirmed stable
+    # Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+</IfModule>
+
+# ── Compression ─────────────────────────────────────────────
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+    AddOutputFilterByType DEFLATE text/javascript application/javascript application/json
+    AddOutputFilterByType DEFLATE application/x-javascript application/xml
+    AddOutputFilterByType DEFLATE image/svg+xml font/woff font/woff2
+</IfModule>
+
+# ── Browser caching ─────────────────────────────────────────
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Hashed JS/CSS bundles (Vite adds content hash — cache forever)
+    <FilesMatch "\.(js|css)$">
+        ExpiresDefault "access plus 1 year"
+        Header append Cache-Control "public, immutable"
+    </FilesMatch>
+
+    # Images & fonts
+    <FilesMatch "\.(ico|png|jpg|jpeg|gif|svg|webp|woff|woff2|ttf|eot)$">
+        ExpiresDefault "access plus 6 months"
+    </FilesMatch>
+
+    # HTML — never cache (always fetch fresh)
+    <FilesMatch "\.html$">
+        ExpiresDefault "access plus 0 seconds"
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# ── Rewrite engine ──────────────────────────────────────────
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # 1. Proxy /api/* → Node.js backend on port 3001
+    #    (Only needed if Passenger is NOT handling the backend.
+    #     If Passenger manages the backend app, remove these two lines.)
+    RewriteCond %{REQUEST_URI} ^/api/ [NC]
+    RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
+
+    # 2. Proxy /uploads/* → backend static uploads
+    RewriteCond %{REQUEST_URI} ^/uploads/ [NC]
+    RewriteRule ^uploads/(.*)$ http://127.0.0.1:3001/uploads/$1 [P,L]
+
+    # 3. React SPA fallback — serve index.html for all other routes
+    #    so that client-side routing (React Router) works correctly
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# ── Proxy module passthrough (required for rules above) ─────
+<IfModule mod_proxy.c>
+    ProxyPreserveHost On
+</IfModule>
+
+# ── Block access to sensitive files ─────────────────────────
+<FilesMatch "(^\.env|\.env\..+|package\.json|package-lock\.json|\.git)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

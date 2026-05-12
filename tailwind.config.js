@@ -25,5 +25,30 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function({ addUtilities }) {
+      addUtilities({
+        '.scrollbar-visible': {
+          'overflow-y': 'scroll',
+          'scrollbar-width': 'auto',
+          'scrollbar-color': '#94a3b8 #e2e8f0',
+          '&::-webkit-scrollbar': {
+            width: '12px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: '#e2e8f0',
+            'border-radius': '6px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: '#94a3b8',
+            'border-radius': '6px',
+            border: '2px solid #e2e8f0',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: '#64748b',
+          },
+        },
+      });
+    },
+  ],
 };

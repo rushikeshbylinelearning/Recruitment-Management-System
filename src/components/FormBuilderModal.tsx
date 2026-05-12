@@ -3,6 +3,8 @@ import axios from 'axios';
 import { API_BASE_URL } from '../services/api';
 import { X } from 'lucide-react';
 
+const APP_URL = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
+
 interface FormBuilderModalProps {
   onClose: () => void;
   onSuccess: () => void;
@@ -145,7 +147,7 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
               placeholder="developer-application-form"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Form will be accessible at: /apply/{formData.slug}
+              Form will be accessible at: {APP_URL}/apply/{formData.slug}
             </p>
           </div>
 

@@ -75,14 +75,11 @@ class ValidationService {
     // Remove javascript: protocol
     sanitized = sanitized.replace(/javascript:/gi, '');
     
-    // Escape special characters for XSS prevention
+    // Only strip dangerous characters, don't escape for HTML entities
+    // This prevents breaking database inserts
     sanitized = sanitized
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;')
-      .replace(/\//g, '&#x2F;');
+      .replace(/<script[^>]*>.*?<\/script>/gi, '')
+      .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
     
     return sanitized.trim();
   }

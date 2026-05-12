@@ -1,12 +1,16 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 
 // API Base Configuration
-// - In development, the Vite dev-server proxy (vite.config.ts) forwards `/api` → localhost:3001.
-// - In production builds, VITE_API_URL should be set at build time (e.g. in .env.production).
-//   If not set, falls back to the known production URL so hosted builds still work correctly
-//   without needing a proxy.
-export const API_BASE_URL = import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? '/api' : 'https://hr.legatolxp.online/api');
+// - In development, VITE_API_URL=/api (set in .env.development) and the Vite dev-server proxy
+//   (vite.config.ts) forwards `/api` → localhost:5000.
+// - In production builds, VITE_API_URL=https://hr.bylinelms.com/api (set in .env.production).
+// - Safety fallback: if VITE_API_URL is somehow not set, default to localhost:3001 for local dev.
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+// Debug log — remove before final production release if desired
+if (import.meta.env.DEV) {
+  console.log('API BASE URL:', API_BASE_URL);
+}
 
 // Create axios instance
 const api = axios.create({
@@ -177,7 +181,7 @@ export const usersAPI = {
     return response.data;
   },
 
-  updateUser: async (id: number, userData: Partial<User>): Promise<ApiResponse> => {
+  updateUser: async (id: number, userData: Partial<User> & { password?: string }): Promise<ApiResponse> => {
     const response = await api.put(`/users/${id}`, userData);
     return response.data;
   },
@@ -469,7 +473,7 @@ export interface Candidate {
   email: string;
   phone: string;
   position: string;
-  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out';
+  stage: 'Applied' | 'Follow Up' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out' | 'Profile Not Matched';
   source: string;
   appliedDate: string;
   resume: string;
@@ -588,6 +592,11 @@ export const candidatesAPI = {
     return response.data;
   },
 
+  bulkDeleteCandidates: async (ids: string[]): Promise<ApiResponse<{ deletedCount: number }>> => {
+    const response = await api.post('/candidates/bulk-delete', { ids });
+    return response.data;
+  },
+
   bulkImportCandidates: async (candidates: Omit<Candidate, 'id' | 'communications' | 'interviews'>[]): Promise<ApiResponse<{ results: any[], errors: any[] }>> => {
     const response = await api.post('/candidates/bulk-import', { candidates });
     return response.data;
@@ -676,6 +685,12 @@ export const candidatesAPI = {
 
   checkByPhone: async (phone: string): Promise<ApiResponse<Candidate> & { exists: boolean; latestNote?: any }> => {
     const response = await api.get(`/candidates/check-by-phone/${encodeURIComponent(phone)}`);
+    return response.data;
+  },
+
+  // Get candidates for a specific job by job_id
+  getCandidatesByJob: async (jobId: number): Promise<ApiResponse<{ candidates: Candidate[]; job: any }>> => {
+    const response = await api.get(`/jobs/${jobId}/candidates`);
     return response.data;
   },
 };
@@ -944,6 +959,11 @@ export const dashboardAPI = {
       candidate_name: string | null;
       position: string | null;
     }>;
+    dailyMetrics: {
+      total: number;
+      byStage: Array<{ stage: string; count: number }>;
+      byRole: Array<{ role: string; count: number }>;
+    };
   }>> => {
     const response = await api.get('/dashboard/overview');
     return response.data;
@@ -974,6 +994,27 @@ export const dashboardAPI = {
     position: string | null;
   }>>> => {
     const response = await api.get('/dashboard/activities');
+    return response.data;
+  },
+
+  getDailyMetrics: async (): Promise<ApiResponse<{
+    total: number;
+    byStage: Array<{ stage: string; count: number }>;
+    byRole: Array<{ role: string; count: number }>;
+    profileNotFound?: number;
+    followUps?: number;
+  }>> => {
+    const response = await api.get('/dashboard/daily-metrics');
+    return response.data;
+  },
+
+  getMetricsTimeline: async (limit: number = 7): Promise<ApiResponse<Array<{
+    date: string;
+    uploadedCandidates: number;
+    profileNotFound?: number;
+    followUps?: number;
+  }>>> => {
+    const response = await api.get(`/dashboard/metrics/daily?limit=${limit}`);
     return response.data;
   },
 };
@@ -1335,6 +1376,7 @@ export const candidateImportAPI = {
       mappingName?: string;
       duplicateHandling: 'skip' | 'allow_all' | 'merge';
       removeRows?: number[];
+      jobId?: number;
     };
   }): Promise<ApiResponse<{
     importLogId: number;
@@ -1347,6 +1389,16 @@ export const candidateImportAPI = {
         high: number;
         medium: number;
         low: number;
+      };
+      jobSegregation: {
+        mappedCount: number;
+        unmappedCount: number;
+        byJob: Array<{
+          jobId: number;
+          jobTitle: string;
+          count: number;
+          matchMethod: string;
+        }>;
       };
     };
     failedRows?: Array<{
@@ -1404,13 +1456,61 @@ export const candidateImportAPI = {
     const response = await api.delete(`/candidates/import/mappings/${mappingId}`);
     return response.data;
   },
+
+  // Get unassigned candidates (no job_id)
+  getUnassignedCandidates: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<ApiResponse<{
+    candidates: Array<{
+      id: string;
+      name: string;
+      email: string | null;
+      phone: string | null;
+      position: string | null;
+      expertise: string | null;
+      skills: string[];
+      stage: string;
+      applied_date: string;
+    }>;
+    jobs: Array<{ id: number; title: string; department?: string }>;
+    pagination: PaginationInfo;
+  }>> => {
+    const response = await api.get('/candidates/import/unassigned', { params });
+    return response.data;
+  },
+
+  // Manually reassign candidates to a job
+  reassignCandidates: async (
+    candidateIds: string[],
+    jobId: number
+  ): Promise<ApiResponse<{ updatedCount: number; jobId: number; jobTitle: string }>> => {
+    const response = await api.post('/candidates/import/reassign', { candidateIds, jobId });
+    return response.data;
+  },
+
+  // Preview job segregation before confirming import
+  // Sends current mappings so the preview reflects manual mapping changes instantly
+  getJobSegregationPreview: async (uploadId: string, mappings?: FieldMapping[]): Promise<ApiResponse<{
+    totalCandidates: number;
+    mappedCount: number;
+    unmappedCount: number;
+    byJob: Array<{ jobId: number; jobTitle: string; count: number; matchMethod: string }>;
+    availableJobs: Array<{ id: number; title: string }>;
+  }>> => {
+    const response = await api.post(`/candidates/import/job-segregation-preview/${uploadId}`, {
+      mappings: mappings ?? [],
+    });
+    return response.data;
+  },
 };
 
 // HR Notes API
 export interface HRNote {
   id: number;
   candidate_id: string;
-  stage: 'Applied' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding';
+  stage: 'Applied' | 'Follow Up' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out' | 'Profile Not Matched';
   note_text: string;
   interaction_type: 'Phone Call' | 'Email' | 'Interview' | 'Stage Change' | 'General Note' | 'System Event';
   author_id: number;

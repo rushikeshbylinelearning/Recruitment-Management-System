@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../services/api';
-import { Plus, Edit2, Trash2, Copy, Eye, Settings, BarChart3, ExternalLink } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, Eye, Settings, BarChart3, ExternalLink, Link, RefreshCw, X, CheckCircle, XCircle } from 'lucide-react';
 import FormBuilderModal from './FormBuilderModal';
 import FormFieldEditor from './FormFieldEditor';
+
+// Base URL for the frontend app — used to build shareable form links
+const APP_URL = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
+
+if (import.meta.env.DEV) {
+  console.log('APP_URL (FormBuilder):', APP_URL);
+}
 
 interface Form {
   id: string | number;
@@ -26,6 +33,16 @@ interface SelectedForm {
   name: string;
 }
 
+interface ShareLink {
+  id: number;
+  token: string;
+  link: string;
+  created_at: string;
+  expires_at: string | null;
+  used_count: number;
+  is_active: boolean;
+}
+
 const normalizeForm = (rawForm: any): Form => ({
   ...rawForm,
   // Preserve backend ID type; do not coerce to Number to avoid hosted ID issues.
@@ -45,6 +62,10 @@ const FormBuilder: React.FC = () => {
   const [selectedForm, setSelectedForm] = useState<SelectedForm | null>(null);
   const [showFieldEditor, setShowFieldEditor] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | number | null>(null);
+  const [manageLinksForm, setManageLinksForm] = useState<Form | null>(null);
+  const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
+  const [shareLinksLoading, setShareLinksLoading] = useState(false);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
 
   useEffect(() => {
     loadForms();
@@ -106,11 +127,30 @@ const FormBuilder: React.FC = () => {
     }
   };
 
-  const copyFormLink = (form: Form) => {
-    const link = `${window.location.origin}/apply/${form.slug}?token=${form.access_token}`;
-    navigator.clipboard.writeText(link);
-    setCopiedToken(form.id);
-    setTimeout(() => setCopiedToken(null), 2000);
+  const copyFormLink = async (form: Form) => {
+    try {
+      const authToken = localStorage.getItem('authToken');
+      const response = await axios.post(
+        `${API_BASE_URL}/form-builder/forms/${form.id}/generate-share-link`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      const link = response.data?.data?.link;
+      if (link) {
+        console.log('Generated share link:', link);
+        await navigator.clipboard.writeText(link);
+        setCopiedToken(form.id);
+        setTimeout(() => setCopiedToken(null), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to generate share link:', error);
+      // Fallback: build the link client-side using the correct frontend base URL
+      const link = `${APP_URL}/apply/${form.slug}?token=${form.access_token}`;
+      console.log('Fallback share link:', link);
+      navigator.clipboard.writeText(link);
+      setCopiedToken(form.id);
+      setTimeout(() => setCopiedToken(null), 2000);
+    }
   };
 
   const regenerateToken = async (formId: string | number) => {
@@ -131,6 +171,76 @@ const FormBuilder: React.FC = () => {
       console.error('Failed to regenerate token:', error);
       alert('Failed to regenerate token');
     }
+  };
+
+  const openManageLinks = async (form: Form) => {
+    setManageLinksForm(form);
+    setShareLinksLoading(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await axios.get(
+        `${API_BASE_URL}/form-builder/forms/${form.id}/share-links`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setShareLinks(response.data?.data?.links || []);
+    } catch (error) {
+      console.error('Failed to load share links:', error);
+      setShareLinks([]);
+    } finally {
+      setShareLinksLoading(false);
+    }
+  };
+
+  const revokeShareLink = async (tokenId: number) => {
+    if (!confirm('Revoke this link? Anyone using it will no longer be able to access the form.')) return;
+    try {
+      const token = localStorage.getItem('authToken');
+      await axios.patch(
+        `${API_BASE_URL}/form-builder/share-links/${tokenId}/revoke`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setShareLinks(prev => prev.map(l => l.id === tokenId ? { ...l, is_active: false } : l));
+    } catch (error) {
+      console.error('Failed to revoke link:', error);
+      alert('Failed to revoke link');
+    }
+  };
+
+  const generateNewLinkFromModal = async () => {
+    if (!manageLinksForm) return;
+    try {
+      const authToken = localStorage.getItem('authToken');
+      const response = await axios.post(
+        `${API_BASE_URL}/form-builder/forms/${manageLinksForm.id}/generate-share-link`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      const newLink = response.data?.data;
+      if (newLink) {
+        setShareLinks(prev => [{
+          id: Date.now(), // temp id until refresh
+          token: newLink.shareToken,
+          link: newLink.link,
+          created_at: new Date().toISOString(),
+          expires_at: null,
+          used_count: 0,
+          is_active: true
+        }, ...prev]);
+        await navigator.clipboard.writeText(newLink.link);
+        setCopiedToken(manageLinksForm.id);
+        setTimeout(() => setCopiedToken(null), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to generate link:', error);
+      alert('Failed to generate new link');
+    }
+  };
+
+  const copyLinkToClipboard = async (link: ShareLink) => {
+    await navigator.clipboard.writeText(link.link);
+    setCopiedLinkId(link.id);
+    setTimeout(() => setCopiedLinkId(null), 2000);
   };
 
   if (loading) {
@@ -228,6 +338,14 @@ const FormBuilder: React.FC = () => {
                   )}
                 </button>
                 <button
+                  onClick={() => openManageLinks(form)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-50 text-purple-700 rounded hover:bg-purple-100 transition-colors"
+                  title="Manage share links"
+                >
+                  <Link size={14} />
+                  Manage Links
+                </button>
+                <button
                   onClick={() => openFieldEditor(form)}
                   disabled={!hasValidFormId(form?.id)}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
@@ -237,7 +355,7 @@ const FormBuilder: React.FC = () => {
                   Fields
                 </button>
                 <button
-                  onClick={() => window.open(`/apply/${form.slug}?token=${form.access_token}`, '_blank')}
+                  onClick={() => window.open(`${APP_URL}/apply/${form.slug}?token=${form.access_token}`, '_blank')}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
                   title="Preview form"
                 >
@@ -288,6 +406,109 @@ const FormBuilder: React.FC = () => {
             loadForms();
           }}
         />
+      )}
+
+      {/* Manage Share Links Modal */}
+      {manageLinksForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Manage Share Links</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{manageLinksForm.name}</p>
+              </div>
+              <button
+                onClick={() => { setManageLinksForm(null); setShareLinks([]); }}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Generate New Link */}
+            <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between gap-4">
+              <p className="text-sm text-blue-700">Generate a new unique share link for this form. Each link can be tracked and revoked independently.</p>
+              <button
+                onClick={generateNewLinkFromModal}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+              >
+                <RefreshCw size={14} />
+                Generate New Link
+              </button>
+            </div>
+
+            {/* Links List */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {shareLinksLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : shareLinks.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Link size={32} className="mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No share links yet</p>
+                  <p className="text-sm mt-1">Generate a link above to share this form.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {shareLinks.map(link => (
+                    <div
+                      key={link.id}
+                      className={`border rounded-lg p-4 ${link.is_active ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {link.is_active ? (
+                              <span className="flex items-center gap-1 text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                <CheckCircle size={10} /> Active
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                <XCircle size={10} /> Revoked
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-400">
+                              Used {link.used_count} time{link.used_count !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              · Created {new Date(link.created_at).toLocaleDateString()}
+                            </span>
+                            {link.expires_at && (
+                              <span className="text-xs text-gray-400">
+                                · Expires {new Date(link.expires_at).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 font-mono truncate">{link.link}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {link.is_active && (
+                            <>
+                              <button
+                                onClick={() => copyLinkToClipboard(link)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                              >
+                                {copiedLinkId === link.id ? '✓ Copied' : <><Copy size={12} /> Copy</>}
+                              </button>
+                              <button
+                                onClick={() => revokeShareLink(link.id)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors"
+                              >
+                                <XCircle size={12} /> Revoke
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

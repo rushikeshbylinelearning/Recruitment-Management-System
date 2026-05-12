@@ -2,6 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Umbrella Stage Animations */
+@import './styles/umbrellaStage.css';
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Kanban Column Scroll & Containment Fixes
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Ensure all kanban columns have proper scroll containment */
+.kanban-column {
+  /* Prevent scroll chaining to parent */
+  overscroll-behavior: contain;
+  /* Ensure column takes full height */
+  height: 100%;
+  /* Prevent horizontal overflow */
+  overflow-x: hidden;
+}
+
+/* Ensure candidate cards stay within column boundaries */
+.kanban-column [data-card-id] {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure virtualized content container doesn't overflow */
+.kanban-column > div[style*="position: relative"] {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Prevent sidebar label flash on initial load */
+.sidebar-nav-label {
+  opacity: 1;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.sidebar-not-hydrated .sidebar-nav-label {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
 /* ── Dark mode: Black + Dark Blue theme ── */
 :root {
   --dm-bg:          #050d1a;   /* page background  */
@@ -28,7 +68,49 @@
     color: var(--dm-text);
   }
 
-  /* Scrollbars */
+  /* Force visible scrollbar */
+  .force-scrollbar {
+    overflow-y: scroll !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar {
+    width: 12px !important;
+    background-color: #e2e8f0 !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar-track {
+    background: #e2e8f0 !important;
+    border-radius: 6px !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar-thumb {
+    background: #94a3b8 !important;
+    border-radius: 6px !important;
+    border: 2px solid #e2e8f0 !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b !important;
+  }
+
+  /* Scrollbars - Light Mode */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Scrollbars - Dark Mode */
   html.dark ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -166,8 +248,160 @@
   
   .kanban-column {
     contain: layout style paint;
+    /* Columns must fill board height — the board itself is h-full */
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Fade-in animation for dropdowns */
+  .animate-fade-in {
+    animation: fadeIn 0.15s ease-out;
   }
 }
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom scrollbar for dropdown menus */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.6);
+}
+
+/* ── Kanban board horizontal scrollbar — polished & easy to grab ── */
+.kanban-board-scroll {
+  /* Firefox */
+  scrollbar-width: auto;
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+  /* Leave space at bottom for the scrollbar without dead whitespace */
+  padding-bottom: 14px;
+}
+
+.kanban-board-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+  border-radius: 999px;
+  margin: 0 6px;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.75);
+  background-clip: padding-box;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Dark mode scrollbar for kanban */
+html.dark .kanban-board-scroll {
+  scrollbar-color: rgba(71, 85, 105, 0.6) transparent;
+}
+
+html.dark .kanban-board-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 31, 61, 0.4);
+}
+
+html.dark .kanban-board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  background-clip: padding-box;
+}
+
+html.dark .kanban-board-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.6);
+  background-clip: padding-box;
+}
+
+/* ── Nested Kanban Overlay horizontal scrollbar — smooth & premium ── */
+.nested-kanban-scroll {
+  /* Firefox */
+  scrollbar-width: thin;
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+  /* Prevent scroll chaining */
+  overscroll-behavior-x: contain;
+  /* Leave space at bottom for the scrollbar */
+  padding-bottom: 12px;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.6);
+  border-radius: 999px;
+  margin: 0 8px;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+  background-clip: padding-box;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Dark mode scrollbar for nested kanban */
+html.dark .nested-kanban-scroll {
+  scrollbar-color: rgba(71, 85, 105, 0.5) transparent;
+}
+
+html.dark .nested-kanban-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 31, 61, 0.3);
+}
+
+html.dark .nested-kanban-scroll::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.5);
+  background-clip: padding-box;
+}
+
+html.dark .nested-kanban-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+  background-clip: padding-box;
+}
+
 
 /* Toast animations */
 @keyframes slide-up {
@@ -223,3 +457,104 @@
   }
 }
 
+/* ── Layout Stability - Prevent Flickering ── */
+@layer utilities {
+  /* Dashboard layout stability */
+  .dashboard-container {
+    min-height: 100vh;
+    contain: layout style;
+  }
+
+  /* Fixed heights for dashboard widgets to prevent layout shift */
+  .dashboard-widget {
+    min-height: 140px;
+    contain: layout style paint;
+  }
+
+  /* Pipeline chart stable height */
+  .pipeline-chart {
+    min-height: 300px;
+    contain: layout style;
+  }
+
+  /* Metrics timeline stable height */
+  .metrics-timeline {
+    min-height: 300px;
+    contain: layout style;
+  }
+
+  /* Task board stable layout */
+  .task-board-container {
+    min-height: calc(100vh - 180px);
+    contain: layout;
+  }
+
+  /* Task column stable height */
+  .task-column {
+    min-height: 400px;
+    contain: layout style;
+  }
+
+  /* Prevent content jump during loading */
+  .loading-stable {
+    min-height: inherit;
+    contain: layout;
+  }
+
+  /* Skeleton loaders match final layout */
+  .skeleton-card {
+    min-height: 120px;
+    contain: layout style paint;
+  }
+
+  /* Prevent flash of unstyled content */
+  .prevent-fouc {
+    opacity: 0;
+    animation: fade-in-stable 150ms ease-out forwards;
+  }
+
+  @keyframes fade-in-stable {
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Stable grid layouts */
+  .stable-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    contain: layout;
+  }
+
+  /* Prevent layout shift from images/icons */
+  .icon-stable {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  /* Smooth transitions without flicker */
+  .smooth-transition {
+    transition: opacity 200ms ease-in-out, transform 200ms ease-in-out;
+    will-change: opacity, transform;
+  }
+
+  /* Loading overlay that preserves layout */
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fade-in-stable 150ms ease-out;
+  }
+
+  html.dark .loading-overlay {
+    background: rgba(5, 13, 26, 0.9);
+  }
+}

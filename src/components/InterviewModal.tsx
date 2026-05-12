@@ -1,10 +1,11 @@
+import '../styles/JobApplicantsModal.css';
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Calendar, Clock, User, Video, MapPin, FileText, Loader2 } from 'lucide-react';
 import { Interview, InterviewFormPayload } from '../types/interview';
 import { getNextSlot, formatTimeForInput } from '../utils/interviewUtils';
 
 interface InterviewModalProps {
-  candidate: { id: number; name: string; position?: string; job_role?: string } | null;
+  candidate: { id: number | string; name: string; position?: string; job_role?: string } | null;
   isOpen: boolean;
   mode: 'schedule' | 'reschedule';
   existingInterview?: Interview;
@@ -200,14 +201,10 @@ export default function InterviewModal({
       onClick={handleBackdropClick}
     >
       <div
-        className={`
-          relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl
-          transition-all duration-200
-          ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        `}
+        className={`shared-modal-shell transition-all duration-200 ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+        <div className="shared-modal-header">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
               <Calendar size={18} className="text-indigo-600" />
@@ -223,7 +220,7 @@ export default function InterviewModal({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="shared-modal-form-body space-y-5">
 
           {/* Candidate info — read-only */}
           <div className="grid grid-cols-2 gap-4">
@@ -419,7 +416,7 @@ export default function InterviewModal({
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-2xl">
+        <div className="shared-modal-footer">
           <button
             type="button"
             onClick={onClose}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, Plus, Trash2, FileText } from 'lucide-react';
 import { JobPosting } from '../types';
 import { filesAPI, candidatesAPI } from '../services/api';
+import '../styles/JobApplicantsModal.css';
 
 interface AddCandidateModalProps {
   isOpen: boolean;
@@ -250,15 +251,25 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   ];
 
   const stages = [
+    // Main stages
     'Applied',
+    'Follow Up',
     'Screening',
     'Interview',
+    // Interview sub-stages (umbrella)
+    'Follow Up (Interview)',
+    'Came Down',
+    'Didn\'t Come',
+    'Selected (Interview)',
+    'Rejected (Interview)',
+    // Continue main stages
     'Offer',
     'Hired',
-    'On Hold',
     'Rejected',
-    'No Show - Interview',
-    'No Show - Onboarding'
+    // Rejected sub-stages (umbrella)
+    'On Hold',
+    'Profile Not Matched',
+    'Last Minute Back Out',
   ];
 
   if (!isOpen) return null;
@@ -477,9 +488,9 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+    <div className="add-candidate-modal-overlay">
+      <div className="add-candidate-modal-shell">
+        <div className="add-candidate-modal-header">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">
               {editingCandidate ? (editingCandidate.id === 0 ? 'Add Candidate from Resume' : 'Edit Candidate') : 'Add New Candidate'}
@@ -500,8 +511,8 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-          <div className="p-6 space-y-8">
+        <form onSubmit={handleSubmit} className="add-candidate-modal-form">
+          <div className="add-candidate-modal-body space-y-8">
             {/* Personal Information Section */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center border-b pb-2">
@@ -1027,7 +1038,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
           </div>
 
           {/* Footer Actions */}
-          <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
+          <div className="add-candidate-modal-footer">
             <button
               type="button"
               onClick={onClose}

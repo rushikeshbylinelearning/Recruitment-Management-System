@@ -958,7 +958,7 @@ export default function Tasks({}: TasksProps) {
   const [successMessage, setSuccessMessage] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
 
-  // Metrics state
+  // Metrics state - initialize with stable defaults to prevent flicker
   const [metrics, setMetrics] = useState({
     totalInteractions: 0,
     totalTasks: 0,
@@ -981,14 +981,16 @@ export default function Tasks({}: TasksProps) {
   const [taskFormData, setTaskFormData] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Prevent double-fetch in React StrictMode
+  const hasFetchedRef = useRef(false);
+
   // Persist date
   useEffect(() => {
     try { localStorage.setItem('tasks_view_date', viewDate); } catch {}
   }, [viewDate]);
 
-  // Load tasks with optional recruiter filter
+  // Load tasks with optional recruiter filter - STABLE function
   const loadTasks = useCallback(async (recruiterId?: number | null) => {
-    setLoading(true);
     try {
       // Build params with optional assignedTo filter
       const params: any = { page: 1, limit: 100 };
@@ -1011,15 +1013,16 @@ export default function Tasks({}: TasksProps) {
       }
       setTasks(allTasks);
       
-      // Calculate task metrics
-      updateMetrics(allTasks, recruiterId);
-    } finally {
-      setLoading(false);
+      // Calculate metrics immediately after loading tasks
+      return allTasks;
+    } catch (error) {
+      console.error('Failed to load tasks:', error);
+      return [];
     }
   }, []);
 
-  // Calculate metrics from tasks and interactions
-  const updateMetrics = useCallback(async (tasksList: Task[], recruiterId?: number | null) => {
+  // Calculate metrics from tasks and interactions - STABLE function
+  const updateMetrics = useCallback(async (tasksList: Task[], date: string, recruiterId?: number | null) => {
     // Task metrics
     const completed = tasksList.filter(t => t.status === 'Completed').length;
     const pending = tasksList.filter(t => t.status === 'Pending').length;
@@ -1027,7 +1030,7 @@ export default function Tasks({}: TasksProps) {
 
     // Fetch interaction metrics for the current date
     try {
-      const interactionParams: any = { page: 1, limit: 1000, date: viewDate };
+      const interactionParams: any = { page: 1, limit: 1000, date };
       if (recruiterId) {
         interactionParams.recruiterId = recruiterId;
       }
@@ -1082,50 +1085,65 @@ export default function Tasks({}: TasksProps) {
         inProgressTasks: inProgress
       }));
     }
-  }, [viewDate]);
+  }, []);
 
+  // SINGLE initial data load - prevents multiple re-renders
   useEffect(() => {
+    // Prevent double-fetch in React StrictMode
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     (async () => {
       setLoading(true);
       setError('');
       try {
-        try {
-          const ur = await usersAPI.getUsers();
-          if (ur.success && ur.data) setUsers(ur.data.users || []);
-          else setUsersWarning('Could not load users.');
-        } catch (e: any) {
-          setUsersWarning(e?.response?.status === 403 ? 'No permission to view users.' : 'Could not load users.');
-        }
-        const [jr, cr] = await Promise.all([
+        // Load all data in parallel
+        const [usersResult, jobsResult, candidatesResult] = await Promise.all([
+          usersAPI.getUsers().catch(e => {
+            setUsersWarning(e?.response?.status === 403 ? 'No permission to view users.' : 'Could not load users.');
+            return { success: false, data: null };
+          }),
           jobsAPI.getJobs(),
           candidatesAPI.getCandidates(),
         ]);
-        if (jr.success && jr.data) setJobs(jr.data.jobs || []);
-        if (cr.success && cr.data) setCandidates(cr.data.candidates || []);
+
+        if (usersResult.success && usersResult.data) setUsers(usersResult.data.users || []);
+        if (jobsResult.success && jobsResult.data) setJobs(jobsResult.data.jobs || []);
+        if (candidatesResult.success && candidatesResult.data) setCandidates(candidatesResult.data.candidates || []);
         
-        // Load tasks with initial filter (if any)
-        await loadTasks(selectedRecruiterId);
+        // Load tasks and metrics together
+        const loadedTasks = await loadTasks(selectedRecruiterId);
+        if (loadedTasks) {
+          await updateMetrics(loadedTasks, viewDate, selectedRecruiterId);
+        }
       } catch (e) {
         setError('Failed to load data: ' + (e instanceof Error ? e.message : 'Unknown error'));
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, []); // Empty deps - load ONCE on mount
 
-  // Reload tasks when recruiter filter changes
+  // Handle recruiter filter changes (Admin only)
   useEffect(() => {
-    if (user?.role === 'Admin') {
-      loadTasks(selectedRecruiterId);
-    }
-  }, [selectedRecruiterId, user?.role, loadTasks]);
+    if (!hasFetchedRef.current) return; // Skip if initial load hasn't happened
+    if (user?.role !== 'Admin') return;
 
-  // Update metrics when date changes
+    (async () => {
+      const loadedTasks = await loadTasks(selectedRecruiterId);
+      if (loadedTasks) {
+        await updateMetrics(loadedTasks, viewDate, selectedRecruiterId);
+      }
+    })();
+  }, [selectedRecruiterId, user?.role, loadTasks, updateMetrics, viewDate]);
+
+  // Handle date changes - only update metrics, don't reload tasks
   useEffect(() => {
+    if (!hasFetchedRef.current) return; // Skip if initial load hasn't happened
     if (tasks.length > 0) {
-      updateMetrics(tasks, selectedRecruiterId);
+      updateMetrics(tasks, viewDate, selectedRecruiterId);
     }
-  }, [viewDate, tasks, selectedRecruiterId, updateMetrics]);
+  }, [viewDate]); // Only viewDate dependency
 
   // Filter tasks by selected date (match dueDate)
   // Note: Recruiter filtering is now done at the API level

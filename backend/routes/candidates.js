@@ -491,13 +491,15 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
 
   const candidate = candidates[0];
 
-  // Get notes for this candidate from candidate_notes_ratings table
+  // Get notes for this candidate from hr_notes table (single source of truth)
   const notes = await query(
-    `SELECT cnr.*, u.name as user_name, u.role as user_role 
-     FROM candidate_notes_ratings cnr
-     LEFT JOIN users u ON cnr.user_id = u.id
-     WHERE cnr.candidate_id = ?
-     ORDER BY cnr.created_at DESC`,
+    `SELECT hn.id, hn.candidate_id, hn.stage, hn.note_text as notes, hn.interaction_type, 
+            hn.author_id as user_id, hn.created_at, hn.updated_at,
+            u.name as user_name, u.role as user_role 
+     FROM hr_notes hn
+     LEFT JOIN users u ON hn.author_id = u.id
+     WHERE hn.candidate_id = ?
+     ORDER BY hn.created_at DESC`,
     [candidateId]
   );
   candidate.notes = notes;
@@ -665,6 +667,66 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     throw new ConflictError('Candidate already exists for this position');
   }
 
+  // Normalize appliedDate: strip time component if full ISO string was sent
+  const normalizedAppliedDate = appliedDate
+    ? String(appliedDate).slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  // Debug log to catch any remaining undefined bindings before they hit MySQL
+  const insertValues = [
+    jobId ?? null,
+    name ?? null,
+    email ?? null,
+    phone ?? null,
+    position ?? null,
+    stage ?? null,
+    source ?? null,
+    normalizedAppliedDate,
+    resumePath ?? null,
+    resumeFileId ?? null,
+    score ?? 0,
+    assignedUserId ?? null,
+    JSON.stringify(skills ?? []),
+    experience ?? null,
+    salaryExpected ?? null,
+    salaryOffered ?? null,
+    salaryNegotiable ?? false,
+    joiningTime ?? null,
+    noticePeriod ?? null,
+    immediateJoiner ?? false,
+    // New fields
+    location ?? null,
+    expertise ?? null,
+    willingAlternateSaturday ?? null,
+    workPreference ?? null,
+    currentCtc ?? null,
+    ctcFrequency ?? 'Annual',
+    inHouseAssignmentStatus ?? 'Pending',
+    interviewDate ?? null,
+    interviewerId ?? null,
+    inOfficeAssignment ?? null,
+    // New location fields
+    assignmentLocation ?? null,
+    resumeLocation ?? null,
+  ];
+
+  // Guard: ensure no undefined values slip through to MySQL
+  const undefinedFields = insertValues.reduce((acc, val, idx) => {
+    if (val === undefined) acc.push(idx);
+    return acc;
+  }, []);
+  if (undefinedFields.length > 0) {
+    console.warn('[Candidate Create] Undefined values at positions:', undefinedFields);
+    throw new ValidationError('Missing required fields in submission');
+  }
+
+  console.log('[Candidate Create] Field mapping:', {
+    jobId, name, email, phone, position, stage, source,
+    appliedDate: normalizedAppliedDate, experience, salaryExpected,
+    noticePeriod, currentCtc, location, expertise, workPreference,
+    interviewDate, interviewerId, assignmentLocation, resumeLocation
+  });
+
   // Create candidate (without notes field)
   const result = await query(
     `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, score, 
@@ -672,49 +734,15 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
      location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
      interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      jobId || null,
-      name, 
-      email, 
-      phone, 
-      position, 
-      stage, 
-      source, 
-      appliedDate, 
-      resumePath || null, 
-      resumeFileId || null, 
-      score || 0, 
-      assignedUserId,
-      JSON.stringify(skills), 
-      experience || null, 
-      salaryExpected || null, 
-      salaryOffered || null, 
-      salaryNegotiable || false, 
-      joiningTime || null, 
-      noticePeriod || null, 
-      immediateJoiner || false,
-      // New fields
-      location || null,
-      expertise || null,
-      willingAlternateSaturday || null,
-      workPreference || null,
-      currentCtc || null,
-      ctcFrequency || 'Annual',
-      inHouseAssignmentStatus || 'Pending',
-      interviewDate || null,
-      interviewerId || null,
-      inOfficeAssignment || null,
-      // New location fields
-      assignmentLocation || null,
-      resumeLocation || null
-    ]
+    insertValues
   );
 
-  // If notes are provided, add them to candidate_notes_ratings table
+  // If notes are provided, add them to hr_notes table (single source of truth)
   if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
-      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
-      [result.insertId, req.user.id, notes.trim()]
+      `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [result.insertId, stage || 'Applied', notes.trim(), 'General Note', req.user.id]
     );
   }
 
@@ -826,6 +854,11 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
     assignedUserId = assignedTo;
   }
 
+  // Normalize appliedDate: strip time component if full ISO string was sent
+  const safeAppliedDate = appliedDate
+    ? String(appliedDate).slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
   // Convert undefined values to null to avoid SQL binding errors
   const safeResumePath = resumePath === undefined ? null : resumePath;
   const safeNotes = notes === undefined ? null : notes;
@@ -861,18 +894,19 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
      ctc_frequency = ?, in_house_assignment_status = ?, interview_date = ?, interviewer_id = ?, 
      in_office_assignment = ?, assignment_location = ?, resume_location = ?, updated_at = NOW() 
      WHERE id = ?`,
-    [name, email, phone, position, stage, source, appliedDate, safeResumePath, safeScore, assignedUserId,
+    [name, email, phone, position, stage, source, safeAppliedDate, safeResumePath, safeScore, assignedUserId,
      JSON.stringify(skills), safeExperience, safeSalaryExpected, safeSalaryOffered, safeSalaryNegotiable, safeJoiningTime, safeNoticePeriod, safeImmediateJoiner,
      safeLocation, safeExpertise, safeWillingAlternateSaturday, safeWorkPreference, safeCurrentCtc, safeCtcFrequency, 
      safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, 
      safeAssignmentLocation, safeResumeLocation, candidateId]
   );
 
-  // If notes are provided, add them to candidate_notes_ratings table
+  // If notes are provided, add them to hr_notes table (single source of truth)
   if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
-      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
-      [candidateId, req.user.id, notes.trim()]
+      `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [candidateId, stage, notes.trim(), 'General Note', req.user.id]
     );
   }
 
@@ -946,7 +980,8 @@ router.patch('/:id', authenticateToken, checkPermission('candidates', 'edit'), v
   }
   if (updateData.appliedDate !== undefined) {
     updateFields.push('applied_date = ?');
-    updateValues.push(updateData.appliedDate);
+    // Normalize: strip time component if full ISO string was sent
+    updateValues.push(updateData.appliedDate ? String(updateData.appliedDate).slice(0, 10) : null);
   }
   if (updateData.resumePath !== undefined) {
     updateFields.push('resume_path = ?');
@@ -991,11 +1026,16 @@ router.patch('/:id', authenticateToken, checkPermission('candidates', 'edit'), v
     updateValues
   );
 
-  // If notes are provided, add them to candidate_notes_ratings table
+  // If notes are provided, add them to hr_notes table (single source of truth)
   if (updateData.notes && typeof updateData.notes === 'string' && updateData.notes.trim()) {
+    // Get current stage for the note
+    const [candidateData] = await query('SELECT stage FROM candidates WHERE id = ?', [candidateId]);
+    const currentStage = candidateData?.stage || 'Applied';
+    
     await query(
-      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
-      [candidateId, req.user.id, updateData.notes.trim()]
+      `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [candidateId, currentStage, updateData.notes.trim(), 'General Note', req.user.id]
     );
   }
 
@@ -1024,6 +1064,67 @@ router.delete('/:id', authenticateToken, checkPermission('candidates', 'delete')
   });
 }));
 
+// Bulk delete candidates (POST to avoid DELETE body parsing issues)
+router.post('/bulk-delete', authenticateToken, checkPermission('candidates', 'delete'), asyncHandler(async (req, res) => {
+  const { ids } = req.body || {};
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new ValidationError('ids must be a non-empty array of candidate IDs');
+  }
+
+  if (ids.length > 500) {
+    throw new ValidationError('Cannot delete more than 500 candidates at once');
+  }
+
+  // Coerce all values to strings and filter out empty ones
+  const cleanIds = ids.map(id => String(id).trim()).filter(Boolean);
+  if (cleanIds.length === 0) {
+    throw new ValidationError('No valid candidate IDs provided');
+  }
+
+  const placeholders = cleanIds.map(() => '?').join(', ');
+  const result = await query(
+    `DELETE FROM candidates WHERE id IN (${placeholders})`,
+    cleanIds
+  );
+
+  res.json({
+    success: true,
+    message: `${result.affectedRows} candidate(s) deleted successfully`,
+    data: { deletedCount: result.affectedRows }
+  });
+}));
+
+// Bulk delete candidates (DELETE method kept for REST compliance)
+router.delete('/', authenticateToken, checkPermission('candidates', 'delete'), asyncHandler(async (req, res) => {
+  const { ids } = req.body || {};
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new ValidationError('ids must be a non-empty array of candidate IDs');
+  }
+
+  if (ids.length > 500) {
+    throw new ValidationError('Cannot delete more than 500 candidates at once');
+  }
+
+  const cleanIds = ids.map(id => String(id).trim()).filter(Boolean);
+  if (cleanIds.length === 0) {
+    throw new ValidationError('No valid candidate IDs provided');
+  }
+
+  const placeholders = cleanIds.map(() => '?').join(', ');
+  const result = await query(
+    `DELETE FROM candidates WHERE id IN (${placeholders})`,
+    cleanIds
+  );
+
+  res.json({
+    success: true,
+    message: `${result.affectedRows} candidate(s) deleted successfully`,
+    data: { deletedCount: result.affectedRows }
+  });
+}));
+
 // Update candidate stage (with automation)
 router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edit'), validateUUID('id'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.id;
@@ -1033,7 +1134,7 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
     throw new ValidationError('Stage is required');
   }
 
-  const validStages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'];
+  const validStages = ['Applied', 'Follow Up', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out', 'Profile Not Matched'];
   if (!validStages.includes(stage)) {
     throw new ValidationError('Invalid stage');
   }
@@ -1081,11 +1182,12 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
     [candidateId, stage, stageChangeNoteText, 'Stage Change', req.user.id]
   );
 
-  // If notes are provided, add them to candidate_notes_ratings table
+  // If notes are provided, add them to hr_notes table (single source of truth)
   if (notes && typeof notes === 'string' && notes.trim()) {
     await query(
-      `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
-      [candidateId, req.user.id, notes.trim()]
+      `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [candidateId, stage, notes.trim(), 'General Note', req.user.id]
     );
   }
 
@@ -1296,11 +1398,12 @@ router.post('/bulk-import', authenticateToken, checkPermission('candidates', 'cr
          candidate.inOfficeAssignment || null, candidate.assignmentLocation || null, candidate.resumeLocation || null]
       );
 
-      // If notes are provided, add them to candidate_notes_ratings table
+      // If notes are provided, add them to hr_notes table (single source of truth)
       if (candidate.notes && typeof candidate.notes === 'string' && candidate.notes.trim()) {
         await query(
-          `INSERT INTO candidate_notes_ratings (candidate_id, user_id, notes) VALUES (?, ?, ?)`,
-          [result.insertId, req.user.id, candidate.notes.trim()]
+          `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [result.insertId, candidate.stage || 'Applied', candidate.notes.trim(), 'General Note', req.user.id]
         );
       }
 
@@ -1844,4 +1947,3 @@ router.get('/check-by-phone/:phone', authenticateToken, checkPermission('candida
 }));
 
 export default router;
-

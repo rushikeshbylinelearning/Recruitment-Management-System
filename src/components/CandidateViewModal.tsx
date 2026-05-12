@@ -1,4 +1,4 @@
-import { Mail, Phone, MapPin, Download, FileText, Calendar, Clock, Briefcase, DollarSign, Star, CheckCircle, XCircle, AlertCircle, User, Edit, Send, ClipboardList, Pencil } from 'lucide-react';
+import { Mail, Phone, MapPin, Download, FileText, Calendar, Clock, Briefcase, DollarSign, Star, CheckCircle, XCircle, AlertCircle, User, Edit, Pencil } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, assignmentsAPI, Assignment } from '../services/api';
 import { useState, useEffect } from 'react';
@@ -378,47 +378,7 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
                   </Section>
                 )}
 
-                {/* Floating pencil button — HR Notes */}
-                <div className="flex justify-end mt-4 pr-1">
-                  <button
-                    onClick={() => setNotesPanelOpen(true)}
-                    title="Add / View Notes"
-                    className="notes-fab group"
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: '50%',
-                      background: '#6366f1',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
-                      transition: 'transform 150ms ease, box-shadow 150ms ease',
-                      flexShrink: 0,
-                    }}
-                    onMouseEnter={(e) => {
-                      const b = e.currentTarget as HTMLButtonElement;
-                      b.style.transform = 'scale(1.08)';
-                      b.style.boxShadow = '0 6px 20px rgba(99,102,241,0.5)';
-                    }}
-                    onMouseLeave={(e) => {
-                      const b = e.currentTarget as HTMLButtonElement;
-                      b.style.transform = 'scale(1)';
-                      b.style.boxShadow = '0 4px 14px rgba(99,102,241,0.35)';
-                    }}
-                    onMouseDown={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.95)';
-                    }}
-                    onMouseUp={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.08)';
-                    }}
-                  >
-                    <Pencil size={18} color="#fff" />
-                  </button>
                 </div>
-              </div>
 
               {/* Skills */}
               {((c.skills && c.skills.length > 0) || c.expertise) && (
@@ -444,30 +404,56 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
                 </Section>
               )}
 
-              {/* General Notes */}
-              {generalNotes.length > 0 && (
-                <Section title="Notes" icon={<FileText size={15} />}>
-                  <div className="space-y-3 py-2">
-                    {generalNotes.map((note: any, i: number) => (
-                      <div key={note.id || i} className="border-l-2 border-indigo-300 pl-3 py-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-gray-800">{note.user_name}</span>
-                          <span className="text-xs text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
-                        </div>
-                        {note.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes}</p>}
-                        {note.rating && (
-                          <div className="flex items-center gap-1 mt-1.5">
-                            {[1,2,3,4,5].map(s => (
-                              <span key={s} className={`text-xs ${s <= note.rating ? 'text-yellow-400' : 'text-gray-200'}`}>★</span>
-                            ))}
-                            <span className="text-xs text-gray-400 ml-1">{note.rating}/5</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+              {/* Notes — header contains the Add Note button inline */}
+              <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-gray-500"><FileText size={15} /></span>
+                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Notes</h3>
+                    {generalNotes.length > 0 && (
+                      <span className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">
+                        {generalNotes.length}
+                      </span>
+                    )}
                   </div>
-                </Section>
-              )}
+                  <button
+                    onClick={() => setNotesPanelOpen(true)}
+                    title="Add / View Notes"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all text-white text-xs font-semibold"
+                  >
+                    <Pencil size={12} />
+                    Add Note
+                  </button>
+                </div>
+                <div className="px-4 py-1">
+                  {generalNotes.length > 0 ? (
+                    <div className="space-y-3 py-2">
+                      {generalNotes.map((note: any, i: number) => (
+                        <div key={note.id || i} className="border-l-2 border-indigo-300 pl-3 py-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-gray-800">{note.user_name}</span>
+                            <span className="text-xs text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
+                          </div>
+                          {note.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes}</p>}
+                          {note.rating && (
+                            <div className="flex items-center gap-1 mt-1.5">
+                              {[1,2,3,4,5].map(s => (
+                                <span key={s} className={`text-xs ${s <= note.rating ? 'text-yellow-400' : 'text-gray-200'}`}>★</span>
+                              ))}
+                              <span className="text-xs text-gray-400 ml-1">{note.rating}/5</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center py-5 text-gray-400">
+                      <FileText size={22} className="mb-1.5 opacity-40" />
+                      <p className="text-xs">No notes yet. Click <span className="font-semibold text-indigo-500">Add Note</span> to get started.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* RIGHT */}

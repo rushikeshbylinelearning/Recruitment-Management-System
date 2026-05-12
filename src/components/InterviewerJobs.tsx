@@ -143,12 +143,6 @@ export default function InterviewerJobs() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Available Jobs</h1>
-        <p className="text-gray-600 mt-1">View all available job positions for interview assignments</p>
-      </div>
-
       {/* Search and Filters */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <form onSubmit={handleSearch} className="flex flex-col lg:flex-row gap-4">

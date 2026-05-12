@@ -13,6 +13,8 @@ interface KanbanColumnProps {
   onCandidateDelete: (candidateId: string) => void;
   onDownloadResume: (candidateId: string) => void;
   onOpenNotes?: (candidate: ApiCandidate) => void;
+  onStageChange?: (candidateId: string, newStage: string) => void;
+  availableStages?: string[];
   hasEditPermission: boolean;
   hasDeletePermission: boolean;
   isDragging: boolean;
@@ -20,6 +22,9 @@ interface KanbanColumnProps {
   dropIndex?: number | null;
   syncingCards?: Set<string>;
   candidateAssignments?: Map<string, { status: string; deadline: string; emailFailed: boolean }>;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (candidateId: string) => void;
 }
 
 const KanbanColumn = memo(
@@ -32,6 +37,8 @@ const KanbanColumn = memo(
     onCandidateDelete,
     onDownloadResume,
     onOpenNotes,
+    onStageChange,
+    availableStages = [],
     hasEditPermission,
     hasDeletePermission,
     isDragging,
@@ -39,6 +46,9 @@ const KanbanColumn = memo(
     dropIndex = null,
     syncingCards = new Set(),
     candidateAssignments,
+    selectionMode = false,
+    selectedIds = new Set(),
+    onToggleSelect = () => {},
   }: KanbanColumnProps) {
     const { setNodeRef, isOver: isOverDnd } = useDroppable({ id: stage });
     const safeCandidates = Array.isArray(candidates) ? candidates : [];
@@ -94,7 +104,7 @@ const KanbanColumn = memo(
             // Then set the local scroll ref
             localScrollRef.current = node;
           }}
-          className={`relative z-0 flex-1 rounded-lg p-2 min-h-[520px] max-h-[calc(100vh-220px)] overflow-y-auto overflow-x-hidden transition-all duration-200 ${
+          className={`relative z-0 flex-1 min-h-0 rounded-lg p-2 overflow-y-auto overflow-x-hidden transition-all duration-200 ${
             isDropTarget
               ? 'bg-gray-50 border border-dashed border-gray-300'
               : 'bg-gray-50/60 border border-transparent'
@@ -102,6 +112,7 @@ const KanbanColumn = memo(
           style={{
             scrollbarWidth: 'thin',
             scrollbarColor: `${accentColor}40 transparent`,
+            overscrollBehavior: 'contain',
           }}
           aria-dropeffect={isDropTarget ? 'move' : 'none'}
         >
@@ -170,21 +181,43 @@ const KanbanColumn = memo(
                     )}
 
                     <div className="mb-2.5" data-card-id={candidate.id}>
-                      <CandidateCard
-                        candidate={candidate}
-                        accentColor={accentColor}
-                        onClick={onCandidateClick}
-                        onEdit={onCandidateEdit}
-                        onDelete={onCandidateDelete}
-                        onDownloadResume={onDownloadResume}
-                        onOpenNotes={onOpenNotes}
-                        hasEditPermission={hasEditPermission}
-                        hasDeletePermission={hasDeletePermission}
-                        isSyncing={isSyncing}
-                        assignmentStatus={candidateAssignments?.get(candidate.id)?.status}
-                        assignmentDeadline={candidateAssignments?.get(candidate.id)?.deadline}
-                        emailFailed={candidateAssignments?.get(candidate.id)?.emailFailed}
-                      />
+                      {selectionMode && (
+                        <label
+                          className="flex items-center gap-2 px-2 pb-1 cursor-pointer select-none"
+                          onClick={(e) => { e.stopPropagation(); onToggleSelect(candidate.id); }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(candidate.id)}
+                            onChange={() => onToggleSelect(candidate.id)}
+                            className="w-4 h-4 rounded accent-red-500 cursor-pointer"
+                          />
+                          <span className="text-xs text-gray-500">Select</span>
+                        </label>
+                      )}
+                      <div
+                        className={selectionMode && selectedIds.has(candidate.id)
+                          ? 'ring-2 ring-red-400 rounded-xl'
+                          : ''}
+                      >
+                        <CandidateCard
+                          candidate={candidate}
+                          accentColor={accentColor}
+                          onClick={selectionMode ? () => onToggleSelect(candidate.id) : onCandidateClick}
+                          onEdit={onCandidateEdit}
+                          onDelete={onCandidateDelete}
+                          onDownloadResume={onDownloadResume}
+                          onOpenNotes={onOpenNotes}
+                          onStageChange={onStageChange}
+                          availableStages={availableStages}
+                          hasEditPermission={hasEditPermission}
+                          hasDeletePermission={hasDeletePermission}
+                          isSyncing={isSyncing}
+                          assignmentStatus={candidateAssignments?.get(candidate.id)?.status}
+                          assignmentDeadline={candidateAssignments?.get(candidate.id)?.deadline}
+                          emailFailed={candidateAssignments?.get(candidate.id)?.emailFailed}
+                        />
+                      </div>
                     </div>
                   </div>
                 );
@@ -221,7 +254,9 @@ const KanbanColumn = memo(
       prev.dropIndex !== next.dropIndex ||
       prev.hasEditPermission !== next.hasEditPermission ||
       prev.hasDeletePermission !== next.hasDeletePermission ||
-      prev.accentColor !== next.accentColor
+      prev.accentColor !== next.accentColor ||
+      prev.selectionMode !== next.selectionMode ||
+      prev.selectedIds !== next.selectedIds
     )
       return false;
 

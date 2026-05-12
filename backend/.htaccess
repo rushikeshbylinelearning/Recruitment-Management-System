@@ -1,0 +1,15 @@
+# ============================================================
+#  backend/ — Node.js app directory
+#  Deny all direct HTTP access; traffic is handled by Passenger
+#  or proxied from the root .htaccess
+# ============================================================
+
+# Block direct browser access to the backend folder
+Order deny,allow
+Deny from all
+
+# ── Block access to sensitive files regardless ───────────────
+<FilesMatch "(\.env|package\.json|package-lock\.json|\.git|server\.js)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

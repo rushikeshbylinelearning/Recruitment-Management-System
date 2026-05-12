@@ -60,7 +60,7 @@ router.post('/upload',
     }
 
     const { sheetIndex = 0 } = req.body;
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     // Parse file
     const parsedFile = await fileParserService.parseFile(
@@ -82,21 +82,19 @@ router.post('/upload',
     // Apply field mapping
     const mappingResult = fieldMapperService.mapFields(parsedFile.headers, savedMappingData);
 
-    // Normalize data
+    // Normalize data (used for duplicate detection and caching)
     const normalizedRows = parsedFile.rows.map(row => {
-      // Map row data according to field mappings
       const mappedData = {};
       mappingResult.mappings.forEach(mapping => {
         if (row[mapping.sourceColumn] !== undefined) {
           mappedData[mapping.targetField] = row[mapping.sourceColumn];
         }
       });
-      
       return normalize(mappedData);
     });
 
-    // Generate preview
-    const preview = generatePreview(normalizedRows, mappingResult.mappings);
+    // Generate preview from raw rows + mappings (previewGenerator handles mapping internally)
+    const preview = await generatePreview(parsedFile.rows, mappingResult.mappings);
 
     // Detect duplicates
     const duplicateAnalysis = await detectDuplicates(normalizedRows);
@@ -126,7 +124,7 @@ router.post('/upload',
         conflicts: mappingResult.conflicts,
         preview,
         duplicates: {
-          uniqueCount: duplicateAnalysis.uniqueCandidates.length,
+          uniqueCandidates: duplicateAnalysis.uniqueCandidates,
           duplicatesInFile: duplicateAnalysis.duplicatesInFile,
           duplicatesInDatabase: duplicateAnalysis.duplicatesInDatabase
         }
@@ -146,7 +144,7 @@ router.post('/confirm',
   checkPermission('candidates', 'create'),
   asyncHandler(async (req, res) => {
     const { uploadId, mappings, options = {} } = req.body;
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     if (!uploadId) {
       throw new ValidationError('Upload ID is required');
@@ -167,7 +165,8 @@ router.post('/confirm',
       saveMappings = false,
       mappingName = '',
       duplicateHandling = 'skip',
-      removeRows = []
+      removeRows = [],
+      jobId = null
     } = options;
 
     // Apply user-confirmed mappings if provided
@@ -210,9 +209,11 @@ router.post('/confirm',
 
     if (isAsync) {
       // Process asynchronously for large files
-      const { jobId } = await processAsync(candidatesToImport, {
+      const { jobId: asyncJobId } = await processAsync(candidatesToImport, {
         userId,
-        filename: cachedData.filename
+        filename: cachedData.filename,
+        jobId,
+        authorId: userId
       });
 
       // Clear cache
@@ -222,7 +223,7 @@ router.post('/confirm',
         success: true,
         data: {
           processing: true,
-          jobId,
+          jobId: asyncJobId,
           message: 'Import is being processed in the background. You will be notified when complete.'
         }
       });
@@ -230,7 +231,7 @@ router.post('/confirm',
 
     // Process synchronously
     const startTime = Date.now();
-    const insertResult = await insertCandidates(candidatesToImport);
+    const insertResult = await insertCandidates(candidatesToImport, undefined, null, { jobId, authorId: userId });
     const processingTime = Date.now() - startTime;
 
     // Log import
@@ -259,10 +260,21 @@ router.post('/confirm',
       low: 0
     };
 
-    insertResult.successRows.forEach(() => {
-      // Simplified quality calculation - can be enhanced
-      qualityDistribution.medium++;
+    insertResult.successRows.forEach((row) => {
+      // Quality based on how many key fields are present
+      const norm = row.normalized || {};
+      const filledFields = ['email', 'phone', 'position', 'experience', 'skills'].filter(f => norm[f]).length;
+      if (filledFields >= 4) qualityDistribution.high++;
+      else if (filledFields >= 2) qualityDistribution.medium++;
+      else qualityDistribution.low++;
     });
+
+    // Build job segregation summary for the response
+    const jobSegregation = insertResult.jobSegregation || {
+      mappedCount: 0,
+      unmappedCount: insertResult.successCount,
+      byJob: [],
+    };
 
     res.json({
       success: true,
@@ -273,13 +285,13 @@ router.post('/confirm',
           successCount: insertResult.successCount,
           failureCount: insertResult.failureCount,
           processingTime,
-          qualityDistribution
+          qualityDistribution,
+          jobSegregation,
         },
-        failedRows: insertResult.failedRows.slice(0, 10) // Return first 10 failed rows
+        failedRows: insertResult.failedRows.slice(0, 10),
       },
       message: `Import completed. ${insertResult.successCount} candidates imported successfully.`
-    });
-  })
+    });  })
 );
 
 /**
@@ -290,7 +302,7 @@ router.get('/logs',
   authenticateToken,
   checkPermission('candidates', 'view'),
   asyncHandler(async (req, res) => {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const {
       page = 1,
       limit = 20,
@@ -321,7 +333,7 @@ router.get('/logs/:id/failed-rows',
   checkPermission('candidates', 'view'),
   asyncHandler(async (req, res) => {
     const importId = parseInt(req.params.id);
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     // Verify user has access to this import log
     const logs = await query(
@@ -356,7 +368,7 @@ router.get('/mappings',
   authenticateToken,
   checkPermission('candidates', 'view'),
   asyncHandler(async (req, res) => {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const mappings = await query(
       `SELECT id, mapping_name, source_column, target_field, created_at, last_used
@@ -392,7 +404,7 @@ router.post('/mappings',
   authenticateToken,
   checkPermission('candidates', 'create'),
   asyncHandler(async (req, res) => {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const { name, mappings } = req.body;
 
     if (!name || !mappings) {
@@ -440,7 +452,7 @@ router.delete('/mappings/:id',
   authenticateToken,
   checkPermission('candidates', 'delete'),
   asyncHandler(async (req, res) => {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const mappingId = parseInt(req.params.id);
 
     // Verify user owns this mapping
@@ -464,10 +476,196 @@ router.delete('/mappings/:id',
 );
 
 /**
+ * GET /api/candidates/import/unassigned
+ * Get candidates that have no job assignment (unassigned pool)
+ */
+router.get('/unassigned',
+  authenticateToken,
+  checkPermission('candidates', 'view'),
+  asyncHandler(async (req, res) => {
+    const { page = 1, limit = 50, search = '' } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClause = 'WHERE c.job_id IS NULL';
+    const params = [];
+
+    if (search) {
+      whereClause += ' AND (c.name LIKE ? OR c.position LIKE ? OR c.email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const countResult = await query(
+      `SELECT COUNT(*) as total FROM candidates c ${whereClause}`,
+      params
+    );
+    const total = countResult[0].total;
+
+    const candidates = await query(
+      `SELECT c.id, c.name, c.email, c.phone, c.position, c.expertise, c.skills, c.stage, c.applied_date
+       FROM candidates c
+       ${whereClause}
+       ORDER BY c.applied_date DESC
+       LIMIT ${parseInt(limit)} OFFSET ${offset}`,
+      params
+    );
+
+    // Parse skills JSON
+    candidates.forEach(c => {
+      try { c.skills = JSON.parse(c.skills || '[]'); } catch { c.skills = []; }
+    });
+
+    // Fetch active jobs for the reassignment dropdown
+    const jobs = await query(
+      `SELECT id, title, department FROM job_postings WHERE status = 'Active' ORDER BY title ASC`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        candidates,
+        jobs,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit)),
+        },
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/candidates/import/reassign
+ * Manually reassign one or more unassigned candidates to a job
+ * Body: { candidateIds: string[], jobId: number }
+ */
+router.post('/reassign',
+  authenticateToken,
+  checkPermission('candidates', 'edit'),
+  asyncHandler(async (req, res) => {
+    const { candidateIds, jobId } = req.body;
+
+    if (!candidateIds || !Array.isArray(candidateIds) || candidateIds.length === 0) {
+      throw new ValidationError('candidateIds must be a non-empty array');
+    }
+
+    if (!jobId) {
+      throw new ValidationError('jobId is required');
+    }
+
+    // Verify job exists
+    const jobs = await query('SELECT id, title FROM job_postings WHERE id = ?', [jobId]);
+    if (jobs.length === 0) {
+      throw new NotFoundError('Job posting not found');
+    }
+
+    // Update candidates
+    const placeholders = candidateIds.map(() => '?').join(', ');
+    await query(
+      `UPDATE candidates SET job_id = ?, position = COALESCE(NULLIF(position, ''), ?) WHERE id IN (${placeholders})`,
+      [jobId, jobs[0].title, ...candidateIds]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        updatedCount: candidateIds.length,
+        jobId,
+        jobTitle: jobs[0].title,
+      },
+      message: `${candidateIds.length} candidate(s) reassigned to "${jobs[0].title}"`,
+    });
+  })
+);
+
+/**
+ * POST /api/candidates/import/job-segregation-preview/:uploadId
+ * Preview how candidates from a cached upload would be segregated into jobs.
+ * Accepts the current field mappings so the preview always reflects the user's
+ * latest mapping choices — including manual overrides made in the UI.
+ *
+ * Body: { mappings?: FieldMapping[] }  (optional — falls back to cached mappings)
+ */
+router.post('/job-segregation-preview/:uploadId',
+  authenticateToken,
+  checkPermission('candidates', 'view'),
+  asyncHandler(async (req, res) => {
+    const { uploadId } = req.params;
+    const { mappings: clientMappings } = req.body;
+
+    const cachedData = uploadCache.get(uploadId);
+    if (!cachedData) {
+      throw new NotFoundError('Upload session expired or not found.');
+    }
+
+    if (cachedData.userId !== req.user.id) {
+      throw new ValidationError('Unauthorized access to upload session');
+    }
+
+    // Use client-supplied mappings if provided, otherwise fall back to cached ones.
+    // This is the key fix: the preview re-normalizes with the CURRENT mappings so
+    // manual field mapping changes (e.g. "Expertise → position") are reflected
+    // immediately in the segregation preview.
+    const activeMappings = (Array.isArray(clientMappings) && clientMappings.length > 0)
+      ? clientMappings
+      : cachedData.mappings;
+
+    // Re-normalize raw rows with the active mappings
+    const freshNormalizedRows = cachedData.parsedFile.rows.map(row => {
+      const mappedData = {};
+      activeMappings.forEach(mapping => {
+        if (mapping.sourceColumn && mapping.targetField && row[mapping.sourceColumn] !== undefined) {
+          mappedData[mapping.targetField] = row[mapping.sourceColumn];
+        }
+      });
+      return normalize(mappedData);
+    });
+
+    const { buildJobSegregationMap, getCandidateKey } = await import('../services/roleMatchingService.js');
+    const { matchResults, jobs } = await buildJobSegregationMap(freshNormalizedRows, null);
+
+    // Build preview summary
+    const byJob = new Map();
+    let unmappedCount = 0;
+
+    freshNormalizedRows.forEach((row, idx) => {
+      const norm = row.normalized || {};
+      const key = getCandidateKey(norm, idx);
+      const match = matchResults.get(key);
+
+      if (match) {
+        if (!byJob.has(match.jobId)) {
+          byJob.set(match.jobId, {
+            jobId: match.jobId,
+            jobTitle: match.jobTitle,
+            count: 0,
+            matchMethod: match.matchMethod,
+          });
+        }
+        byJob.get(match.jobId).count++;
+      } else {
+        unmappedCount++;
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalCandidates: freshNormalizedRows.length,
+        mappedCount: freshNormalizedRows.length - unmappedCount,
+        unmappedCount,
+        byJob: Array.from(byJob.values()).sort((a, b) => b.count - a.count),
+        availableJobs: jobs.map(j => ({ id: j.id, title: j.title })),
+      },
+    });
+  })
+);
+
+/**
  * Helper function to save mapping preference
  */
-async function saveMappingPreference(userId, mappingName, mappings) {
-  // Check if mapping already exists
+async function saveMappingPreference(userId, mappingName, mappings) {  // Check if mapping already exists
   const existing = await query(
     'SELECT id FROM field_mappings WHERE user_id = ? AND mapping_name = ?',
     [userId, mappingName]

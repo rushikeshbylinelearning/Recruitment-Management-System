@@ -9,7 +9,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // Proxy API requests in development to the backend server
+      // Proxy API requests in development to the local backend server
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,

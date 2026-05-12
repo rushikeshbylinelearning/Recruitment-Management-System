@@ -1,7 +1,8 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Mail, Phone, MoreVertical, Eye, Edit, Trash2, Download, MapPin, Briefcase, Pencil } from 'lucide-react';
+import { Mail, Phone, MoreVertical, MapPin, Briefcase, Pencil, Check } from 'lucide-react';
 import { Candidate as ApiCandidate } from '../../services/api';
 
 interface CandidateCardProps {
@@ -12,6 +13,8 @@ interface CandidateCardProps {
   onDelete: (candidateId: string) => void;
   onDownloadResume: (candidateId: string) => void;
   onOpenNotes?: (candidate: ApiCandidate) => void;
+  onStageChange?: (candidateId: string, newStage: string) => void;
+  availableStages?: string[];
   hasEditPermission: boolean;
   hasDeletePermission: boolean;
   isDragging?: boolean;
@@ -64,6 +67,8 @@ const CandidateCard = memo(
     onDelete,
     onDownloadResume,
     onOpenNotes,
+    onStageChange,
+    availableStages = [],
     hasEditPermission,
     hasDeletePermission,
     isDragging = false,
@@ -73,6 +78,9 @@ const CandidateCard = memo(
     emailFailed = false,
   }: CandidateCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
     // Drag is a stage-change interaction. If the user lacks edit permission, keep drag disabled.
     const canDrag = hasEditPermission;
@@ -110,41 +118,59 @@ const CandidateCard = memo(
       [candidate, onClick, isBeingDragged]
     );
 
-    const handleView = useCallback(
-      (e: React.MouseEvent) => {
+    const handleStageSelect = useCallback(
+      (e: React.MouseEvent, newStage: string) => {
         e.stopPropagation();
         setMenuOpen(false);
-        onClick(candidate);
+        
+        // Don't move if already in this stage
+        if (newStage === candidate.stage) return;
+        
+        // Call the stage change handler
+        if (onStageChange) {
+          onStageChange(candidate.id, newStage);
+        }
       },
-      [candidate, onClick]
+      [candidate.id, candidate.stage, onStageChange]
     );
 
-    const handleEdit = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setMenuOpen(false);
-        onEdit(candidate);
-      },
-      [candidate, onEdit]
-    );
+    // Calculate menu position when opening
+    useEffect(() => {
+      if (menuOpen && buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        setMenuPosition({
+          top: rect.bottom + 4, // 4px gap below button
+          left: rect.right - 180, // Align right edge (180px is menu width)
+        });
+      } else {
+        setMenuPosition(null);
+      }
+    }, [menuOpen]);
 
-    const handleDelete = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setMenuOpen(false);
-        onDelete(candidate.id);
-      },
-      [candidate.id, onDelete]
-    );
+    // Close menu when clicking outside
+    useEffect(() => {
+      if (!menuOpen) return;
 
-    const handleDownload = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setMenuOpen(false);
-        onDownloadResume(candidate.id);
-      },
-      [candidate.id, onDownloadResume]
-    );
+      const handleClickOutside = (e: MouseEvent) => {
+        if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+          setMenuOpen(false);
+        }
+      };
+
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setMenuOpen(false);
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleEscape);
+      };
+    }, [menuOpen]);
 
     // Touch event handlers for mobile
     const handleTouchStart = useCallback(() => {}, []);
@@ -225,59 +251,108 @@ const CandidateCard = memo(
                 {formattedRole}
               </p>
             </div>
-            {/* 3-dot menu */}
-            <div className="relative flex-shrink-0">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen((v) => !v);
-                }}
-                className="p-1 rounded-md text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100"
-                aria-label="Open menu"
-              >
-                <MoreVertical size={14} />
-              </button>
-              {menuOpen && (
-                <div
-                  className="absolute right-0 top-6 z-50 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[140px]"
-                  onMouseLeave={() => setMenuOpen(false)}
+            {/* 3-dot menu - Move To Section */}
+            {hasEditPermission && availableStages.length > 0 && (
+              <div className="relative flex-shrink-0">
+                <button
+                  ref={buttonRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen((v) => !v);
+                  }}
+                  className="p-1 rounded-md text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100"
+                  aria-label="Move to section"
+                  aria-expanded={menuOpen}
                 >
-                  <button
-                    onClick={handleView}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                  >
-                    <Eye size={13} /> View Profile
-                  </button>
-                  {hasEditPermission && (
-                    <button
-                      onClick={handleEdit}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                  <MoreVertical size={14} />
+                </button>
+                {menuOpen && menuPosition && createPortal(
+                  <>
+                    {/* Backdrop for click outside */}
+                    <div 
+                      className="fixed inset-0 z-[9998]" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpen(false);
+                      }}
+                    />
+                    {/* Dropdown Menu */}
+                    <div
+                      ref={menuRef}
+                      className="fixed z-[9999] bg-white rounded-lg shadow-2xl border border-gray-200 py-1.5 min-w-[180px] max-h-[320px] overflow-y-auto animate-fade-in"
+                      style={{
+                        top: `${menuPosition.top}px`,
+                        left: `${menuPosition.left}px`,
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Edit size={13} /> Edit
-                    </button>
-                  )}
-                  {'resumeFileId' in (candidate as unknown as Record<string, unknown>) && Boolean((candidate as unknown as Record<string, unknown>).resumeFileId) && (
-                    <button
-                      onClick={handleDownload}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                    >
-                      <Download size={13} /> Resume
-                    </button>
-                  )}
-                  {hasDeletePermission && (
-                    <>
-                      <div className="border-t border-gray-100 my-1" />
-                      <button
-                        onClick={handleDelete}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 size={13} /> Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+                      {/* Menu Title */}
+                      <div className="px-3 py-1.5 border-b border-gray-200">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          Move To
+                        </p>
+                      </div>
+
+                      {/* Stage Options */}
+                      <div className="py-1">
+                        {availableStages.map((stage, index) => {
+                          const isCurrentStage = stage === candidate.stage;
+                          
+                          // Determine if this is a sub-stage (indented)
+                          const isSubStage = [
+                            'Follow Up (Interview)',
+                            'Came Down',
+                            'Didn\'t Come',
+                            'Selected (Interview)',
+                            'Rejected (Interview)',
+                            'On Hold',
+                            'Profile Not Matched',
+                            'Last Minute Back Out'
+                          ].includes(stage);
+                          
+                          // Add separator before umbrella groups
+                          const showSeparatorBefore = 
+                            stage === 'Follow Up (Interview)' || 
+                            stage === 'On Hold';
+                          
+                          return (
+                            <div key={stage}>
+                              {showSeparatorBefore && (
+                                <div className="my-1 border-t border-gray-200" />
+                              )}
+                              <button
+                                onClick={(e) => handleStageSelect(e, stage)}
+                                disabled={isCurrentStage}
+                                className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors text-left ${
+                                  isSubStage ? 'pl-6' : ''
+                                } ${
+                                  isCurrentStage
+                                    ? 'bg-indigo-50 text-indigo-700 font-semibold cursor-default'
+                                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer'
+                                }`}
+                                aria-current={isCurrentStage ? 'true' : undefined}
+                              >
+                                <span className="truncate flex items-center gap-1.5">
+                                  {isSubStage && (
+                                    <span className="text-gray-400 text-xs">└</span>
+                                  )}
+                                  {stage}
+                                </span>
+                                {isCurrentStage && (
+                                  <Check size={16} className="flex-shrink-0 text-indigo-600" strokeWidth={2.5} />
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>,
+                  document.body
+                )}
+              </div>
+            )}
           </div>
 
           {/* Key info row: email/phone, location, experience */}

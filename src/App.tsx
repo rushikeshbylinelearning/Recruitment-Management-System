@@ -129,7 +129,7 @@ function AppContent() {
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
     {/* Universal floating note button — visible on all authenticated pages */}
-    {isAuthenticated && user?.role !== 'Interviewer' && <FloatingNoteButton />}
+    {/* TEMPORARILY DISABLED: {isAuthenticated && user?.role !== 'Interviewer' && <FloatingNoteButton />} */}
     {/* Global drawer manager for context-aware drawers */}
     {isAuthenticated && <GlobalDrawerManager />}
     </Suspense>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle,
   AlertTriangle,
@@ -9,6 +9,8 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  Target,
+  Briefcase,
 } from 'lucide-react';
 import { candidateImportAPI, FieldMapping, PreviewRow } from '../../services/api';
 
@@ -16,6 +18,7 @@ interface PreviewTableComponentProps {
   uploadData: any;
   onConfirm: (summary: any) => void;
   onCancel: () => void;
+  jobId?: number | null;
 }
 
 const SYSTEM_FIELDS = [
@@ -38,12 +41,14 @@ const SYSTEM_FIELDS = [
   { value: 'ctc_frequency', label: 'CTC Frequency', required: false },
   { value: 'notes', label: 'Notes', required: false },
   { value: 'resume', label: 'Resume', required: false },
+  { value: 'stage', label: 'Stage', required: false },
 ];
 
 export default function PreviewTableComponent({
   uploadData,
   onConfirm,
   onCancel,
+  jobId = null,
 }: PreviewTableComponentProps) {
   const [mappings, setMappings] = useState<FieldMapping[]>(uploadData.mappings || []);
   const [duplicateHandling, setDuplicateHandling] = useState<'skip' | 'allow_all' | 'merge'>('skip');
@@ -57,11 +62,47 @@ export default function PreviewTableComponent({
     mappings: false,
     duplicates: false,
     quality: true,
+    jobSegregation: true,
   });
+
+  // Job segregation preview state
+  const [jobSegPreview, setJobSegPreview] = useState<{
+    totalCandidates: number;
+    mappedCount: number;
+    unmappedCount: number;
+    byJob: Array<{ jobId: number; jobTitle: string; count: number; matchMethod: string }>;
+  } | null>(null);
+  const [loadingSegPreview, setLoadingSegPreview] = useState(false);
 
   const preview = uploadData.preview;
   const duplicates = uploadData.duplicates;
   const fileInfo = uploadData.fileInfo;
+
+  // Load job segregation preview — re-runs whenever mappings change so manual
+  // field mapping choices (e.g. "Expertise → position") are reflected instantly.
+  // Debounced 600ms so rapid dropdown changes don't fire multiple requests.
+  const segPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!uploadData.uploadId || jobId) return; // skip if job is already specified
+
+    if (segPreviewTimer.current) clearTimeout(segPreviewTimer.current);
+
+    segPreviewTimer.current = setTimeout(() => {
+      setLoadingSegPreview(true);
+      candidateImportAPI.getJobSegregationPreview(uploadData.uploadId, mappings)
+        .then(res => {
+          if (res.success && res.data) {
+            setJobSegPreview(res.data);
+          }
+        })
+        .catch(() => { /* non-critical, silently ignore */ })
+        .finally(() => setLoadingSegPreview(false));
+    }, 600);
+
+    return () => {
+      if (segPreviewTimer.current) clearTimeout(segPreviewTimer.current);
+    };
+  }, [uploadData.uploadId, jobId, mappings]);
 
   const handleMappingChange = (sourceColumn: string, targetField: string) => {
     setMappings(prev => {
@@ -115,6 +156,7 @@ export default function PreviewTableComponent({
           mappingName: saveMappings ? mappingName : undefined,
           duplicateHandling,
           removeRows: Array.from(excludedRows),
+          jobId: jobId ?? undefined,
         },
       });
 
@@ -246,9 +288,83 @@ export default function PreviewTableComponent({
         )}
       </div>
 
+      {/* Job Segregation Preview */}
+      {!jobId && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => toggleSection('jobSegregation')}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Target size={16} className="text-purple-600" />
+              <h3 className="font-medium text-gray-900">Auto Job Segregation Preview</h3>
+              {jobSegPreview && !loadingSegPreview && (
+                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                  {jobSegPreview.mappedCount}/{jobSegPreview.totalCandidates} will be mapped
+                </span>
+              )}
+              {loadingSegPreview && (
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                  Recalculating...
+                </span>
+              )}
+            </div>
+            {expandedSections.jobSegregation ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </button>
+
+          {expandedSections.jobSegregation && (
+            <div className="p-6 border-t border-gray-200">
+              {loadingSegPreview ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500" />
+                  Analyzing roles for job matching...
+                </div>
+              ) : jobSegPreview ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Based on candidate roles and skills, here's how they'll be distributed across jobs:
+                  </p>
+                  {jobSegPreview.byJob.map(entry => (
+                    <div key={entry.jobId} className="flex items-center gap-3">
+                      <div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Briefcase size={13} className="text-purple-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900 truncate">{entry.jobTitle}</span>
+                          <span className="text-sm text-gray-600 ml-2 flex-shrink-0">{entry.count} candidates</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {jobSegPreview.unmappedCount > 0 && (
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <AlertTriangle size={13} className="text-amber-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-amber-700">Unassigned Pool</span>
+                          <span className="text-sm text-amber-600 ml-2">{jobSegPreview.unmappedCount} candidates</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">Can be manually assigned after import</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Job segregation preview unavailable. Candidates will be auto-matched after import.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Field Mappings */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <button
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">        <button
           onClick={() => toggleSection('mappings')}
           className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
         >
@@ -418,6 +534,9 @@ export default function PreviewTableComponent({
                     </th>
                   ))}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Detected Stage
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                 </tr>
@@ -427,12 +546,14 @@ export default function PreviewTableComponent({
                   const isExcluded = excludedRows.has(row.rowNumber);
                   const hasErrors = row.missingRequired.length > 0;
                   const hasWarnings = row.missingOptional.length > 0 || row.validationIssues.length > 0;
+                  const stageDetection = (row as any).stageDetection;
+                  const lowConfidence = stageDetection && stageDetection.confidence < 0.6;
 
                   return (
                     <tr
                       key={rowIndex}
                       className={`${isExcluded ? 'bg-gray-100 opacity-50' : ''} ${
-                        hasErrors ? 'bg-red-50' : hasWarnings ? 'bg-yellow-50' : ''
+                        hasErrors ? 'bg-red-50' : hasWarnings ? 'bg-yellow-50' : lowConfidence ? 'border-l-4 border-amber-400' : ''
                       }`}
                     >
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -470,6 +591,28 @@ export default function PreviewTableComponent({
                           </td>
                         );
                       })}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm">
+                        {stageDetection ? (
+                          <div className="flex items-center space-x-2">
+                            <span className={`font-medium ${
+                              stageDetection.confidence >= 0.9 ? 'text-green-700' :
+                              stageDetection.confidence >= 0.6 ? 'text-blue-700' :
+                              'text-amber-700'
+                            }`}>
+                              {stageDetection.detectedStage}
+                            </span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              stageDetection.confidence >= 0.9 ? 'bg-green-100 text-green-600' :
+                              stageDetection.confidence >= 0.6 ? 'bg-blue-100 text-blue-600' :
+                              'bg-amber-100 text-amber-600'
+                            }`}>
+                              {Math.round(stageDetection.confidence * 100)}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Applied (default)</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {hasErrors ? (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">

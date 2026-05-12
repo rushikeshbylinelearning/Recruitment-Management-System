@@ -569,6 +569,16 @@ const PublicFormPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const shareToken = searchParams.get('share');
+
+  // Build the query param for API calls — prefer share token over static token
+  const authParam = shareToken ? `share=${shareToken}` : `token=${token}`;
+
+  if (import.meta.env.DEV) {
+    console.log('PublicFormPage — slug:', slug);
+    console.log('PublicFormPage — shareToken:', shareToken, '| token:', token);
+    console.log('PublicFormPage — API call will go to:', `${API_BASE_URL}/public/forms/${slug}?${authParam}`);
+  }
 
   const [formData, setFormData] = useState<FormData | null>(null);
   const [vals, setVals] = useState<Record<string,any>>({});
@@ -581,12 +591,12 @@ const PublicFormPage: React.FC = () => {
   const [drag, setDrag] = useState<string|null>(null);
   const fileRefs = useRef<Record<string,HTMLInputElement|null>>({});
 
-  useEffect(() => { load(); }, [slug, token]);
+  useEffect(() => { load(); }, [slug, token, shareToken]);
 
   const load = async () => {
-    if (!token) { setError('Access token is missing. Please use the link provided.'); setLoading(false); return; }
+    if (!token && !shareToken) { setError('Access token is missing. Please use the link provided.'); setLoading(false); return; }
     try {
-      const r = await axios.get(`${API_BASE_URL}/public/forms/${slug}?token=${token}`);
+      const r = await axios.get(`${API_BASE_URL}/public/forms/${slug}?${authParam}`);
       setFormData(r.data.data);
     } catch (e: any) {
       setError(e.response?.data?.message || 'Failed to load this form.');
@@ -637,7 +647,7 @@ const PublicFormPage: React.FC = () => {
         if (v instanceof File) fd.append(k, v);
         else if (v != null) fd.append(k, v.toString());
       });
-      await axios.post(`${API_BASE_URL}/public/forms/${slug}/submit?token=${token}`, fd, {
+      await axios.post(`${API_BASE_URL}/public/forms/${slug}/submit?${authParam}`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setSuccess(true); setVals({}); setTouched({});
@@ -652,6 +662,7 @@ const PublicFormPage: React.FC = () => {
     phone:'Personal Information', phone_number:'Personal Information',
     years_experience:'Professional Background', job_profile:'Professional Background',
     notice_period:'Professional Background', notice_period_days:'Professional Background',
+    source:'Professional Background',
     current_ctc:'Compensation', expected_ctc:'Compensation',
   };
 

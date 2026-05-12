@@ -62,6 +62,25 @@ function normalize(row) {
         normalized[key] = parseSkills(value);
         break;
 
+      case 'expertise':
+        normalized[key] = normalizeText(value);
+        break;
+
+      case 'willing_alternate_saturday':
+      case 'immediate_joiner':
+      case 'salary_negotiable':
+        normalized[key] = parseBoolean(value);
+        break;
+
+      case 'in_house_assignment':
+        normalized[key] = normalizeText(value);
+        break;
+
+      case 'assignment_location':
+      case 'resume_location':
+        normalized[key] = normalizeText(value);
+        break;
+
       default:
         // For other fields, just normalize text if it's a string
         normalized[key] = typeof value === 'string' ? normalizeText(value) : value;
@@ -212,11 +231,27 @@ function parseSkills(skillsText) {
   return skills.length > 0 ? skills : null;
 }
 
+/**
+ * Parse boolean-like values (yes/no, true/false, 1/0)
+ * @param {string|boolean|number} value
+ * @returns {boolean}
+ */
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    return v === 'yes' || v === 'true' || v === '1' || v === 'y';
+  }
+  return false;
+}
+
 export {
   normalize,
   normalizeText,
   normalizeEmail,
   normalizePhone,
   parseExperience,
-  parseSkills
+  parseSkills,
+  parseBoolean
 };

@@ -36,6 +36,7 @@ import candidateNotesRoutes from './routes/candidateNotes.js';
 import interactionMemoryRoutes from './routes/interactionMemory.js';
 import candidateImportRoutes from './routes/candidateImport.js';
 import { startNotificationCron, startAssignmentNotificationCron } from './services/notificationCron.js';
+import rmsExportRoutes from './routes/rmsExport.js';
 import emailService from './services/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -105,6 +106,7 @@ app.get('/api', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/candidates/import', candidateImportRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/interviews', interviewRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -125,7 +127,7 @@ app.use('/api/form-builder', formBuilderRoutes); // Admin form builder routes (a
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/candidate-notes', candidateNotesRoutes);
 app.use('/api/interaction', interactionMemoryRoutes);
-app.use('/api/candidates/import', candidateImportRoutes);
+app.use('/api/rms-export', rmsExportRoutes);
 
 // API documentation endpoint
 app.get('/health', (req, res) => {
@@ -215,6 +217,15 @@ app.get('/api/test-interview-email', async (req, res) => {
     console.error('[test-interview-email]', err);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Serve React frontend (dist/)
+const distPath = join(__dirname, '../dist');
+app.use(express.static(distPath));
+
+// React catch-all: any non-API route returns index.html
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(join(distPath, 'index.html'));
 });
 
 // 404 handler for undefined routes

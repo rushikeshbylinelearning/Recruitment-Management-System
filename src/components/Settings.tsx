@@ -482,7 +482,7 @@ export default function Settings() {
       name: member.name,
       email: member.email,
       username: member.username,
-      password: member.password,
+      password: '', // Never pre-fill password; leave blank to keep current
       role: member.role,
       status: member.status
     });
@@ -496,7 +496,12 @@ export default function Settings() {
     if (!memberFormData.name.trim()) newErrors.name = 'Name is required';
     if (!memberFormData.email.trim()) newErrors.email = 'Email is required';
     if (!memberFormData.username.trim()) newErrors.username = 'Username is required';
-    if (!memberFormData.password.trim()) newErrors.password = 'Password is required';
+    // Password required only when adding a new member; optional on edit
+    if (!editingMember && !memberFormData.password.trim()) newErrors.password = 'Password is required';
+    // If editing and a new password is provided, validate its length
+    if (editingMember && memberFormData.password.trim() && memberFormData.password.trim().length < 6) {
+      newErrors.password = 'Password must be at least 6 characters long';
+    }
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -516,14 +521,20 @@ export default function Settings() {
 
       if (editingMember) {
         // Update existing member
-        await usersAPI.updateUser(editingMember.id, {
+        const updateData: any = {
           username: memberFormData.username,
           email: memberFormData.email,
           name: memberFormData.name,
           role: memberFormData.role,
           status: memberFormData.status,
           avatar: editingMember.avatar
-        });
+        };
+        // Only send password if admin entered a new one
+        const trimmedPassword = memberFormData.password.trim();
+        if (trimmedPassword) {
+          updateData.password = trimmedPassword;
+        }
+        await usersAPI.updateUser(editingMember.id, updateData);
         alert(`Team member "${memberFormData.name}" has been updated successfully!`);
       } else {
         // Create new member
@@ -556,8 +567,24 @@ export default function Settings() {
       setErrors({});
     } catch (error: any) {
       console.error('Error saving member:', error);
-      const errorMessage = error.response?.data?.message || 'An error occurred while saving the member';
-      alert(`Error: ${errorMessage}`);
+      if (error.response?.status === 409) {
+        // Surface the conflict on the relevant form fields
+        const message: string = error.response?.data?.message || 'Username or email already exists';
+        const newErrors: Record<string, string> = {};
+        if (message.toLowerCase().includes('username')) {
+          newErrors.username = 'This username is already taken';
+        } else if (message.toLowerCase().includes('email')) {
+          newErrors.email = 'This email is already registered';
+        } else {
+          // Generic conflict — flag both fields
+          newErrors.username = 'Username or email already exists';
+          newErrors.email = 'Username or email already exists';
+        }
+        setErrors(newErrors);
+      } else {
+        const errorMessage = error.response?.data?.message || 'An error occurred while saving the member';
+        alert(`Error: ${errorMessage}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -1269,11 +1296,8 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Settings Content */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-1">Configure your recruitment system preferences</p>
-      </div>
 
       {/* Tabs */}
       <div>
@@ -1504,7 +1528,7 @@ export default function Settings() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Password *
+                    New Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span>
                   </label>
                   <input
                     type="password"
@@ -1513,7 +1537,7 @@ export default function Settings() {
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.password ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="Enter password"
+                    placeholder="Enter new password to change it"
                   />
                   {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
                 </div>
@@ -2192,6 +2216,7 @@ export default function Settings() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

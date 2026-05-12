@@ -222,25 +222,23 @@ export default function Communications({ onShowEmailTemplates }: CommunicationsP
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-end items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Communications</h1>
-          <p className="text-gray-600 mt-1">Track all candidate communications and follow-ups</p>
+          <button
+            onClick={() => setShowNewCommunication(true)}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            <span>New Communication</span>
+          </button>
+          <button
+            onClick={onShowEmailTemplates}
+            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Mail size={20} />
+            <span>Email Templates</span>
+          </button>
         </div>
-        <button
-          onClick={() => setShowNewCommunication(true)}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          <span>New Communication</span>
-        </button>
-        <button
-          onClick={onShowEmailTemplates}
-          className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-        >
-          <Mail size={20} />
-          <span>Email Templates</span>
-        </button>
       </div>
 
       {/* Stats */}
@@ -322,8 +320,8 @@ export default function Communications({ onShowEmailTemplates }: CommunicationsP
               )}
             </div>
           ) : (
-            filteredCommunications.map((comm) => (
-            <div key={comm.id} className="p-6 hover:bg-gray-50">
+            filteredCommunications.map((comm, index) => (
+            <div key={comm.id || `comm-${comm.candidate_id || comm.candidateId}-${comm.created_at || comm.date}-${index}`} className="p-6 hover:bg-gray-50">
               <div className="flex items-start justify-between">
                 <div className="flex items-start space-x-4">
                   <div className="mt-1">
@@ -437,8 +435,8 @@ export default function Communications({ onShowEmailTemplates }: CommunicationsP
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Choose a candidate</option>
-                  {allCandidates.map(candidate => (
-                    <option key={candidate.id} value={candidate.id}>
+                  {allCandidates.map((candidate, index) => (
+                    <option key={candidate.id || `candidate-${candidate.name}-${index}`} value={candidate.id}>
                       {candidate.name} - {candidate.position}
                     </option>
                   ))}

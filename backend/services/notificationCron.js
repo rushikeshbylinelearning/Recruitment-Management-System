@@ -104,7 +104,7 @@ export function startNotificationCron() {
       // Query today's Scheduled interviews joined with candidates for candidate_name
       const interviews = await query(
         `SELECT i.id, i.date, i.time, i.status, i.interviewer_id,
-                COALESCE(c.name, c.full_name, 'Unknown') AS candidate_name
+                COALESCE(c.name, 'Unknown') AS candidate_name
          FROM interviews i
          LEFT JOIN candidates c ON i.candidate_id = c.id
          WHERE i.date = ? AND i.status = 'Scheduled'`,
@@ -188,7 +188,7 @@ export function startAssignmentNotificationCron() {
     try {
       const deadlineRows = await query(
         `SELECT ca.id, ca.deadline,
-                COALESCE(c.name, c.full_name, 'Candidate') AS candidate_name,
+                COALESCE(c.name, 'Candidate') AS candidate_name,
                 c.email AS candidate_email,
                 a.title AS assignment_title
          FROM candidate_assignments ca
@@ -227,7 +227,7 @@ export function startAssignmentNotificationCron() {
     try {
       const expiryRows = await query(
         `SELECT ca.id, ca.expiry_at,
-                COALESCE(c.name, c.full_name, 'Candidate') AS candidate_name,
+                COALESCE(c.name, 'Candidate') AS candidate_name,
                 c.email AS candidate_email,
                 a.title AS assignment_title
          FROM candidate_assignments ca

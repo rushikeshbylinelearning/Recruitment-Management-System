@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { TrendingUp, Users, Briefcase, Clock, Calendar, ArrowRight, Activity } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Users, Briefcase, Clock, Calendar, ArrowRight, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dashboardAPI } from '../services/api';
 import ProtectedComponent from './ProtectedComponent';
 import DashboardWidget from './ui/DashboardWidget';
+import MetricsTimeline from './ui/MetricsTimeline';
 
 interface DashboardData {
   metrics: {
@@ -22,6 +23,46 @@ interface DashboardData {
     candidate_name: string | null;
     position: string | null;
   }>;
+  dailyMetrics: {
+    total: number;
+    byStage: Array<{ stage: string; count: number }>;
+    byRole: Array<{ role: string; count: number }>;
+    profileNotFound?: number;
+    followUps?: number;
+  };
+}
+
+/**
+ * Safely extracts DashboardData from any response shape the API service may return:
+ *   Shape A: { success: true, data: DashboardData }         ← service unwrapped axios
+ *   Shape B: { data: { success: true, data: DashboardData } } ← raw axios response
+ *   Shape C: DashboardData directly                          ← service unwrapped everything
+ */
+function extractDashboardData(response: unknown): DashboardData | null {
+  if (!response || typeof response !== 'object') return null;
+  const r = response as Record<string, unknown>;
+
+  const isDashboardData = (obj: unknown): obj is DashboardData =>
+    !!obj &&
+    typeof obj === 'object' &&
+    'metrics' in (obj as object) &&
+    'pipeline' in (obj as object);
+
+  // Shape A: { success: true, data: DashboardData }
+  if (r.success === true && isDashboardData(r.data)) return r.data;
+
+  // Shape B: raw axios → { data: { success: true, data: DashboardData } }
+  if (r.data && typeof r.data === 'object') {
+    const inner = r.data as Record<string, unknown>;
+    if (inner.success === true && isDashboardData(inner.data)) return inner.data as DashboardData;
+    // Shape B2: axios .data IS DashboardData directly
+    if (isDashboardData(inner)) return inner as unknown as DashboardData;
+  }
+
+  // Shape C: response IS DashboardData
+  if (isDashboardData(r)) return r as unknown as DashboardData;
+
+  return null;
 }
 
 export default function Dashboard() {
@@ -29,242 +70,203 @@ export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const isMountedRef = useRef(true);
+  const isFetchingRef = useRef(false);
 
-  // Fetch dashboard data - MEMOIZED
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await dashboardAPI.getOverview();
-      if (isMountedRef.current) {
-        if (response.success && response.data) {
-          setDashboardData(response.data);
+  useEffect(() => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    let cancelled = false;
+
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setError('Dashboard loading timed out. Please refresh the page.');
+      }
+    }, 10000);
+
+    const fetchDashboardData = async () => {
+      try {
+        console.log('🔄 Fetching dashboard data...');
+        const response = await dashboardAPI.getOverview();
+        console.log('✅ Dashboard response:', response);
+
+        if (cancelled) return;
+
+        const data = extractDashboardData(response);
+
+        if (data) {
+          setDashboardData(data);
+          setError('');
+          console.log('✅ Dashboard data loaded successfully');
         } else {
+          console.error('❌ Unrecognised response shape:', response);
           setError('Failed to load dashboard data');
         }
+      } catch (err) {
+        console.error('❌ Dashboard API error:', err);
+        if (!cancelled) {
+          setError(
+            `Failed to load dashboard data: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        if (!cancelled) {
+          setLoading(false);
+          isFetchingRef.current = false;
+          console.log('✅ Dashboard loading complete');
+        }
       }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError('Failed to load dashboard data');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  // Fetch dashboard data on mount only
-  useEffect(() => {
-    isMountedRef.current = true;
-    fetchDashboardData();
-    
-    return () => {
-      isMountedRef.current = false;
     };
-  }, [fetchDashboardData]);
 
-  // Format time ago - MEMOIZED
-  const getTimeAgo = useCallback((timestamp: string) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffInMinutes = Math.floor((now.getTime() - time.getTime()) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-    return `${Math.floor(diffInMinutes / 1440)}d ago`;
+    fetchDashboardData();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      isFetchingRef.current = false;
+    };
   }, []);
 
-  // Get pipeline stages with real data - MEMOIZED (MUST be before early returns)
   const pipelineWithPercentages = useMemo(() => {
-    if (!dashboardData) return [];
-    
-    const pipelineStages = [
-      { stage: 'Applied', count: dashboardData.pipeline.Applied || 0, color: 'bg-blue-500' },
-      { stage: 'Screening', count: dashboardData.pipeline.Screening || 0, color: 'bg-yellow-500' },
-      { stage: 'Interview', count: dashboardData.pipeline.Interview || 0, color: 'bg-orange-500' },
-      { stage: 'Offer', count: dashboardData.pipeline.Offer || 0, color: 'bg-purple-500' },
-      { stage: 'Hired', count: dashboardData.pipeline.Hired || 0, color: 'bg-green-500' },
+    const stages = [
+      { stage: 'Applied',   count: dashboardData?.pipeline.Applied   ?? 0, color: 'bg-blue-500' },
+      { stage: 'Screening', count: dashboardData?.pipeline.Screening ?? 0, color: 'bg-yellow-500' },
+      { stage: 'Interview', count: dashboardData?.pipeline.Interview ?? 0, color: 'bg-orange-500' },
+      { stage: 'Offer',     count: dashboardData?.pipeline.Offer     ?? 0, color: 'bg-purple-500' },
+      { stage: 'Hired',     count: dashboardData?.pipeline.Hired     ?? 0, color: 'bg-green-500' },
     ];
-
-    const maxCount = Math.max(...pipelineStages.map(stage => stage.count), 1);
-    return pipelineStages.map(stage => ({
-      ...stage,
-      percentage: (stage.count / maxCount) * 100
-    }));
+    const maxCount = Math.max(...stages.map(s => s.count), 1);
+    return stages.map(s => ({ ...s, percentage: (s.count / maxCount) * 100 }));
   }, [dashboardData]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl shadow-sm">
-        {error}
-      </div>
-    );
-  }
-
-  if (!dashboardData) {
-    return (
-      <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-6 py-4 rounded-xl shadow-sm">
-        No dashboard data available
-      </div>
-    );
-  }
+  const metrics = dashboardData?.metrics ?? {
+    totalJobs:           { value: 0, change: 0, trend: 'up' },
+    activeCandidates:    { value: 0, change: 0, trend: 'up' },
+    interviewsScheduled: { value: 0, change: 0, trend: 'up' },
+    timeToHire:          { value: 0, change: 0, trend: 'down' },
+  };
 
   return (
     <ProtectedComponent module="dashboard" action="view">
-      <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold mb-2">Welcome back! 👋</h2>
-            <p className="text-indigo-100">Here's what's happening with your recruitment today</p>
+      <div className="space-y-6 min-h-screen">
+        {/* Error Banner — only after loading finishes */}
+        {!loading && error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl shadow-sm">
+            {error}
           </div>
-          <Activity size={64} className="text-white/20" />
-        </div>
-      </div>
+        )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <DashboardWidget
-          title="Total Jobs"
-          value={dashboardData.metrics.totalJobs.value}
-          icon={Briefcase}
-          color="blue"
-          trend={{
-            value: `${dashboardData.metrics.totalJobs.change > 0 ? '+' : ''}${dashboardData.metrics.totalJobs.change}%`,
-            positive: dashboardData.metrics.totalJobs.change > 0
-          }}
-          onClick={() => navigate('/jobs')}
-        />
-        
-        <DashboardWidget
-          title="Active Candidates"
-          value={dashboardData.metrics.activeCandidates.value}
-          icon={Users}
-          color="green"
-          trend={{
-            value: `${dashboardData.metrics.activeCandidates.change > 0 ? '+' : ''}${dashboardData.metrics.activeCandidates.change}%`,
-            positive: dashboardData.metrics.activeCandidates.change > 0
-          }}
-          onClick={() => navigate('/candidates')}
-        />
-        
-        <DashboardWidget
-          title="Interviews Scheduled"
-          value={dashboardData.metrics.interviewsScheduled.value}
-          icon={Calendar}
-          color="orange"
-          trend={{
-            value: `${dashboardData.metrics.interviewsScheduled.change > 0 ? '+' : ''}${dashboardData.metrics.interviewsScheduled.change}%`,
-            positive: dashboardData.metrics.interviewsScheduled.change > 0
-          }}
-          onClick={() => navigate('/interviews')}
-        />
-        
-        <DashboardWidget
-          title="Time to Hire"
-          value={`${dashboardData.metrics.timeToHire.value} days`}
-          icon={Clock}
-          color="purple"
-          trend={{
-            value: `${dashboardData.metrics.timeToHire.change > 0 ? '+' : ''}${dashboardData.metrics.timeToHire.change}%`,
-            positive: dashboardData.metrics.timeToHire.change < 0
-          }}
-          onClick={() => navigate('/analytics')}
-        />
-      </div>
-
-      {/* Charts and Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Hiring Pipeline */}
-        <div 
-          className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-xl hover:border-indigo-300 transition-all duration-200 transform hover:-translate-y-1"
-          onClick={() => navigate('/candidates')}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-900">Hiring Pipeline</h3>
-            <ArrowRight size={20} className="text-gray-400" />
+        {/* Loading Overlay */}
+        {loading && (
+          <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mx-auto mb-4" />
+              <p className="text-gray-600 font-medium">Loading dashboard...</p>
+            </div>
           </div>
-          <div className="space-y-4">
-            {pipelineWithPercentages.map((item) => (
-              <div key={item.stage} className="group">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700">{item.stage}</span>
-                  <span className="text-sm font-bold text-gray-900">{item.count}</span>
-                </div>
-                <div className="bg-gray-100 h-3 rounded-full overflow-hidden">
-                  <div
-                    className={`${item.color} h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-90`}
-                    style={{ width: `${item.percentage}%` }}
-                  />
-                </div>
+        )}
+
+        {/* Content */}
+        <div className={loading ? 'opacity-50 pointer-events-none' : 'opacity-100'}>
+          {/* Welcome Section */}
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-bold mb-2">Welcome back! 👋</h2>
+                <p className="text-indigo-100">
+                  Here's what's happening with your recruitment today
+                </p>
               </div>
-            ))}
+              <Activity size={64} className="text-white/20" />
+            </div>
           </div>
-        </div>
 
-        {/* Recent Activity */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="text-xl font-bold text-gray-900 mb-6">Recent Activity</h3>
-          <div className="space-y-4 max-h-96 overflow-y-auto">
-            {dashboardData.activities && dashboardData.activities.length > 0 ? (
-              dashboardData.activities.slice(0, 8).map((activity, index) => (
-                <div 
-                  key={`activity-${activity.id || index}-${index}`} 
-                  className="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer group"
-                  onClick={() => {
-                    if (activity.type === 'candidate_update' || activity.type === 'new_application') {
-                      navigate('/candidates');
-                    } else if (activity.type === 'task_update') {
-                      navigate('/tasks');
-                    } else if (activity.type === 'job_posted') {
-                      navigate('/jobs');
-                    }
-                  }}
-                >
-                  <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 font-medium">{activity.description}</p>
-                    {activity.candidate_name && activity.position && (
-                      <p className="text-xs text-gray-600 mt-1">{activity.candidate_name} - {activity.position}</p>
-                    )}
-                    {activity.user && (
-                      <p className="text-xs text-gray-500 mt-1">by {activity.user}</p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">{getTimeAgo(activity.timestamp)}</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12">
-                <Activity size={48} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-gray-500 text-sm">No recent activity</p>
-              </div>
-            )}
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <DashboardWidget
+              title="Total Jobs"
+              value={metrics.totalJobs.value}
+              icon={Briefcase}
+              color="blue"
+              trend={{
+                value: `${metrics.totalJobs.change > 0 ? '+' : ''}${metrics.totalJobs.change}%`,
+                positive: metrics.totalJobs.change > 0,
+              }}
+              onClick={() => navigate('/jobs')}
+            />
+            <DashboardWidget
+              title="Active Candidates"
+              value={metrics.activeCandidates.value}
+              icon={Users}
+              color="green"
+              trend={{
+                value: `${metrics.activeCandidates.change > 0 ? '+' : ''}${metrics.activeCandidates.change}%`,
+                positive: metrics.activeCandidates.change > 0,
+              }}
+              onClick={() => navigate('/candidates')}
+            />
+            <DashboardWidget
+              title="Interviews Scheduled"
+              value={metrics.interviewsScheduled.value}
+              icon={Calendar}
+              color="orange"
+              trend={{
+                value: `${metrics.interviewsScheduled.change > 0 ? '+' : ''}${metrics.interviewsScheduled.change}%`,
+                positive: metrics.interviewsScheduled.change > 0,
+              }}
+              onClick={() => navigate('/interviews')}
+            />
+            <DashboardWidget
+              title="Time to Hire"
+              value={`${metrics.timeToHire.value} days`}
+              icon={Clock}
+              color="purple"
+              trend={{
+                value: `${metrics.timeToHire.change > 0 ? '+' : ''}${metrics.timeToHire.change}%`,
+                positive: metrics.timeToHire.change < 0,
+              }}
+              onClick={() => navigate('/analytics')}
+            />
           </div>
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <button 
-              onClick={() => navigate('/tasks')}
-              className="w-full text-center text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-2 hover:bg-indigo-50 rounded-lg transition-colors"
+
+          {/* Charts and Activity */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Hiring Pipeline */}
+            <div
+              className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-xl hover:border-indigo-300 transition-all duration-200 transform hover:-translate-y-1"
+              onClick={() => navigate('/candidates')}
             >
-              View All Activities →
-            </button>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-900">Hiring Pipeline</h3>
+                <ArrowRight size={20} className="text-gray-400" />
+              </div>
+              <div className="space-y-4">
+                {pipelineWithPercentages.map(item => (
+                  <div key={item.stage} className="group">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">{item.stage}</span>
+                      <span className="text-sm font-bold text-gray-900">{item.count}</span>
+                    </div>
+                    <div className="bg-gray-100 h-3 rounded-full overflow-hidden">
+                      <div
+                        className={`${item.color} h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-90`}
+                        style={{ width: `${item.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Metrics Timeline */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900 mb-6">Metrics Activity</h3>
+              <MetricsTimeline onViewAll={() => navigate('/analytics')} />
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </ProtectedComponent>
   );

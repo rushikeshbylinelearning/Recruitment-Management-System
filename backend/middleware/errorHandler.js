@@ -23,7 +23,7 @@ export const errorHandler = (err, req, res, next) => {
     message = 'Resource not found';
   } else if (err.name === 'ConflictError') {
     statusCode = 409;
-    message = 'Resource conflict';
+    message = err.message || 'Resource conflict';
   } else if (err.code === 'ER_DUP_ENTRY') {
     statusCode = 409;
     message = 'Duplicate entry';

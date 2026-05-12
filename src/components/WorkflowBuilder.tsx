@@ -528,23 +528,18 @@ export default function WorkflowBuilder() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-end">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <Zap className="text-indigo-600" size={32} />
-            Workflow Automation
-          </h1>
-          <p className="text-gray-600 mt-1">IF (Trigger + Conditions) THEN (Actions) — runs automatically</p>
+          {hasPermission('settings', 'edit') && (
+            <button
+              onClick={() => { setEditingWorkflow(null); setShowForm(true); }}
+              className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg"
+            >
+              <Plus size={18} />
+              <span className="font-semibold">New Workflow</span>
+            </button>
+          )}
         </div>
-        {hasPermission('settings', 'edit') && (
-          <button
-            onClick={() => { setEditingWorkflow(null); setShowForm(true); }}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg"
-          >
-            <Plus size={18} />
-            <span className="font-semibold">New Workflow</span>
-          </button>
-        )}
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl">{error}</div>}

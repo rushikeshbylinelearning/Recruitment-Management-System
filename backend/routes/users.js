@@ -4,6 +4,7 @@ import { query } from '../config/database.js';
 import { authenticateToken, checkPermission, requireAdmin } from '../middleware/auth.js';
 import { validateUser, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
+import config from '../config/config.js';
 
 const router = express.Router();
 
@@ -251,14 +252,46 @@ router.get('/:id', authenticateToken, checkPermission('team', 'view'), validateI
   });
 }));
 
+// Reset user password (Admin only)
+router.post('/:id/reset-password', authenticateToken, requireAdmin, validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const userId = req.params.id;
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    throw new ValidationError('New password must be at least 6 characters long');
+  }
+
+  // Check if user exists
+  const existingUsers = await query('SELECT id FROM users WHERE id = ?', [userId]);
+  if (existingUsers.length === 0) {
+    throw new NotFoundError('User not found');
+  }
+
+  // Hash new password
+  const saltRounds = config.security.bcryptRounds;
+  const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+  await query(
+    'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+    [passwordHash, userId]
+  );
+
+  res.json({
+    success: true,
+    message: 'Password reset successfully'
+  });
+}));
+
 // Update user
 router.put('/:id', authenticateToken, checkPermission('team', 'edit'), validateId('id'), handleValidationErrors, asyncHandler(async (req, res) => {
   const userId = req.params.id;
   const { username, email, name, role, avatar, status } = req.body;
+  // Read password directly from req.body to avoid any destructuring issues
+  const password = req.body.password !== undefined ? String(req.body.password) : '';
 
-  // Debug log
-  console.log('Update user request body:', req.body);
-  console.log('Parsed fields:', { username, email, name, role, avatar, status });
+  // Debug log (never log the actual password value)
+  console.log('Update user request body:', { ...req.body, password: req.body.password ? '[PROVIDED]' : '[NOT PROVIDED]' });
+  console.log('Parsed fields:', { username, email, name, role, avatar, status, password: password ? '[PROVIDED]' : '[NOT PROVIDED]' });
 
   // Validate required fields for update
   if (!username || !email || !name || !role) {
@@ -268,6 +301,15 @@ router.put('/:id', authenticateToken, checkPermission('team', 'edit'), validateI
       errors: [
         { field: 'required', message: 'Username, email, name, and role are required' }
       ]
+    });
+  }
+
+  // Validate new password length if provided
+  if (password && password.trim().length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{ field: 'password', message: 'Password must be at least 6 characters long' }]
     });
   }
 
@@ -302,6 +344,16 @@ router.put('/:id', authenticateToken, checkPermission('team', 'edit'), validateI
     'UPDATE users SET username = ?, email = ?, name = ?, role = ?, avatar = ?, status = ?, updated_at = NOW() WHERE id = ?',
     updateParams
   );
+
+  // Update password if provided
+  if (password && password.trim()) {
+    const saltRounds = config.security.bcryptRounds;
+    const passwordHash = await bcrypt.hash(password.trim(), saltRounds);
+    await query(
+      'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+      [passwordHash, userId]
+    );
+  }
 
   res.json({
     success: true,
@@ -467,4 +519,3 @@ router.get('/:id/dashboard', authenticateToken, asyncHandler(async (req, res) =>
 }));
 
 export default router;
-

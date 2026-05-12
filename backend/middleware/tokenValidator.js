@@ -60,11 +60,51 @@ const isValidTokenFormat = (token) => {
  */
 export const validateToken = async (req, res, next) => {
   try {
-    // Extract token from query parameters
     const token = req.query.token;
+    const shareToken = req.query.share;
     const formSlug = req.params.slug;
 
-    // Check if token is provided
+    // ── Share-token path ──────────────────────────────────────────────────────
+    if (shareToken) {
+      if (!isValidTokenFormat(shareToken)) {
+        return res.status(401).json({ success: false, message: 'Invalid share token format' });
+      }
+
+      const shareRows = await query(
+        `SELECT st.id, st.form_id, st.expires_at, st.is_active,
+                f.id as fid, f.name, f.slug, f.is_active as form_active, f.access_token
+         FROM form_share_tokens st
+         JOIN forms f ON f.id = st.form_id
+         WHERE st.token = ? AND f.slug = ?`,
+        [shareToken, formSlug]
+      );
+
+      if (shareRows.length === 0) {
+        return res.status(401).json({ success: false, message: 'Invalid or expired share link' });
+      }
+
+      const row = shareRows[0];
+
+      if (!row.is_active) {
+        return res.status(401).json({ success: false, message: 'This share link has been revoked' });
+      }
+
+      if (row.expires_at && new Date(row.expires_at) < new Date()) {
+        return res.status(401).json({ success: false, message: 'This share link has expired' });
+      }
+
+      if (!row.form_active) {
+        return res.status(403).json({ success: false, message: 'This form is no longer accepting submissions' });
+      }
+
+      // Increment usage counter (non-blocking)
+      query('UPDATE form_share_tokens SET used_count = used_count + 1 WHERE id = ?', [row.id]).catch(() => {});
+
+      req.form = { id: row.fid, name: row.name, slug: row.slug, is_active: row.form_active, access_token: row.access_token };
+      return next();
+    }
+
+    // ── Static access-token path ──────────────────────────────────────────────
     if (!token) {
       return res.status(401).json({
         success: false,
