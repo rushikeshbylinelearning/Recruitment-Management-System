@@ -15,11 +15,14 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import jobRoutes from './routes/jobs.js';
 import candidateRoutes from './routes/candidates.js';
+import candidateMergeRoutes from './routes/candidateMerge.js';
+import { ensureMergeSchema } from './services/ensureMergeSchema.js';
 import interviewRoutes from './routes/interviews.js';
 import taskRoutes from './routes/tasks.js';
 import communicationRoutes from './routes/communications.js';
 import emailTemplateRoutes from './routes/emailTemplates.js';
 import analyticsRoutes from './routes/analytics.js';
+import hiringTrendsRoutes from './routes/hiringTrends.js';
 import settingsRoutes from './routes/settings.js';
 import fileRoutes from './routes/files.js';
 import dashboardRoutes from './routes/dashboard.js';
@@ -29,9 +32,13 @@ import automationRoutes from './routes/automations.js';
 import activityLogRoutes from './routes/activityLogs.js';
 import workflowRoutes from './routes/workflows.js';
 import publicFormRoutes from './routes/publicForms.js';
+import publicApplicationRoutes from './routes/publicApplication.js';
+import candidateApplicationsRoutes from './routes/candidateApplications.js';
+import { ensurePublicApplicationSchema } from './services/ensurePublicApplicationSchema.js';
 import publicSubmissionRoutes from './routes/publicSubmission.js';
 import formBuilderRoutes from './routes/formBuilder.js';
 import notificationsRouter from './routes/notifications.js';
+import taskUpdatesRouter from './routes/taskUpdates.js';
 import candidateNotesRoutes from './routes/candidateNotes.js';
 import interactionMemoryRoutes from './routes/interactionMemory.js';
 import candidateImportRoutes from './routes/candidateImport.js';
@@ -43,6 +50,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+
+// Behind Apache/nginx — trust X-Forwarded-* for protocol/host in share links
+if (config.nodeEnv === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Security middleware
 app.use(helmet({
@@ -107,6 +119,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates/import', candidateImportRoutes);
+app.use('/api/candidates/merge', candidateMergeRoutes);
+app.use('/api/candidates/hiring-trends', hiringTrendsRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/interviews', interviewRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -121,10 +135,13 @@ app.use('/api/candidate-assignments', candidateAssignmentRoutes);
 app.use('/api/automations', automationRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/workflows', workflowRoutes);
-app.use('/api/public', publicFormRoutes); // Public form routes (no auth)
+app.use('/api/public', publicApplicationRoutes); // Short-link public applications (no auth)
+app.use('/api/public', publicFormRoutes); // Legacy /apply/:slug routes (no auth)
 app.use('/api/public/submit-assignment', publicSubmissionRoutes); // Public submission routes (no auth)
 app.use('/api/form-builder', formBuilderRoutes); // Admin form builder routes (auth required)
+app.use('/api/candidate-applications', candidateApplicationsRoutes);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/task-updates', taskUpdatesRouter);
 app.use('/api/candidate-notes', candidateNotesRoutes);
 app.use('/api/interaction', interactionMemoryRoutes);
 app.use('/api/rms-export', rmsExportRoutes);
@@ -254,6 +271,14 @@ const startServer = async () => {
       console.error('❌ Failed to connect to database. Server will not start.');
       process.exit(1);
     }
+
+    await ensurePublicApplicationSchema().catch((err) => {
+      console.warn('[PublicApplication] Schema setup warning:', err.message);
+    });
+
+    await ensureMergeSchema().catch((err) => {
+      console.warn('[MergeSchema] Schema setup warning:', err.message);
+    });
 
     // Start listening
     const server = app.listen(config.port, () => {

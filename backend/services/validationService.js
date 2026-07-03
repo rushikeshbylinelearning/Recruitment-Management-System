@@ -123,13 +123,34 @@ class ValidationService {
    * @param {Object} data - Form submission data
    * @returns {Object} - { isValid: boolean, errors: Object }
    */
-  validateFormSubmission(fields, data) {
+  validateFormSubmission(fields, data, filesByFieldKey = {}) {
     const errors = {};
     let isValid = true;
 
     fields.forEach(field => {
-      const value = data[field.field_key];
+      const uploadedFile = filesByFieldKey[field.field_key];
+      const value = field.field_type === 'file'
+        ? (uploadedFile || data[field.field_key])
+        : data[field.field_key];
       const fieldErrors = [];
+
+      // File fields: required check uses multer upload, not req.body
+      if (field.field_type === 'file') {
+        if (field.is_required && !uploadedFile) {
+          fieldErrors.push(`${field.label} is required`);
+          isValid = false;
+        } else if (uploadedFile) {
+          const fileValidation = this.validateFileUpload(uploadedFile);
+          if (!fileValidation.isValid) {
+            fieldErrors.push(...fileValidation.errors);
+            isValid = false;
+          }
+        }
+        if (fieldErrors.length > 0) {
+          errors[field.field_key] = fieldErrors.join(', ');
+        }
+        return;
+      }
 
       // Check required fields
       if (field.is_required && !this.validateRequired(value)) {

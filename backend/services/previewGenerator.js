@@ -82,15 +82,24 @@ async function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
     let stageDetection = null;
     if (detectStage && (normalized.normalized.stage || row.__cellColors)) {
       const cellColors = row.__cellColors || {};
-      const stageColor = cellColors.stage || 
-                         cellColors.Stage || 
-                         cellColors.Status || 
-                         cellColors.Workflow ||
-                         Object.values(cellColors)[0];
+
+      // CRITICAL: Read color from CANDIDATE NAME column ONLY.
+      // This mirrors the logic in bulkInsertService.js prepareRowData().
+      // Common name-column header variations are checked in priority order.
+      const nameCellColor =
+        cellColors['Name'] ||
+        cellColors['Candidate Name'] ||
+        cellColors['Full Name'] ||
+        cellColors['Candidate'] ||
+        cellColors['name'] ||
+        cellColors['candidate name'] ||
+        cellColors['full name'] ||
+        cellColors['candidate'] ||
+        null;
 
       stageDetection = detectStage({
         cellValue: normalized.normalized.stage || '',
-        cellColor: stageColor,
+        cellColor: nameCellColor,   // Name cell color — NOT stage/status column
         allowFuzzyMatch: true,
         confidenceThreshold: 0.7
       });

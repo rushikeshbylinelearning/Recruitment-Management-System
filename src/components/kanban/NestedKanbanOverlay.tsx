@@ -17,7 +17,13 @@ import { useState } from 'react';
 import NestedStageColumn from './NestedStageColumn';
 import CandidateCard from './CandidateCard';
 import { Candidate as ApiCandidate } from '../../services/api';
-import { UmbrellaStage, SubStage, DEFAULT_STAGE_CONFIG } from '../../types/umbrellaStage';
+import {
+  UmbrellaStage,
+  DEFAULT_STAGE_CONFIG,
+  getCandidateSubStageId,
+  getLegacyStageForRejectedSubStage,
+} from '../../types/umbrellaStage';
+import { sortCandidatesNewestFirst } from '../../utils/candidateSort';
 
 interface NestedKanbanOverlayProps {
   isOpen: boolean;
@@ -25,6 +31,7 @@ interface NestedKanbanOverlayProps {
   candidates: ApiCandidate[];
   onClose: () => void;
   onStageChange: (candidateId: string, newStage: string) => Promise<void>;
+  onSubStageChange?: (candidateId: string, mainStage: string, subStage: string) => Promise<void>;
   onCandidateClick: (candidate: ApiCandidate) => void;
   onCandidateEdit: (candidate: ApiCandidate) => void;
   onCandidateDelete: (candidateId: string) => void;
@@ -43,6 +50,7 @@ export default function NestedKanbanOverlay({
   candidates,
   onClose,
   onStageChange,
+  onSubStageChange,
   onCandidateClick,
   onCandidateEdit,
   onCandidateDelete,
@@ -73,27 +81,18 @@ export default function NestedKanbanOverlay({
       candidatesBySubStage[subStage.id] = [];
     });
 
-    candidates.forEach(candidate => {
-      let subStageId = '';
-      
-      // Map legacy stage names to sub-stage IDs based on umbrella type
-      if (umbrellaStage.id === 'rejected') {
-        // Rejected umbrella mapping
-        if (candidate.stage === 'Rejected') subStageId = 'rejected';
-        else if (candidate.stage === 'On Hold') subStageId = 'on-hold';
-        else if (candidate.stage === 'Profile Not Matched') subStageId = 'profile-not-matched';
-        else if (candidate.stage === 'Last Minute Back Out') subStageId = 'last-minute-back-out';
-      } else if (umbrellaStage.id === 'interview') {
-        // Interview umbrella mapping
-        // For now, distribute candidates or use default
-        // In production, check candidate.subStage or metadata
-        subStageId = 'came-down'; // Default to "Came Down"
-      }
-
-      if (candidatesBySubStage[subStageId]) {
+    candidates.forEach((candidate) => {
+      const subStageId = getCandidateSubStageId(candidate, umbrellaStage.id);
+      if (subStageId && candidatesBySubStage[subStageId]) {
         candidatesBySubStage[subStageId].push(candidate);
       }
     });
+
+    for (const subStageId of Object.keys(candidatesBySubStage)) {
+      candidatesBySubStage[subStageId] = sortCandidatesNewestFirst(
+        candidatesBySubStage[subStageId]
+      );
+    }
   }
 
   // Handle ESC key to close
@@ -155,42 +154,45 @@ export default function NestedKanbanOverlay({
           : String(active.id);
 
       const newSubStageId = String(over.id);
-
-      // Find the sub-stage configuration
-      const subStageConfig = umbrellaStage.subStages?.find(s => s.id === newSubStageId);
-      
-      // Map sub-stage ID back to legacy stage name
-      let newStageName = umbrellaStage.name; // Default to umbrella stage name
-      
-      if (umbrellaStage.id === 'rejected') {
-        // Rejected umbrella mapping
-        if (newSubStageId === 'rejected') newStageName = 'Rejected';
-        else if (newSubStageId === 'on-hold') newStageName = 'On Hold';
-        else if (newSubStageId === 'profile-not-matched') newStageName = 'Profile Not Matched';
-        else if (newSubStageId === 'last-minute-back-out') newStageName = 'Last Minute Back Out';
-      } else if (umbrellaStage.id === 'interview') {
-        // Interview umbrella - check for escalation
-        if (subStageConfig?.escalationRule === 'move-to-stage' && subStageConfig.escalationTarget) {
-          // Escalate to target stage
-          const targetStage = DEFAULT_STAGE_CONFIG.mainStages.find(s => s.id === subStageConfig.escalationTarget);
-          if (targetStage) {
-            newStageName = targetStage.name;
-          }
-        } else {
-          // Stay in Interview stage
-          newStageName = 'Interview';
-        }
-      }
+      const subStageConfig = umbrellaStage.subStages?.find((s) => s.id === newSubStageId);
+      if (!subStageConfig) return;
 
       const candidate = candidates.find((c) => c.id === candidateId);
       if (!candidate) return;
 
-      // Only update if stage actually changed
-      if (candidate.stage !== newStageName) {
-        await onStageChange(candidateId, newStageName);
+      const currentSubStageId = getCandidateSubStageId(candidate, umbrellaStage.id);
+      if (currentSubStageId === newSubStageId) return;
+
+      // Escalation sub-stages move to a different main kanban column
+      if (subStageConfig?.escalationRule === 'move-to-stage' && subStageConfig.escalationTarget) {
+        const targetStage = DEFAULT_STAGE_CONFIG.mainStages.find(
+          (s) => s.id === subStageConfig.escalationTarget
+        );
+        if (targetStage) {
+          await onStageChange(candidateId, targetStage.name);
+        }
+        return;
+      }
+
+      if (umbrellaStage.id === 'interview') {
+        if (!onSubStageChange) return;
+        await onSubStageChange(candidateId, 'interview', newSubStageId);
+        return;
+      }
+
+      if (umbrellaStage.id === 'rejected') {
+        const newStageName = getLegacyStageForRejectedSubStage(newSubStageId);
+        if (candidate.stage !== newStageName) {
+          await onStageChange(candidateId, newStageName);
+        }
+        return;
+      }
+
+      if (umbrellaStage.id === 'follow-up' && onSubStageChange) {
+        await onSubStageChange(candidateId, 'follow-up', newSubStageId);
       }
     },
-    [candidates, onStageChange, umbrellaStage]
+    [candidates, onStageChange, onSubStageChange, umbrellaStage]
   );
 
   const handleDragCancel = useCallback(() => {
@@ -236,7 +238,7 @@ export default function NestedKanbanOverlay({
             transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
           >
             <motion.div
-              className="w-full max-w-7xl h-full max-h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto"
+              className="flex min-h-0 min-w-0 w-full max-w-7xl h-full max-h-[85vh] flex-col overflow-hidden bg-white rounded-3xl shadow-2xl pointer-events-auto"
               layoutId={`umbrella-stage-${umbrellaStage.id}`}
               initial={
                 originRect && !prefersReducedMotion
@@ -279,7 +281,7 @@ export default function NestedKanbanOverlay({
             >
               {/* Header */}
               <div
-                className="flex items-center justify-between px-6 py-4 border-b border-gray-100"
+                className="flex shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4"
                 style={{
                   background: `linear-gradient(135deg, ${umbrellaStage.accentColor}08 0%, ${umbrellaStage.accentColor}03 100%)`,
                 }}
@@ -343,8 +345,8 @@ export default function NestedKanbanOverlay({
                 </button>
               </div>
 
-              {/* Nested Kanban Board */}
-              <div className="h-[calc(100%-73px)] overflow-hidden">
+              {/* Nested Kanban Board — min-w-0 so columns can overflow-x inside this panel */}
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -353,8 +355,8 @@ export default function NestedKanbanOverlay({
                   onDragEnd={handleDragEnd}
                   onDragCancel={handleDragCancel}
                 >
-                  <div 
-                    className="flex gap-4 h-full p-6 overflow-x-auto nested-kanban-scroll"
+                  <div
+                    className="nested-kanban-scroll flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-nowrap gap-4 overflow-x-auto overflow-y-hidden p-6"
                     style={{
                       scrollbarWidth: 'thin',
                       scrollbarColor: `${umbrellaStage.accentColor}40 transparent`,

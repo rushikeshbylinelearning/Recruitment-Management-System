@@ -140,7 +140,7 @@ router.put('/:id', authenticateToken, checkPermission('communications', 'edit'),
 
   // Check if user can update this communication
   const communication = existingCommunications[0];
-  if (communication.created_by !== req.user.id && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (communication.created_by !== req.user.id && req.user.role !== 'Admin') {
     throw new ValidationError('You can only update your own communications');
   }
 
@@ -238,7 +238,7 @@ router.patch('/:id/status', authenticateToken, checkPermission('communications',
 
   // Check if user can update this communication
   const communication = existingCommunications[0];
-  if (communication.created_by !== req.user.id && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (communication.created_by !== req.user.id && req.user.role !== 'Admin') {
     throw new ValidationError('You can only update your own communications');
   }
 

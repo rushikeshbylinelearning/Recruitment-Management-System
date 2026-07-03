@@ -1,0 +1,605 @@
+/* ============================================
+   JobApplicantsModal - Dedicated Styles
+   ============================================ */
+
+/* ─── Scrollbar Styles ─────────────────────────────────────────────────────
+   Applied to:
+     - .job-applicants-month-sidebar   (left month list)
+     - .job-applicants-rows-container  (right candidate list)
+     - .job-applicants-notes-list      (notes inside each card)
+   All three elements must have overflow-y: auto so the scrollbar appears.
+   ──────────────────────────────────────────────────────────────────────── */
+.job-applicants-modal-scrollbar {
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+/* Webkit Scrollbar Styling */
+.job-applicants-modal-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  background-color: #e2e8f0;
+}
+
+.job-applicants-modal-scrollbar::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 6px;
+}
+
+.job-applicants-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #e2e8f0;
+  transition: background 0.2s ease;
+}
+
+.job-applicants-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Dark Mode Scrollbar */
+html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar {
+  background-color: var(--dm-surface);
+}
+
+html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar-track {
+  background: var(--dm-surface);
+  border-radius: 6px;
+}
+
+html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--dm-border-2);
+  border-radius: 6px;
+  border: 2px solid var(--dm-surface);
+}
+
+html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--dm-accent);
+}
+
+/* Smooth Scrolling */
+.job-applicants-modal-scrollbar {
+  scroll-behavior: smooth;
+}
+
+/* ─── Modal Container ────────────────────────────────────────────────────── */
+.job-applicants-modal-container {
+  position: fixed;
+  inset: 0;
+  /* Upgraded: matches candidate modal elegant blur backdrop */
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1.5rem;
+  /* entry animation declared in JobModalAnimations.css */
+}
+
+.job-applicants-modal-content {
+  background-color: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 90%;
+  max-width: 1100px;
+  max-height: 82vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+html.dark .job-applicants-modal-content {
+  background-color: var(--dm-surface);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* ─── Header Gradient ────────────────────────────────────────────────────── */
+.job-applicants-modal-header {
+  background: linear-gradient(to right, #9333ea, #a855f7, #dc2626);
+  padding: 0.75rem 1.25rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ─── Month Sidebar ──────────────────────────────────────────────────────── */
+.job-applicants-month-sidebar {
+  width: 13rem;
+  flex-shrink: 0;
+  border-right: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  padding: 0.75rem;
+  /* KEY FIX: min-h-0 lets the flex child shrink so overflow-y actually
+     activates. Without it the sidebar stretches to its content height
+     and never scrolls. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+html.dark .job-applicants-month-sidebar {
+  background-color: var(--dm-surface);
+  border-right-color: var(--dm-border);
+}
+
+/* ─── Month Card ─────────────────────────────────────────────────────────── */
+.job-applicants-month-card {
+  width: 100%;
+  text-align: left;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  transition: all 0.2s ease;
+  background-color: white;
+  flex-shrink: 0; /* cards must not shrink — sidebar scrolls instead */
+}
+
+.job-applicants-month-card:hover {
+  border-color: #d8b4fe;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.job-applicants-month-card.active {
+  border-color: #a855f7;
+  background-color: #faf5ff;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .job-applicants-month-card {
+  background-color: var(--dm-surface-2);
+  border-color: var(--dm-border);
+}
+
+html.dark .job-applicants-month-card.active {
+  background-color: var(--dm-surface-3);
+  border-color: var(--dm-accent);
+}
+
+/* Focus Styles for Accessibility */
+.job-applicants-month-card:focus-visible {
+  outline: 2px solid #a855f7;
+  outline-offset: 2px;
+}
+
+/* ─── Candidate List Container ───────────────────────────────────────────── */
+.job-applicants-list-container {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* KEY FIX: min-h-0 is required so the flex child can shrink
+     and its inner overflow-y containers can scroll */
+  min-height: 0;
+  overflow: hidden;
+  background-color: white;
+}
+
+html.dark .job-applicants-list-container {
+  background-color: var(--dm-surface-2);
+}
+
+/* ─── Search Bar ─────────────────────────────────────────────────────────── */
+.job-applicants-search-bar {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: white;
+  flex-shrink: 0;
+}
+
+html.dark .job-applicants-search-bar {
+  background-color: var(--dm-surface-2);
+  border-bottom-color: var(--dm-border);
+}
+
+/* ─── Candidate Rows Scrollable Area ─────────────────────────────────────── */
+.job-applicants-rows-container {
+  flex: 1;
+  /* KEY FIX: min-height: 0 is essential — without it a flex child
+     defaults to min-height: auto (content height) and never scrolls */
+  min-height: 0;
+  background-color: #f9fafb;
+  padding: 1rem;
+  /* overflow-y: auto is injected by .job-applicants-modal-scrollbar */
+}
+
+html.dark .job-applicants-rows-container {
+  background-color: var(--dm-surface);
+}
+
+/* ─── Candidate Card ─────────────────────────────────────────────────────── */
+.job-applicants-candidate-card {
+  background-color: white;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.job-applicants-candidate-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .job-applicants-candidate-card {
+  background-color: var(--dm-surface-2);
+  border-color: var(--dm-border);
+}
+
+html.dark .job-applicants-candidate-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Notes Panel ────────────────────────────────────────────────────────── */
+.job-applicants-notes-panel {
+  border-top: 1px solid #f3f4f6;
+  background-color: rgba(238, 242, 255, 0.3);
+  padding: 1rem;
+}
+
+html.dark .job-applicants-notes-panel {
+  background-color: rgba(37, 99, 235, 0.05);
+  border-top-color: var(--dm-border);
+}
+
+/* ─── Notes List Scrollable ──────────────────────────────────────────────── */
+.job-applicants-notes-list {
+  max-height: 11rem;
+  /* overflow-y: auto is injected by .job-applicants-modal-scrollbar */
+}
+
+/* ─── Avatar ─────────────────────────────────────────────────────────────── */
+.job-applicants-avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  background: linear-gradient(to bottom right, #a855f7, #dc2626);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Stage Badge ────────────────────────────────────────────────────────── */
+.job-applicants-stage-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ─── Loading Spinner ────────────────────────────────────────────────────── */
+.job-applicants-spinner {
+  border-radius: 9999px;
+  border: 3px solid #e9d5ff;
+  border-top-color: #9333ea;
+  animation: job-applicants-spin 0.8s linear infinite;
+}
+
+@keyframes job-applicants-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Empty State ────────────────────────────────────────────────────────── */
+.job-applicants-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 1rem;
+  padding: 5rem 0;
+}
+
+/* ─── Responsive Adjustments ─────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .job-applicants-month-sidebar {
+    width: 14rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .job-applicants-modal-content {
+    max-height: 95vh;
+  }
+
+  .job-applicants-month-sidebar {
+    width: 12rem;
+    padding: 0.75rem;
+  }
+
+  .job-applicants-month-card {
+    padding: 0.75rem;
+  }
+}
+
+
+/* ============================================
+   AddCandidateModal - Dedicated Styles
+   ============================================ */
+
+/* ─── Overlay ────────────────────────────────────────────────────────────── */
+.add-candidate-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+/* ─── Modal Shell ────────────────────────────────────────────────────────── */
+.add-candidate-modal-shell {
+  background-color: white;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 56rem;       /* max-w-4xl */
+  max-height: 90vh;
+  overflow: hidden;       /* clips children; scroll is on the inner body */
+  display: flex;
+  flex-direction: column; /* header | form(body+footer) stack vertically */
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────── */
+.add-candidate-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(to right, #fee2e2, #ffffff);
+  flex-shrink: 0; /* never let the header shrink or scroll away */
+}
+
+/* ─── Form wrapper ───────────────────────────────────────────────────────── */
+/*
+  The <form> sits between header and the end of the shell.
+  It must be a flex column so its two children — scrollable body
+  and sticky footer — can share the remaining space correctly.
+*/
+.add-candidate-modal-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* KEY: without this, flex children never shrink below
+                    their natural content height, so overflow never fires */
+}
+
+/* ─── Scrollable Body ────────────────────────────────────────────────────── */
+/*
+  This div holds all the form sections.  It takes all available vertical
+  space (flex: 1) and scrolls when the content is taller than that space.
+  min-height: 0 is repeated here for the same reason as on the form.
+*/
+.add-candidate-modal-body {
+  flex: 1;
+  min-height: 0;
+  padding: 1.5rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.add-candidate-modal-body::-webkit-scrollbar {
+  width: 8px;
+  background-color: #e2e8f0;
+}
+
+.add-candidate-modal-body::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 6px;
+}
+
+.add-candidate-modal-body::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #e2e8f0;
+  transition: background 0.2s ease;
+}
+
+.add-candidate-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* ─── Sticky Footer ──────────────────────────────────────────────────────── */
+/*
+  flex-shrink: 0 ensures the footer is never compressed or pushed off-screen.
+  It always occupies its natural height at the bottom of the form.
+*/
+.add-candidate-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  flex-shrink: 0;
+}
+
+/* ─── Dark Mode ──────────────────────────────────────────────────────────── */
+html.dark .add-candidate-modal-shell {
+  background-color: var(--dm-surface);
+}
+
+html.dark .add-candidate-modal-header {
+  background: linear-gradient(to right, var(--dm-surface-2), var(--dm-surface-3));
+  border-bottom-color: var(--dm-border);
+}
+
+html.dark .add-candidate-modal-body::-webkit-scrollbar {
+  background-color: var(--dm-surface);
+}
+
+html.dark .add-candidate-modal-body::-webkit-scrollbar-track {
+  background: var(--dm-surface);
+}
+
+html.dark .add-candidate-modal-body::-webkit-scrollbar-thumb {
+  background: var(--dm-border-2);
+  border: 2px solid var(--dm-surface);
+}
+
+html.dark .add-candidate-modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--dm-accent);
+}
+
+html.dark .add-candidate-modal-footer {
+  background-color: var(--dm-surface-2);
+  border-top-color: var(--dm-border);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .add-candidate-modal-shell {
+    max-height: 95vh;
+  }
+
+  .add-candidate-modal-body {
+    padding: 1rem;
+  }
+
+  .add-candidate-modal-footer {
+    padding: 1rem;
+  }
+}
+
+/* ============================================
+   Shared: AssignmentModal / InterviewModal / AssignmentFormModal
+   ============================================
+
+   Root problem: the shell div had no max-height or flex-column layout,
+   so the form's own max-h-[75vh] was the only constraint. When content
+   is tall the footer (outside <form>) pushes the whole dialog off-screen.
+
+   Fix: give the shell flex-column + max-height, strip max-h from <form>,
+   and let the form body be the only scrolling region.
+   ============================================ */
+
+/* ─── Shell (the white card) ─────────────────────────────────────────────── */
+.shared-modal-shell {
+  position: relative;
+  width: 100%;
+  max-width: 42rem;          /* max-w-2xl */
+  background-color: white;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;    /* stack header | body | footer vertically */
+  max-height: 90vh;          /* cap total height so scroll is possible */
+  overflow: hidden;          /* clip rounded corners, inner divs scroll */
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────── */
+.shared-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;            /* never squish or scroll away */
+}
+
+/* ─── Scrollable form body ───────────────────────────────────────────────── */
+/*
+  The <form> itself becomes the scroll container.
+  flex: 1 + min-height: 0 lets it fill available space without overflowing.
+*/
+.shared-modal-form-body {
+  flex: 1;
+  min-height: 0;             /* required for flex overflow to activate */
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.shared-modal-form-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.shared-modal-form-body::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 6px;
+}
+
+.shared-modal-form-body::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #e2e8f0;
+  transition: background 0.2s ease;
+}
+
+.shared-modal-form-body::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* ─── Sticky footer ──────────────────────────────────────────────────────── */
+.shared-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #f3f4f6;
+  background-color: rgba(249, 250, 251, 0.6);
+  border-radius: 0 0 1rem 1rem;
+  flex-shrink: 0;            /* always pinned at the bottom */
+}
+
+/* Variant: footer right-aligned (AssignmentFormModal) */
+.shared-modal-footer-end {
+  justify-content: flex-end;
+}
+
+/* ─── Dark mode ──────────────────────────────────────────────────────────── */
+html.dark .shared-modal-shell {
+  background-color: var(--dm-surface);
+}
+
+html.dark .shared-modal-header {
+  border-bottom-color: var(--dm-border);
+}
+
+html.dark .shared-modal-form-body::-webkit-scrollbar-track {
+  background: var(--dm-surface);
+}
+
+html.dark .shared-modal-form-body::-webkit-scrollbar-thumb {
+  background: var(--dm-border-2);
+  border: 2px solid var(--dm-surface);
+}
+
+html.dark .shared-modal-form-body::-webkit-scrollbar-thumb:hover {
+  background: var(--dm-accent);
+}
+
+html.dark .shared-modal-footer {
+  background-color: var(--dm-surface-2);
+  border-top-color: var(--dm-border);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .shared-modal-shell {
+    max-height: 95vh;
+  }
+
+  .shared-modal-form-body {
+    padding: 1rem;
+  }
+
+  .shared-modal-footer {
+    padding: 0.75rem 1rem;
+  }
+}

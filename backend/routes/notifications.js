@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { createNotification } from '../services/inAppNotifications.js';
 
 const router = express.Router();
 

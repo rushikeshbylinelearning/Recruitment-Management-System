@@ -1,18 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Upload, Plus, Trash2, FileText } from 'lucide-react';
-import { JobPosting } from '../types';
+import { Candidate, JobPosting } from '../types';
 import { filesAPI, candidatesAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import CandidateViewModal from './CandidateViewModal';
+import DuplicateCandidatesAlert from './DuplicateCandidatesAlert';
+import { FORM_SELECTABLE_STAGES, normalizeStageForDisplay } from '../utils/candidateStage';
 import '../styles/JobApplicantsModal.css';
 
 interface AddCandidateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (candidateData: any) => void;
+  onSubmit: (candidateData: any) => Promise<void>;
   jobs: JobPosting[];
   editingCandidate?: any;
+  /** When viewing a duplicate profile, switch the add modal into edit mode for that candidate */
+  onEditExisting?: (candidate: Candidate) => void;
 }
 
-export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, editingCandidate }: AddCandidateModalProps) {
+export default function AddCandidateModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  jobs,
+  editingCandidate,
+  onEditExisting,
+}: AddCandidateModalProps) {
+  const { hasPermission } = useAuth();
+  const canEditCandidates = hasPermission('candidates', 'edit');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -82,44 +97,79 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   };
 
   const handleLPAInput = (value: string) => {
-    // Allow numbers, decimal point, and LPA text (case insensitive)
-    let cleaned = value.replace(/[^0-9.LPA]/gi, '');
-    
-    // Convert to uppercase for consistency
-    cleaned = cleaned.toUpperCase();
-    
-    // If the value is empty or just whitespace, return empty string
+    // Allow numbers, decimals, hyphen (ranges), spaces, and LPA
+    let cleaned = value.replace(/[^0-9.\-\sLPA]/gi, '');
+    cleaned = cleaned.toUpperCase().replace(/\s+/g, ' ');
+
     if (!cleaned.trim()) {
       return '';
     }
-    
-    // If user is typing and it's just numbers (no LPA yet), don't auto-add LPA
-    // This allows users to edit the number part freely
-    if (/^[0-9]+\.?[0-9]*$/.test(cleaned)) {
-      return cleaned; // Return as-is, let user decide when to add LPA
+
+    const collapseExtraDecimals = (segment: string) => {
+      const parts = segment.replace(/\s/g, '').split('.');
+      if (parts.length <= 2) return segment.trim();
+      return `${parts[0]}.${parts.slice(1).join('')}`;
+    };
+
+    // Single value or range before/at LPA suffix (e.g. 8, 7-8, 7.5-8.5, 7-8 LPA)
+    if (!/LPA/.test(cleaned)) {
+      if (!cleaned.includes('-')) {
+        return collapseExtraDecimals(cleaned);
+      }
+      return cleaned;
     }
-    
-    // If LPA is present, ensure it's at the end and only once
-    const lpaIndex = cleaned.indexOf('LPA');
-    if (lpaIndex !== -1) {
-      // Remove any LPA that's not at the end
-      const beforeLPA = cleaned.substring(0, lpaIndex);
-      const afterLPA = cleaned.substring(lpaIndex + 3);
-      
-      // Only keep the first LPA and put it at the end
-      cleaned = beforeLPA + afterLPA + 'LPA';
+
+    const withoutLpa = cleaned.replace(/LPA/g, '').trim();
+    cleaned = withoutLpa ? `${withoutLpa} LPA` : 'LPA';
+
+    if (!withoutLpa.includes('-')) {
+      const fixed = collapseExtraDecimals(withoutLpa);
+      cleaned = fixed ? `${fixed} LPA` : 'LPA';
     }
-    
-    // Ensure only one decimal point
-    const parts = cleaned.split('.');
-    if (parts.length > 2) {
-      cleaned = parts[0] + '.' + parts.slice(1).join('');
-    }
-    
+
     return cleaned;
   };
 
+  const formatJoiningTimeFromPicker = (ymd: string): string => {
+    const [year, month, day] = ymd.split('-').map(Number);
+    if (!year || !month || !day) return '';
+
+    const ordinal = (n: number) => {
+      if (n >= 11 && n <= 13) return `${n}th`;
+      switch (n % 10) {
+        case 1:
+          return `${n}st`;
+        case 2:
+          return `${n}nd`;
+        case 3:
+          return `${n}rd`;
+        default:
+          return `${n}th`;
+      }
+    };
+
+    const monthName = new Date(year, month - 1, day).toLocaleString('en-IN', {
+      month: 'long',
+    });
+    const label = `${ordinal(day)} ${monthName}`;
+    return year === new Date().getFullYear() ? label : `${label} ${year}`;
+  };
+
+  const [joiningTimePicker, setJoiningTimePicker] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<
+    Array<{ id: string; name: string; email?: string; position?: string; stage: string }>
+  >([]);
+  const [duplicateChecking, setDuplicateChecking] = useState(false);
+  const [duplicateViewCandidate, setDuplicateViewCandidate] = useState<Candidate | null>(null);
+  const [duplicateViewLoadingId, setDuplicateViewLoadingId] = useState<string | null>(null);
+  const [duplicateProceedConfirmed, setDuplicateProceedConfirmed] = useState(false);
+  const duplicateCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const duplicateAlertRef = useRef<HTMLDivElement | null>(null);
+
+  const CANDIDATE_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const canViewDuplicate = (id: string) => CANDIDATE_ID_REGEX.test(id);
 
   // Populate form when editing
   useEffect(() => {
@@ -172,6 +222,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         assignmentLocation: editingCandidate.assignmentLocation || '',
         resumeLocation: editingCandidate.resumeLocation || ''
       });
+      setJoiningTimePicker('');
 
       // Set uploaded file if exists
       if (editingCandidate.resumeFileId) {
@@ -230,6 +281,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
         assignmentLocation: '',
         resumeLocation: ''
       });
+      setJoiningTimePicker('');
       
       // Reset individual notes for new candidate
       setIndividualNotes([]);
@@ -250,27 +302,77 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     'CareerBuilder'
   ];
 
-  const stages = [
-    // Main stages
-    'Applied',
-    'Follow Up',
-    'Screening',
-    'Interview',
-    // Interview sub-stages (umbrella)
-    'Follow Up (Interview)',
-    'Came Down',
-    'Didn\'t Come',
-    'Selected (Interview)',
-    'Rejected (Interview)',
-    // Continue main stages
-    'Offer',
-    'Hired',
-    'Rejected',
-    // Rejected sub-stages (umbrella)
-    'On Hold',
-    'Profile Not Matched',
-    'Last Minute Back Out',
-  ];
+  const runDuplicateCheck = useCallback(
+    (name: string, email: string, phone: string) => {
+      if (duplicateCheckTimer.current) clearTimeout(duplicateCheckTimer.current);
+      if (editingCandidate?.id) {
+        setDuplicateMatches([]);
+        return;
+      }
+      const trimmedName = name.trim();
+      const trimmedEmail = email.trim();
+      const trimmedPhone = phone.trim();
+      if (trimmedName.length < 2 && trimmedEmail.length < 3 && trimmedPhone.length < 8) {
+        setDuplicateMatches([]);
+        return;
+      }
+      duplicateCheckTimer.current = setTimeout(async () => {
+        setDuplicateChecking(true);
+        try {
+          const res = await candidatesAPI.checkCandidateDuplicates({
+            name: trimmedName,
+            email: trimmedEmail,
+            phone: trimmedPhone,
+          });
+          const next = res.success && res.data?.matches ? res.data.matches : [];
+          setDuplicateMatches(next);
+          setDuplicateProceedConfirmed(false);
+        } catch {
+          setDuplicateMatches([]);
+          setDuplicateProceedConfirmed(false);
+        } finally {
+          setDuplicateChecking(false);
+        }
+      }, 450);
+    },
+    [editingCandidate?.id]
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDuplicateMatches([]);
+      setDuplicateViewCandidate(null);
+      setDuplicateViewLoadingId(null);
+      setDuplicateProceedConfirmed(false);
+      return;
+    }
+    runDuplicateCheck(formData.name, formData.email, formData.phone);
+    return () => {
+      if (duplicateCheckTimer.current) clearTimeout(duplicateCheckTimer.current);
+    };
+  }, [isOpen, formData.name, formData.email, formData.phone, runDuplicateCheck]);
+
+  const handleViewDuplicateProfile = async (candidateId: string) => {
+    if (!CANDIDATE_ID_REGEX.test(candidateId) || duplicateViewLoadingId) return;
+    setDuplicateViewLoadingId(candidateId);
+    try {
+      const res = await candidatesAPI.getCandidateById(candidateId);
+      if (res.success && res.data?.candidate) {
+        setDuplicateViewCandidate(res.data.candidate);
+      }
+    } catch (error) {
+      console.error('Failed to load duplicate candidate profile:', error);
+    } finally {
+      setDuplicateViewLoadingId(null);
+    }
+  };
+
+  const handleEditDuplicateProfile = (candidate: Candidate) => {
+    setDuplicateViewCandidate(null);
+    if (onEditExisting) {
+      onEditExisting(candidate);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -279,7 +381,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
 
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.jobId) newErrors.jobId = 'Job position is required';
-    if (!formData.experience.trim()) newErrors.experience = 'Experience is required';
+    if (!formData.experience.trim()) newErrors.experience = 'Experience is required (e.g., 2 months, 5 years)';
 
     // Email validation - support multiple emails separated by commas (only if provided)
     if (formData.email && formData.email.trim()) {
@@ -298,24 +400,37 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
     return (Object.keys(newErrors)?.length || 0) === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) return;
+  const performSubmit = async (ignoreDuplicateWarning = false) => {
+    if (!validateForm() || submitting) return;
 
-    const selectedJob = jobs.find(job => job.id === formData.jobId);
-    
+    const selectedJob = jobs.find(
+      (job) => String(job.id) === String(formData.jobId)
+    );
+
+    if (
+      duplicateMatches.length > 0 &&
+      !editingCandidate &&
+      !ignoreDuplicateWarning &&
+      !duplicateProceedConfirmed
+    ) {
+      duplicateAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+
     const candidateData = {
       ...formData,
+      stage: normalizeStageForDisplay(formData.stage),
       position: selectedJob?.title || formData.position,
       skills: typeof formData.skills === 'string' 
         ? formData.skills.split(',').map(skill => skill.trim()).filter(Boolean)
         : Array.isArray(formData.skills) 
         ? formData.skills 
         : [],
-      appliedDate: editingCandidate ? editingCandidate.appliedDate : new Date().toISOString(),
+      appliedDate: editingCandidate
+        ? editingCandidate.appliedDate
+        : new Date().toISOString().slice(0, 10),
       score: formData.score || 0,
-      assignedTo: editingCandidate ? (editingCandidate.assignedToId || 'Unassigned') : (selectedJob?.assignedTo[0] || 'Unassigned'),
+      assignedTo: editingCandidate ? (editingCandidate.assignedToId || 'Unassigned') : 'Unassigned',
       communications: [],
       resumeFileId: uploadedFile?.fileId || null,
       // Include individual notes
@@ -351,47 +466,17 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
       interviews: []
     };
 
-    onSubmit(candidateData);
-    
-    // Reset form
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      position: '',
-      jobId: jobs.length > 0 ? jobs[0].id : 0,
-      source: 'Manual Entry',
-      resume: '',
-      experience: '',
-      skills: '',
-      notes: '',
-      stage: 'Applied',
-      score: 0,
-      expectedSalary: '',
-      offeredSalary: '',
-      salaryNegotiable: true,
-      joiningTime: '',
-      noticePeriod: '',
-      immediateJoiner: false,
-      // New fields
-      location: '',
-      expertise: '',
-      willingAlternateSaturday: null as boolean | null,
-      workPreference: '',
-      currentCtc: '',
-      ctcFrequency: 'Annual',
-      inHouseAssignmentStatus: 'Draft',
-      interviewDate: '',
-      interviewerId: null as number | null,
-      inOfficeAssignment: '',
-      // New location fields
-      assignmentLocation: '',
-      resumeLocation: ''
-    });
-    setErrors({});
-    setUploadedFile(null);
-    setIndividualNotes([]); // Reset individual notes
-    onClose();
+    setSubmitting(true);
+    try {
+      await onSubmit(candidateData);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void performSubmit(false);
   };
 
   const handleJobChange = (jobId: string) => {
@@ -488,6 +573,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
   };
 
   return (
+    <>
     <div className="add-candidate-modal-overlay">
       <div className="add-candidate-modal-shell">
         <div className="add-candidate-modal-header">
@@ -615,13 +701,33 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                     onChange={(e) => setFormData(prev => ({ ...prev, stage: e.target.value }))}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
                   >
-                    {stages.map(stage => (
+                    {FORM_SELECTABLE_STAGES.map((stage) => (
                       <option key={stage} value={stage}>{stage}</option>
                     ))}
                   </select>
                 </div>
               </div>
             </div>
+
+            {!editingCandidate && (duplicateChecking || duplicateMatches.length > 0) && (
+              <DuplicateCandidatesAlert
+                alertRef={duplicateAlertRef}
+                checking={duplicateChecking}
+                matches={duplicateMatches}
+                formName={formData.name}
+                formEmail={formData.email}
+                viewLoadingId={duplicateViewLoadingId}
+                canViewCandidate={canViewDuplicate}
+                onViewCandidate={handleViewDuplicateProfile}
+                onReviewCandidates={() => {
+                  duplicateAlertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                onContinueAnyway={() => {
+                  setDuplicateProceedConfirmed(true);
+                  void performSubmit(true);
+                }}
+              />
+            )}
 
             {/* Experience and Skills Section */}
             <div className="space-y-4">
@@ -634,19 +740,16 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Years of Experience <span className="text-red-500">*</span>
+                    Experience <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={formData.experience}
-                    onChange={(e) => {
-                      const numericValue = handleNumericInput(e.target.value, true);
-                      setFormData(prev => ({ ...prev, experience: numericValue }));
-                    }}
+                    onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
                     className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
                       errors.experience ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
                     }`}
-                    placeholder="e.g., 5.5"
+                    placeholder="e.g., 5 years, 2 months, 6 months"
                   />
                   {errors.experience && <p className="text-red-500 text-sm mt-1 flex items-center"><span className="mr-1">⚠</span>{errors.experience}</p>}
                 </div>
@@ -733,7 +836,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                       setFormData(prev => ({ ...prev, expectedSalary: lpaValue }));
                     }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
-                    placeholder="e.g., 8 or 8.5 or 8LPA"
+                    placeholder="e.g., 8, 7-8, or 7-8 LPA"
                   />
                 </div>
 
@@ -749,7 +852,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                       setFormData(prev => ({ ...prev, offeredSalary: lpaValue }));
                     }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
-                    placeholder="e.g., 9 or 9.5 or 9LPA"
+                    placeholder="e.g., 9, 8-10, or 8-10 LPA"
                   />
                 </div>
 
@@ -760,10 +863,31 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                   <input
                     type="text"
                     value={formData.joiningTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, joiningTime: e.target.value }))}
+                    onChange={(e) => {
+                      setJoiningTimePicker('');
+                      setFormData(prev => ({ ...prev, joiningTime: e.target.value }));
+                    }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
-                    placeholder="e.g., 2 weeks, 1 month"
+                    placeholder="e.g., 2 weeks, 1 month, or 1st June"
                   />
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-gray-500 shrink-0">Or pick a date:</span>
+                    <input
+                      type="date"
+                      value={joiningTimePicker}
+                      onChange={(e) => {
+                        const ymd = e.target.value;
+                        setJoiningTimePicker(ymd);
+                        if (ymd) {
+                          setFormData(prev => ({
+                            ...prev,
+                            joiningTime: formatJoiningTimeFromPicker(ymd),
+                          }));
+                        }
+                      }}
+                      className="flex-1 min-w-[10rem] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -907,7 +1031,7 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
                       setFormData(prev => ({ ...prev, currentCtc: lpaValue }));
                     }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent hover:border-gray-400 transition-all"
-                    placeholder="e.g., 7 or 7.5 or 7LPA"
+                    placeholder="e.g., 7, 6-7, or 6-7 LPA"
                   />
                 </div>
 
@@ -1048,14 +1172,34 @@ export default function AddCandidateModal({ isOpen, onClose, onSubmit, jobs, edi
             </button>
             <button
               type="submit"
-              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center space-x-2 shadow-lg hover:shadow-xl font-medium"
+              disabled={submitting}
+              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center space-x-2 shadow-lg hover:shadow-xl font-medium disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Plus size={18} />
-              <span>{editingCandidate ? 'Update Candidate' : 'Add Candidate'}</span>
+              <span>
+                {submitting
+                  ? 'Saving...'
+                  : editingCandidate
+                    ? 'Update Candidate'
+                    : 'Add Candidate'}
+              </span>
             </button>
           </div>
         </form>
       </div>
     </div>
+    {duplicateViewCandidate && (
+      <CandidateViewModal
+        isOpen={Boolean(duplicateViewCandidate)}
+        onClose={() => setDuplicateViewCandidate(null)}
+        candidate={duplicateViewCandidate}
+        onEdit={
+          canEditCandidates && onEditExisting
+            ? handleEditDuplicateProfile
+            : undefined
+        }
+      />
+    )}
+    </>
   );
 }

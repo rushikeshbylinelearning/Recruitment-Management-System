@@ -93,7 +93,7 @@ export const validateCandidate = [
     .trim(),
   
   body('email')
-    .optional()
+    .optional({ values: 'falsy' })
     .isEmail()
     .withMessage('Please provide a valid email address')
     .normalizeEmail(),
@@ -106,9 +106,12 @@ export const validateCandidate = [
     .trim(),
   
   body('stage')
+    .optional({ values: 'falsy' }),
+  
+  body('forceDuplicate')
     .optional()
-    .isIn(['Applied', 'Screening', 'Assignment Sent', 'Assignment Submitted', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'])
-    .withMessage('Invalid stage'),
+    .isBoolean()
+    .withMessage('forceDuplicate must be a boolean'),
   
   body('source')
     .optional()

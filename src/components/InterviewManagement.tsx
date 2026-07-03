@@ -75,11 +75,24 @@ interface Interviewer { id: number; name: string; }
 
 interface Filters {
   dateFrom: string; dateTo: string; type: string;
-  status: string; interviewerId: string; mode: string;
+  status: string; attendance: string; interviewerId: string; mode: string;
+}
+
+interface ListStats {
+  total: number;
+  scheduled: number;
+  came: number;
+  didNotCome: number;
+  cancelled: number;
+  followUp: number;
 }
 
 const DEFAULT_FILTERS: Filters = {
-  dateFrom: '', dateTo: '', type: '', status: '', interviewerId: '', mode: '',
+  dateFrom: '', dateTo: '', type: '', status: '', attendance: '', interviewerId: '', mode: '',
+};
+
+const DEFAULT_STATS: ListStats = {
+  total: 0, scheduled: 0, came: 0, didNotCome: 0, cancelled: 0, followUp: 0,
 };
 
 // ─── stat card ────────────────────────────────────────────────────────────────
@@ -102,6 +115,21 @@ function StatCard({ label, count, icon, accent }: {
 
 // ─── combined status+mode badge ───────────────────────────────────────────────
 
+function AttendanceBadge({ attendance }: { attendance: string }) {
+  const styles: Record<string, string> = {
+    Scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
+    Came: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    'Did Not Come': 'bg-purple-50 text-purple-700 border-purple-200',
+    Cancelled: 'bg-red-50 text-red-600 border-red-200',
+    'Follow Up': 'bg-sky-50 text-sky-700 border-sky-200',
+  };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${styles[attendance] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+      {attendance}
+    </span>
+  );
+}
+
 function CombinedBadge({ status, mode }: { status: string; mode: string }) {
   const statusColor: Record<string, string> = {
     Scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -116,6 +144,21 @@ function CombinedBadge({ status, mode }: { status: string; mode: string }) {
       {mode}
     </span>
   );
+}
+
+function formatDateHeading(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(d);
+  target.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+  const base = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  if (diffDays === 0) return `Today — ${base}`;
+  if (diffDays === 1) return `Tomorrow — ${base}`;
+  if (diffDays === -1) return `Yesterday — ${base}`;
+  return base;
 }
 
 // ─── type tag ─────────────────────────────────────────────────────────────────
@@ -192,6 +235,7 @@ function ViewModal({ interview, onClose }: { interview: Interview; onClose: () =
     ['Duration', `${interview.duration} min`],
     ['Type', interview.type],
     ['Mode', interview.mode],
+    ['Attendance', interview.attendance ?? interview.status],
     ['Status', interview.status],
     ...(interview.meeting_link ? [['Meeting Link', interview.meeting_link] as [string, string]] : []),
     ...(interview.location ? [['Location', interview.location] as [string, string]] : []),
@@ -283,6 +327,59 @@ function ActionMenu({ onEdit, onReschedule, onCancel, isCancelled }: {
   );
 }
 
+// ─── date group row ───────────────────────────────────────────────────────────
+
+function InterviewRow({ interview, onView, onEdit, onReschedule, onCancel }: {
+  interview: Interview;
+  onView: () => void; onEdit: () => void; onReschedule: () => void; onCancel: () => void;
+}) {
+  const initials = getInitials(interview.candidate_name);
+  const gradient = avatarGradient(interview.candidate_name);
+  const isCancelled = interview.status === 'Cancelled';
+  const canManage = interview.source !== 'candidate' && typeof interview.id === 'number';
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50/80 transition-colors">
+      <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0`}>
+        <span className="text-white text-xs font-bold">{initials}</span>
+      </div>
+      <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 sm:gap-4 items-center">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900 truncate">{interview.candidate_name ?? '—'}</p>
+          <p className="text-xs text-gray-400 truncate">{interview.job_role || '—'}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Clock size={12} className="text-gray-300 shrink-0" />
+          <span>{formatTime(interview.time)}</span>
+          <span className="text-gray-200">·</span>
+          <User size={12} className="text-gray-300 shrink-0" />
+          <span className="truncate max-w-[140px]">{interview.interviewer_name ?? '—'}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <AttendanceBadge attendance={interview.attendance ?? interview.status} />
+          <TypeTag type={interview.type} />
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={onView}
+          className="px-2.5 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+        >
+          View
+        </button>
+        {canManage && (
+          <ActionMenu
+            onEdit={onEdit}
+            onReschedule={onReschedule}
+            onCancel={onCancel}
+            isCancelled={isCancelled}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── interview card ───────────────────────────────────────────────────────────
 
 function InterviewCard({ interview, onView, onEdit, onReschedule, onCancel }: {
@@ -321,6 +418,7 @@ function InterviewCard({ interview, onView, onEdit, onReschedule, onCancel }: {
 
       {/* combined badge + type tag */}
       <div className="flex items-center gap-2 flex-wrap">
+        <AttendanceBadge attendance={interview.attendance ?? interview.status} />
         <CombinedBadge status={interview.status} mode={interview.mode} />
         <TypeTag type={interview.type} />
       </div>
@@ -372,8 +470,10 @@ function FilterPill({ children }: { children: React.ReactNode }) {
 export default function InterviewManagement() {
   const { isAuthenticated } = useAuth();
   const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [listStats, setListStats] = useState<ListStats>(DEFAULT_STATS);
   const [interviewers, setInterviewers] = useState<Interviewer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
   const [viewInterview, setViewInterview] = useState<Interview | null>(null);
@@ -386,28 +486,35 @@ export default function InterviewManagement() {
 
   const fetchInterviews = async (f: Filters = filters) => {
     setLoading(true);
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       if (f.dateFrom) params.set('dateFrom', f.dateFrom);
       if (f.dateTo) params.set('dateTo', f.dateTo);
       if (f.type) params.set('type', f.type);
       if (f.status) params.set('status', f.status);
+      if (f.attendance) params.set('attendance', f.attendance);
       if (f.interviewerId) params.set('interviewerId', f.interviewerId);
       if (f.mode) params.set('mode', f.mode);
       const qs = params.toString();
-      const res = await fetch(`/api/interviews${qs ? `?${qs}` : ''}`, {
+      const res = await fetch(`/api/interviews/list${qs ? `?${qs}` : ''}`, {
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       });
+      if (!res.ok) {
+        setInterviews([]);
+        setListStats(DEFAULT_STATS);
+        setFetchError('Could not load interviews. Please try again.');
+        return;
+      }
       const json = await res.json();
-      const raw: Interview[] = json?.data?.interviews ?? json?.interviews ?? [];
-      raw.sort((a, b) => {
-        const da = `${a.date}T${a.time}`;
-        const db = `${b.date}T${b.time}`;
-        return da < db ? -1 : da > db ? 1 : 0;
-      });
+      const raw: Interview[] = json?.data?.interviews ?? [];
+      const stats: ListStats = json?.data?.stats ?? DEFAULT_STATS;
       setInterviews(raw);
+      setListStats(stats);
     } catch {
       setInterviews([]);
+      setListStats(DEFAULT_STATS);
+      setFetchError('Could not load interviews. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -446,15 +553,18 @@ export default function InterviewManagement() {
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
-  const stats = useMemo(() => ({
-    total: interviews.length,
-    scheduled: interviews.filter((i) => i.status === 'Scheduled').length,
-    completed: interviews.filter((i) => i.status === 'Completed').length,
-    cancelled: interviews.filter((i) => i.status === 'Cancelled').length,
-  }), [interviews]);
+  const interviewsByDate = useMemo(() => {
+    const groups = new Map<string, Interview[]>();
+    for (const iv of interviews) {
+      const key = iv.date || 'unknown';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(iv);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0));
+  }, [interviews]);
 
   const handleConfirmCancel = async () => {
-    if (!cancelInterview) return;
+    if (!cancelInterview || typeof cancelInterview.id !== 'number') return;
     try {
       await fetch(`/api/interviews/${cancelInterview.id}/status`, {
         method: 'PATCH',
@@ -508,20 +618,33 @@ export default function InterviewManagement() {
 
         {/* ── stat cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Total" count={stats.total} accent="bg-indigo-50"
+          <StatCard label="Total" count={listStats.total} accent="bg-indigo-50"
             icon={<Calendar size={16} className="text-indigo-500" />} />
-          <StatCard label="Scheduled" count={stats.scheduled} accent="bg-blue-50"
+          <StatCard label="Scheduled" count={listStats.scheduled} accent="bg-blue-50"
             icon={<Clock size={16} className="text-blue-500" />} />
-          <StatCard label="Completed" count={stats.completed} accent="bg-emerald-50"
+          <StatCard label="Came" count={listStats.came} accent="bg-emerald-50"
             icon={<CheckCircle2 size={16} className="text-emerald-500" />} />
-          <StatCard label="Cancelled" count={stats.cancelled} accent="bg-red-50"
-            icon={<XCircle size={16} className="text-red-400" />} />
+          <StatCard label="Did Not Come" count={listStats.didNotCome} accent="bg-purple-50"
+            icon={<XCircle size={16} className="text-purple-500" />} />
         </div>
 
-        {/* ── card grid ── */}
+        {fetchError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {fetchError}
+          </div>
+        )}
+
+        {/* ── date-wise list ── */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="h-10 bg-gray-100 animate-pulse" />
+                {Array.from({ length: 2 }).map((__, j) => (
+                  <div key={j} className="h-14 border-t border-gray-50 animate-pulse bg-gray-50/50" />
+                ))}
+              </div>
+            ))}
           </div>
         ) : interviews.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -530,7 +653,9 @@ export default function InterviewManagement() {
             </div>
             <h3 className="text-base font-semibold text-gray-600">No interviews found</h3>
             <p className="text-sm text-gray-400 mt-1 max-w-xs">
-              {hasActiveFilters ? 'Try adjusting or clearing your filters.' : 'No interviews have been scheduled yet.'}
+              {hasActiveFilters
+                ? 'Try adjusting or clearing your filters.'
+                : 'Schedule interviews from the Candidates board or add an interview date on a candidate profile.'}
             </p>
             {hasActiveFilters && (
               <button
@@ -542,16 +667,36 @@ export default function InterviewManagement() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-            {interviews.map((iv) => (
-              <InterviewCard
-                key={iv.id}
-                interview={iv}
-                onView={() => setViewInterview(iv)}
-                onEdit={() => setEditInterview(iv)}
-                onReschedule={() => setRescheduleInterview(iv)}
-                onCancel={() => setCancelInterview(iv)}
-              />
+          <div className="space-y-5">
+            {interviewsByDate.map(([dateKey, dayInterviews]) => (
+              <section
+                key={dateKey}
+                className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm"
+              >
+                <header className="flex items-center justify-between px-4 py-3 bg-gray-50/80 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={15} className="text-indigo-500" />
+                    <h3 className="text-sm font-semibold text-gray-800">
+                      {dateKey === 'unknown' ? 'Date not set' : formatDateHeading(dateKey)}
+                    </h3>
+                  </div>
+                  <span className="text-xs font-medium text-gray-400">
+                    {dayInterviews.length} {dayInterviews.length === 1 ? 'person' : 'people'}
+                  </span>
+                </header>
+                <div className="divide-y divide-gray-50">
+                  {dayInterviews.map((iv) => (
+                    <InterviewRow
+                      key={String(iv.id)}
+                      interview={iv}
+                      onView={() => setViewInterview(iv)}
+                      onEdit={() => setEditInterview(iv)}
+                      onReschedule={() => setRescheduleInterview(iv)}
+                      onCancel={() => setCancelInterview(iv)}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}
@@ -680,15 +825,15 @@ export default function InterviewManagement() {
                 </div>
               </div>
 
-              {/* Status */}
+              {/* Attendance (from Candidates interview board) */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Status</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Attendance</label>
                 <div className="flex flex-wrap gap-2">
-                  {['', 'Scheduled', 'Completed', 'Cancelled'].map((opt) => (
+                  {['', 'Scheduled', 'Came', 'Did Not Come', 'Follow Up', 'Cancelled'].map((opt) => (
                     <button
                       key={opt}
-                      onClick={() => setFilter('status', opt)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filters.status === opt ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      onClick={() => setFilter('attendance', opt)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filters.attendance === opt ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                     >
                       {opt || 'All'}
                     </button>

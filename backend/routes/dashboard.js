@@ -4,6 +4,89 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+/** Normalize MySQL DATE / DATETIME values to YYYY-MM-DD (driver may return Date or string). */
+function normalizeDateKey(dateVal) {
+  if (dateVal == null) return '';
+  if (dateVal instanceof Date) {
+    return dateVal.toISOString().split('T')[0];
+  }
+  const raw = String(dateVal).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return raw.slice(0, 10);
+}
+
+function parseMetricsLimit(raw) {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return 7;
+  return Math.min(n, 30);
+}
+
+const HR_NOTES_SCHEMA_ERRORS = new Set(['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR']);
+
+async function fetchFollowUpsTotalCount() {
+  try {
+    const result = await query(`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM candidates c
+      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
+      WHERE (
+        c.stage = 'On Hold' OR
+        hn.note_text LIKE '%follow up%' OR
+        hn.note_text LIKE '%follow-up%' OR
+        hn.note_text LIKE '%callback%' OR
+        hn.note_text LIKE '%call back%'
+      )
+    `);
+    return result[0].count;
+  } catch (err) {
+    if (!HR_NOTES_SCHEMA_ERRORS.has(err.code)) throw err;
+    console.warn('[dashboard] hr_notes unavailable for follow-ups count:', err.message);
+    const fallback = await query(
+      `SELECT COUNT(*) as count FROM candidates WHERE stage = 'On Hold'`
+    );
+    return fallback[0].count;
+  }
+}
+
+async function fetchDailyFollowUpsByDay(limitDays) {
+  try {
+    return await query(`
+      SELECT 
+        DATE(c.created_at) as date,
+        COUNT(DISTINCT c.id) as followUps
+      FROM candidates c
+      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
+      WHERE c.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      AND (
+        c.stage = 'On Hold' OR
+        hn.note_text LIKE '%follow up%' OR
+        hn.note_text LIKE '%follow-up%' OR
+        hn.note_text LIKE '%callback%' OR
+        hn.note_text LIKE '%call back%'
+      )
+      GROUP BY DATE(c.created_at)
+      ORDER BY date DESC
+    `, [limitDays]);
+  } catch (err) {
+    if (!HR_NOTES_SCHEMA_ERRORS.has(err.code)) throw err;
+    console.warn('[dashboard] hr_notes unavailable for daily follow-ups:', err.message);
+    return query(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as followUps
+      FROM candidates
+      WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      AND stage = 'On Hold'
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+    `, [limitDays]);
+  }
+}
+
 // Get dashboard metrics
 router.get('/metrics', authenticateToken, async (req, res) => {
   try {
@@ -237,19 +320,7 @@ router.get('/daily-metrics', authenticateToken, async (req, res) => {
       )
     `);
 
-    // Get follow-ups count (candidates in On Hold stage or with follow-up notes - ALL candidates, not just today)
-    const followUpsResult = await query(`
-      SELECT COUNT(DISTINCT c.id) as count
-      FROM candidates c
-      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
-      WHERE (
-        c.stage = 'On Hold' OR
-        hn.note_text LIKE '%follow up%' OR
-        hn.note_text LIKE '%follow-up%' OR
-        hn.note_text LIKE '%callback%' OR
-        hn.note_text LIKE '%call back%'
-      )
-    `);
+    const followUpsCount = await fetchFollowUpsTotalCount();
 
     const dailyMetrics = {
       total: todayTotalResult[0].count,
@@ -262,7 +333,7 @@ router.get('/daily-metrics', authenticateToken, async (req, res) => {
         count: row.count
       })),
       profileNotFound: profileNotFoundResult[0].count,
-      followUps: followUpsResult[0].count
+      followUps: followUpsCount
     };
 
     res.json({
@@ -281,7 +352,7 @@ router.get('/daily-metrics', authenticateToken, async (req, res) => {
 // Get metrics timeline (daily aggregated metrics for last 7 days)
 router.get('/metrics/daily', authenticateToken, async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 7;
+    const limitDays = parseMetricsLimit(req.query.limit);
 
     // Get daily candidate uploads for the last N days
     const dailyUploadsResult = await query(`
@@ -292,8 +363,7 @@ router.get('/metrics/daily', authenticateToken, async (req, res) => {
       WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY DATE(created_at)
       ORDER BY date DESC
-      LIMIT ?
-    `, [limit, limit]);
+    `, [limitDays]);
 
     // Get daily profile not found count
     const dailyProfileNotFoundResult = await query(`
@@ -309,42 +379,23 @@ router.get('/metrics/daily', authenticateToken, async (req, res) => {
       )
       GROUP BY DATE(created_at)
       ORDER BY date DESC
-      LIMIT ?
-    `, [limit, limit]);
+    `, [limitDays]);
 
-    // Get daily follow-ups count
-    const dailyFollowUpsResult = await query(`
-      SELECT 
-        DATE(c.created_at) as date,
-        COUNT(DISTINCT c.id) as followUps
-      FROM candidates c
-      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
-      WHERE c.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      AND (
-        c.stage = 'On Hold' OR
-        hn.note_text LIKE '%follow up%' OR
-        hn.note_text LIKE '%follow-up%' OR
-        hn.note_text LIKE '%callback%' OR
-        hn.note_text LIKE '%call back%'
-      )
-      GROUP BY DATE(c.created_at)
-      ORDER BY date DESC
-      LIMIT ?
-    `, [limit, limit]);
+    const dailyFollowUpsResult = await fetchDailyFollowUpsByDay(limitDays);
 
     // Create a map for easy lookup
     const profileNotFoundMap = new Map(
-      dailyProfileNotFoundResult.map(row => [row.date.toISOString().split('T')[0], row.profileNotFound])
+      dailyProfileNotFoundResult.map(row => [normalizeDateKey(row.date), row.profileNotFound])
     );
     const followUpsMap = new Map(
-      dailyFollowUpsResult.map(row => [row.date.toISOString().split('T')[0], row.followUps])
+      dailyFollowUpsResult.map(row => [normalizeDateKey(row.date), row.followUps])
     );
 
     // Format the results with all metrics
     const metricsTimeline = dailyUploadsResult.map(row => {
-      const dateStr = row.date.toISOString().split('T')[0];
+      const dateStr = normalizeDateKey(row.date);
       return {
-        date: row.date,
+        date: dateStr,
         uploadedCandidates: row.uploadedCandidates,
         profileNotFound: profileNotFoundMap.get(dateStr) || 0,
         followUps: followUpsMap.get(dateStr) || 0
@@ -415,19 +466,7 @@ router.get('/overview', authenticateToken, async (req, res) => {
       )
     `);
 
-    // Get follow-ups count (candidates in On Hold stage or with follow-up notes - ALL candidates, not just today)
-    const followUpsResult = await query(`
-      SELECT COUNT(DISTINCT c.id) as count
-      FROM candidates c
-      LEFT JOIN hr_notes hn ON c.id = hn.candidate_id
-      WHERE (
-        c.stage = 'On Hold' OR
-        hn.note_text LIKE '%follow up%' OR
-        hn.note_text LIKE '%follow-up%' OR
-        hn.note_text LIKE '%callback%' OR
-        hn.note_text LIKE '%call back%'
-      )
-    `);
+    const followUpsCount = await fetchFollowUpsTotalCount();
 
     // Get pipeline data
     const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out'];
@@ -554,7 +593,7 @@ router.get('/overview', authenticateToken, async (req, res) => {
           count: row.count
         })),
         profileNotFound: profileNotFoundResult[0].count,
-        followUps: followUpsResult[0].count
+        followUps: followUpsCount
       }
     };
 

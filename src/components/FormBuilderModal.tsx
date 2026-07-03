@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../services/api';
 import { X } from 'lucide-react';
+import { getPublicAppUrl } from '../config/domains';
 
-const APP_URL = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
+export interface FormToEdit {
+  id: string | number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  job_id?: number | null;
+  token_validity_hours?: number;
+  token_expires_at?: string | null;
+}
 
 interface FormBuilderModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  formToEdit?: FormToEdit | null;
 }
 
 interface Job {
@@ -15,13 +25,15 @@ interface Job {
   title: string;
 }
 
-const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess }) => {
+const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess, formToEdit }) => {
+  const isEditMode = Boolean(formToEdit?.id);
+
   const [formData, setFormData] = useState({
-    name: '',
-    slug: '',
-    description: '',
-    job_id: '',
-    token_validity_hours: '24'
+    name: formToEdit?.name ?? '',
+    slug: formToEdit?.slug ?? '',
+    description: formToEdit?.description ?? '',
+    job_id: formToEdit?.job_id != null ? String(formToEdit.job_id) : '',
+    token_validity_hours: String(formToEdit?.token_validity_hours ?? 24)
   });
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,7 +66,7 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
     setFormData(prev => ({
       ...prev,
       name,
-      slug: generateSlug(name)
+      ...(isEditMode ? {} : { slug: generateSlug(name) })
     }));
   };
 
@@ -65,19 +77,34 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
 
     try {
       const token = localStorage.getItem('authToken');
-      const parsedJobId = formData.job_id ? parseInt(formData.job_id, 10) : undefined;
+      const parsedJobId = formData.job_id ? parseInt(formData.job_id, 10) : null;
       const parsedTokenValidity = parseInt(formData.token_validity_hours || '24', 10);
-      await axios.post(
-        `${API_BASE_URL}/form-builder/forms`,
-        {
-          name: formData.name.trim(),
-          slug: formData.slug.trim(),
-          description: formData.description.trim(),
-          ...(parsedJobId !== undefined ? { job_id: parsedJobId } : {}),
-          token_validity_hours: Number.isNaN(parsedTokenValidity) ? 24 : parsedTokenValidity
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const tokenValidityHours = Number.isNaN(parsedTokenValidity) ? 24 : parsedTokenValidity;
+
+      if (isEditMode && formToEdit) {
+        await axios.put(
+          `${API_BASE_URL}/form-builder/forms/${formToEdit.id}`,
+          {
+            name: formData.name.trim(),
+            description: formData.description.trim(),
+            job_id: parsedJobId,
+            token_validity_hours: tokenValidityHours
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } else {
+        await axios.post(
+          `${API_BASE_URL}/form-builder/forms`,
+          {
+            name: formData.name.trim(),
+            slug: formData.slug.trim(),
+            description: formData.description.trim(),
+            ...(parsedJobId != null ? { job_id: parsedJobId } : {}),
+            token_validity_hours: tokenValidityHours
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
       onSuccess();
     } catch (err: any) {
       const serverMessage = err.response?.data?.message;
@@ -89,7 +116,11 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
         setError('Cannot reach the server. Please check your connection or contact support.');
       } else {
-        setError(`Failed to create form (${err.response?.status || 'unknown error'})`);
+        setError(
+          isEditMode
+            ? `Failed to update form (${err.response?.status || 'unknown error'})`
+            : `Failed to create form (${err.response?.status || 'unknown error'})`
+        );
       }
     } finally {
       setLoading(false);
@@ -101,7 +132,9 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">Create New Form</h2>
+          <h2 className="text-xl font-bold text-gray-900">
+            {isEditMode ? 'Edit Form' : 'Create New Form'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -135,20 +168,37 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
 
           <div>
             <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-1">
-              URL Slug <span className="text-red-500">*</span>
+              URL Slug {!isEditMode && <span className="text-red-500">*</span>}
             </label>
-            <input
-              type="text"
-              id="slug"
-              required
-              value={formData.slug}
-              onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-              placeholder="developer-application-form"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Form will be accessible at: {APP_URL}/apply/{formData.slug}
-            </p>
+            {isEditMode ? (
+              <>
+                <input
+                  type="text"
+                  id="slug"
+                  readOnly
+                  value={formData.slug}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 font-mono text-sm text-gray-600 cursor-not-allowed"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Slug cannot be changed after creation. Public URL: {getPublicAppUrl()}/apply/{formData.slug}
+                </p>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  id="slug"
+                  required
+                  value={formData.slug}
+                  onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  placeholder="developer-application-form"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Form will be accessible at: {getPublicAppUrl()}/apply/{formData.slug}
+                </p>
+              </>
+            )}
           </div>
 
           <div>
@@ -179,8 +229,15 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Default is 24 hours. Set between 1 and 720 hours.
+              {isEditMode
+                ? 'Updating validity resets the link expiry from now. Range: 1–720 hours.'
+                : 'Default is 24 hours. Set between 1 and 720 hours.'}
             </p>
+            {isEditMode && formToEdit?.token_expires_at && (
+              <p className="mt-1 text-xs text-amber-700">
+                Current expiry: {new Date(formToEdit.token_expires_at).toLocaleString()}
+              </p>
+            )}
           </div>
 
           <div>
@@ -216,7 +273,13 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ onClose, onSuccess 
               disabled={loading}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating...' : 'Create Form'}
+              {loading
+                ? isEditMode
+                  ? 'Saving...'
+                  : 'Creating...'
+                : isEditMode
+                  ? 'Save Changes'
+                  : 'Create Form'}
             </button>
           </div>
         </form>

@@ -4,17 +4,48 @@ import { query } from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import crypto from 'crypto';
 import activityLogger from '../services/activityLogger.js';
+import { ensureFormBuilderSchema } from '../services/ensureFormBuilderSchema.js';
+import { buildFormApplyShareUrl, buildShortPublicUrl } from '../utils/frontendUrl.js';
+import { createPublicFormLink } from '../services/publicFormLinkService.js';
+import { ensurePublicApplicationSchema } from '../services/ensurePublicApplicationSchema.js';
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(authenticateToken);
 
+// Create missing tables/columns on first use (e.g. fresh DB with zero forms)
+router.use(async (req, res, next) => {
+  try {
+    await ensureFormBuilderSchema();
+    next();
+  } catch (error) {
+    console.error('Form builder schema setup failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Form builder database tables are not ready. Contact an administrator.',
+    });
+  }
+});
+
+/** HR Intern may only use GET /forms and GET /forms/:id (read-only list/detail). */
+function rejectHrInternMutations(req, res, next) {
+  if (req.user?.role === 'HR Intern') {
+    return res.status(403).json({
+      success: false,
+      message: 'HR Intern accounts can only view forms and copy apply links from the Form Builder page.',
+    });
+  }
+  next();
+}
+
 // GET /api/form-builder/forms - Get all forms with analytics
 router.get('/forms', async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = '' } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const offset = (page - 1) * limit;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
 
     let whereClause = '';
     let params = [];
@@ -35,12 +66,12 @@ router.get('/forms', async (req, res) => {
        LEFT JOIN users u ON f.created_by = u.id
        ${whereClause}
        ORDER BY f.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), parseInt(offset)]
+       LIMIT ${limit} OFFSET ${offset}`,
+      params
     );
 
     // Calculate conversion rate for each form
-    const formsWithAnalytics = forms.map(form => {
+    const formsWithAnalytics = (forms || []).map(form => {
       const views = form.view_count || 0;
       const submissions = form.analytics_submission_count || 0;
       const conversion_rate = views > 0 ? ((submissions / views) * 100).toFixed(2) : 0;
@@ -55,28 +86,34 @@ router.get('/forms', async (req, res) => {
       };
     });
 
-    const [{ total }] = await query(
+    const countRows = await query(
       `SELECT COUNT(*) as total FROM forms f ${whereClause}`,
       params
     );
+    const total = Number(countRows?.[0]?.total ?? 0);
 
     res.json({
       success: true,
       data: {
         forms: formsWithAnalytics,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page,
+          limit,
           total,
-          pages: Math.ceil(total / limit)
+          pages: limit > 0 ? Math.ceil(total / limit) : 0
         }
       }
     });
   } catch (error) {
     console.error('Error fetching forms:', error);
+    const missingTable =
+      error.code === 'ER_NO_SUCH_TABLE' ||
+      (error.sqlMessage && /doesn't exist/i.test(error.sqlMessage));
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch forms'
+      message: missingTable
+        ? 'Form builder tables are missing on this server. Run backend/scripts/run-form-builder-migration.js or contact an administrator.'
+        : 'Failed to fetch forms'
     });
   }
 });
@@ -138,6 +175,7 @@ router.get('/forms/:id', async (req, res) => {
 
 // POST /api/form-builder/forms - Create new form
 router.post('/forms',
+  rejectHrInternMutations,
   [
     body('name').trim().notEmpty().withMessage('Form name is required'),
     body('slug').trim().notEmpty().withMessage('Form slug is required')
@@ -232,6 +270,7 @@ router.post('/forms',
 
 // PUT /api/form-builder/forms/:id - Update form
 router.put('/forms/:id',
+  rejectHrInternMutations,
   [
     body('name').optional().trim().notEmpty(),
     body('description').optional().trim(),
@@ -336,7 +375,7 @@ router.put('/forms/:id',
 );
 
 // DELETE /api/form-builder/forms/:id - Delete form
-router.delete('/forms/:id', async (req, res) => {
+router.delete('/forms/:id', rejectHrInternMutations, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -381,7 +420,7 @@ router.delete('/forms/:id', async (req, res) => {
 // POST /api/form-builder/forms/:id/generate-share-link
 // Generates a unique shareable link token for this form.
 // Each call produces a distinct token so every distributed link is unique.
-router.post('/forms/:id/generate-share-link', async (req, res) => {
+router.post('/forms/:id/generate-share-link', rejectHrInternMutations, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -390,46 +429,38 @@ router.post('/forms/:id/generate-share-link', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Form not found' });
     }
 
-    // Ensure the share tokens table exists
-    await query(`
-      CREATE TABLE IF NOT EXISTS form_share_tokens (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        form_id INT NOT NULL,
-        token VARCHAR(64) NOT NULL UNIQUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at TIMESTAMP NULL,
-        used_count INT DEFAULT 0,
-        is_active BOOLEAN DEFAULT TRUE,
-        INDEX idx_token (token),
-        INDEX idx_form_id (form_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-
     const shareToken = crypto.randomBytes(32).toString('hex');
-    // Share links are valid for 30 days by default
-    await query(
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const insertResult = await query(
       `INSERT INTO form_share_tokens (form_id, token, expires_at)
        VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))`,
       [id, shareToken]
     );
 
-    // Use FRONTEND_URL env var so the link points to the correct frontend
-    // (dev: http://localhost:5173, prod: https://hr.bylinelms.com)
-    // Falls back to the request origin only if FRONTEND_URL is not set.
-    // When behind a reverse proxy (nginx/Apache), req.protocol may be 'http'
-    // even though the public URL is https — use X-Forwarded-Proto to detect the real protocol.
-    const detectedProtocol = req.headers['x-forwarded-proto']?.split(',')[0]?.trim() || req.protocol;
-    const frontendBase = (process.env.FRONTEND_URL || `${detectedProtocol}://${req.get('host')}`)
-      .split(',')[0]   // FRONTEND_URL may be comma-separated; take the first entry
-      .trim()
-      .replace(/\/$/, ''); // strip trailing slash
+    await ensurePublicApplicationSchema();
+    const [formMeta] = await query('SELECT job_id FROM forms WHERE id = ?', [id]);
+    const shortLink = await createPublicFormLink({
+      formId: Number(id),
+      createdBy: req.user?.id,
+      shareTokenId: insertResult.insertId,
+      expiresAt,
+      jobId: formMeta?.job_id,
+      req,
+    });
 
-    const link = `${frontendBase}/apply/${form.slug}?share=${shareToken}`;
-    console.log('[FormBuilder] Generated share link:', link);
+    const legacyLink = buildFormApplyShareUrl(form.slug, shareToken, req);
+    console.log('[FormBuilder] Generated short link:', shortLink.url);
 
     res.json({
       success: true,
-      data: { shareToken, link }
+      data: {
+        shareToken,
+        link: shortLink.url,
+        shortCode: shortLink.shortCode,
+        path: shortLink.path,
+        routePrefix: shortLink.routePrefix,
+        legacyLink,
+      },
     });
   } catch (error) {
     console.error('Error generating share link:', error);
@@ -438,7 +469,7 @@ router.post('/forms/:id/generate-share-link', async (req, res) => {
 });
 
 // GET /api/form-builder/forms/:id/share-links - List all share tokens for a form
-router.get('/forms/:id/share-links', async (req, res) => {
+router.get('/forms/:id/share-links', rejectHrInternMutations, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -455,16 +486,25 @@ router.get('/forms/:id/share-links', async (req, res) => {
       [id]
     );
 
-    const detectedProtocol = req.headers['x-forwarded-proto']?.split(',')[0]?.trim() || req.protocol;
-    const frontendBase = (process.env.FRONTEND_URL || `${detectedProtocol}://${req.get('host')}`)
-      .split(',')[0]
-      .trim()
-      .replace(/\/$/, '');
+    const publicLinks = await query(
+      `SELECT id, short_code, route_prefix, created_at, expires_at, is_active, access_count
+       FROM public_forms WHERE form_id = ? ORDER BY created_at DESC`,
+      [id]
+    );
 
-    const links = tokens.map(t => ({
-      ...t,
-      link: `${frontendBase}/apply/${form.slug}?share=${t.token}`
-    }));
+    const links = tokens.map((t, index) => {
+      const short = publicLinks[index];
+      const shortCode = short?.short_code;
+      const routePrefix = short?.route_prefix || 'a';
+      return {
+        ...t,
+        link: shortCode
+          ? buildShortPublicUrl(routePrefix, shortCode, req)
+          : buildFormApplyShareUrl(form.slug, t.token, req),
+        shortCode: shortCode || null,
+        legacyLink: buildFormApplyShareUrl(form.slug, t.token, req),
+      };
+    });
 
     res.json({ success: true, data: { links } });
   } catch (error) {
@@ -474,7 +514,7 @@ router.get('/forms/:id/share-links', async (req, res) => {
 });
 
 // PATCH /api/form-builder/share-links/:tokenId/revoke - Revoke a share token
-router.patch('/share-links/:tokenId/revoke', async (req, res) => {
+router.patch('/share-links/:tokenId/revoke', rejectHrInternMutations, async (req, res) => {
   try {
     const { tokenId } = req.params;
     await query('UPDATE form_share_tokens SET is_active = FALSE WHERE id = ?', [tokenId]);
@@ -486,7 +526,7 @@ router.patch('/share-links/:tokenId/revoke', async (req, res) => {
 });
 
 // POST /api/form-builder/forms/:id/regenerate-token - Regenerate access token
-router.post('/forms/:id/regenerate-token', async (req, res) => {
+router.post('/forms/:id/regenerate-token', rejectHrInternMutations, async (req, res) => {
   try {
     const { id } = req.params;
     const newToken = crypto.randomBytes(32).toString('hex');
@@ -523,6 +563,7 @@ router.post('/forms/:id/regenerate-token', async (req, res) => {
 
 // POST /api/form-builder/forms/:id/fields - Add field to form
 router.post('/forms/:id/fields',
+  rejectHrInternMutations,
   [
     body('label').trim().notEmpty().withMessage('Field label is required'),
     body('field_key').trim().notEmpty().withMessage('Field key is required'),
@@ -592,7 +633,7 @@ router.post('/forms/:id/fields',
 );
 
 // PUT /api/form-builder/fields/:fieldId - Update field
-router.put('/fields/:fieldId', async (req, res) => {
+router.put('/fields/:fieldId', rejectHrInternMutations, async (req, res) => {
   try {
     const { fieldId } = req.params;
     const { label, is_required, options, placeholder, order_index, is_active, validation_rules } = req.body;
@@ -657,7 +698,7 @@ router.put('/fields/:fieldId', async (req, res) => {
 });
 
 // DELETE /api/form-builder/fields/:fieldId - Delete field
-router.delete('/fields/:fieldId', async (req, res) => {
+router.delete('/fields/:fieldId', rejectHrInternMutations, async (req, res) => {
   try {
     const { fieldId } = req.params;
 
@@ -678,6 +719,7 @@ router.delete('/fields/:fieldId', async (req, res) => {
 
 // PUT /api/form-builder/forms/:id/reorder - Reorder form fields
 router.put('/forms/:id/reorder',
+  rejectHrInternMutations,
   [
     body('field_ids').isArray().withMessage('field_ids must be an array'),
     body('field_ids.*').isInt().withMessage('Each field_id must be an integer')
@@ -732,7 +774,7 @@ router.put('/forms/:id/reorder',
 );
 
 // GET /api/form-builder/forms/:id/analytics - Get form analytics
-router.get('/forms/:id/analytics', async (req, res) => {
+router.get('/forms/:id/analytics', rejectHrInternMutations, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -772,10 +814,11 @@ router.get('/forms/:id/analytics', async (req, res) => {
 });
 
 // GET /api/form-builder/forms/:id/submissions - Get form submissions
-router.get('/forms/:id/submissions', async (req, res) => {
+router.get('/forms/:id/submissions', rejectHrInternMutations, async (req, res) => {
   try {
     const { id } = req.params;
-    const { page = 1, limit = 20 } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
 
     const submissions = await query(
@@ -784,8 +827,8 @@ router.get('/forms/:id/submissions', async (req, res) => {
        LEFT JOIN candidates c ON fs.candidate_id = c.id
        WHERE fs.form_id = ?
        ORDER BY fs.submitted_at DESC
-       LIMIT ? OFFSET ?`,
-      [id, parseInt(limit), parseInt(offset)]
+       LIMIT ${limit} OFFSET ${offset}`,
+      [id]
     );
 
     const [{ total }] = await query(
@@ -804,10 +847,10 @@ router.get('/forms/:id/submissions', async (req, res) => {
       data: {
         submissions: parsedSubmissions,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page,
+          limit,
           total,
-          pages: Math.ceil(total / limit)
+          pages: limit > 0 ? Math.ceil(total / limit) : 0
         }
       }
     });

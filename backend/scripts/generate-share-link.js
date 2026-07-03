@@ -32,7 +32,8 @@ await conn.execute(
 );
 
 console.log('\n✅ New share link generated:\n');
-console.log(`http://localhost:3001/apply/${slug}?share=${shareToken}`);
+const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/$/, '');
+console.log(`${frontendBase}/apply/${slug}?share=${shareToken}`);
 console.log('\nToken expires in 30 days.');
 
 await conn.end();

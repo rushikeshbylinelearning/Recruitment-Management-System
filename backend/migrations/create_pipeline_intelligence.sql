@@ -128,7 +128,7 @@ INSERT INTO automation_actions (automation_id, action_type, action_order, config
 (4, 'task', 1, JSON_OBJECT(
   'title', 'Prepare offer letter for {{candidate_name}}',
   'description', 'Draft and review offer letter with compensation details',
-  'assigned_to', 'hr_manager',
+  'assigned_to', 'admin',
   'due_in_days', 1,
   'priority', 'urgent'
 ));

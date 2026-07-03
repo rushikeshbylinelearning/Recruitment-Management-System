@@ -44,6 +44,10 @@ const DEFAULT_MANUAL_MAPPINGS = {
   'linkedin profile sales': 'LinkedIn Profile Sales',
   'linkedin it':          'Linkedin Profiles IT',
   'linkedin id':          'LinkedIn Profiles ID',
+  'instructional content writter': 'Instructional Content Writer',
+  'instructional content writer':  'Instructional Content Writer',
+  'instructional designer':        'Instructional Designer',
+  'content writter':               'Content Writer',
 };
 
 // Skill → job title keyword mapping for skill-based fallback

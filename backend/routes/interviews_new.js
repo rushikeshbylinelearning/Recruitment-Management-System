@@ -333,7 +333,7 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
   const interviewerId = req.params.interviewerId;
 
   // Check if user can access this data
-  if (req.user.id !== interviewerId && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (req.user.id !== interviewerId && req.user.role !== 'Admin') {
     throw new ValidationError('Access denied');
   }
 

@@ -380,7 +380,11 @@ export default function Candidates() {
           {candidate.availability?.joiningTime && (
             <div className="flex items-center space-x-2 text-xs text-gray-600">
               <Clock size={12} className="text-gray-400" />
-              <span>Can join in {candidate.availability.joiningTime}</span>
+              <span>
+                {/\b(week|weeks|month|months|day|days)\b/i.test(candidate.availability.joiningTime)
+                  ? `Can join in ${candidate.availability.joiningTime}`
+                  : `Joining ${candidate.availability.joiningTime}`}
+              </span>
             </div>
           )}
         </div>
@@ -890,6 +894,7 @@ export default function Candidates() {
         onSubmit={handleUpdateCandidate}
         jobs={jobs}
         editingCandidate={editingCandidate}
+        onEditExisting={(candidate) => setEditingCandidate(candidate)}
       />
 
       {/* Intelligent Candidate Import */}

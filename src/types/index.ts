@@ -30,11 +30,18 @@ export interface Candidate {
   stage: 'Applied' | 'Follow Up' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out' | 'Profile Not Matched';
   source: string;
   appliedDate: string;
+  isFlaggedDuplicate?: boolean;
+  hasMergedApplications?: boolean;
+  duplicateOfCandidateId?: string | null;
+  duplicatePrimaryName?: string | null;
+  duplicatePrimaryEmail?: string | null;
+  duplicatePrimaryStage?: string | null;
   resume: string;
   resumeFileId?: string;
   notes: string;
   score: number;
   assignedTo: string;
+  uploadedBy?: string | null;
   communications: Communication[];
   skills: string[];
   experience: string;
@@ -97,7 +104,7 @@ export interface Interview {
 export interface TeamMember {
   id: number;
   name: string;
-  role: 'Recruiter' | 'HR Manager' | 'Admin' | 'Interviewer' | 'Team Lead';
+  role: 'Recruiter' | 'Admin' | 'Interviewer' | 'Team Lead' | 'HR Intern';
   email: string;
   username: string;
   password: string;
@@ -134,7 +141,7 @@ export interface User {
   name: string;
   email: string;
   username: string;
-  role: 'Recruiter' | 'HR Manager' | 'Admin' | 'Interviewer';
+  role: 'Recruiter' | 'Admin' | 'Interviewer' | 'HR Intern';
   permissions: Permission[];
   avatar: string;
   interviewerProfile?: InterviewerProfile;
@@ -167,6 +174,7 @@ export interface Task {
   createdByName?: string;
   createdDate: string;
   updatedDate?: string;
+  category?: 'hr-operations' | 'admin-operations' | 'misc';
 }
 
 export interface Analytics {

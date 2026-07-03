@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../services/api';
+import {
+  fetchPublicForm,
+  submitApplication,
+  resolveLegacyShareLink,
+  submitLegacyApplication,
+} from '../services/publicApplicationApi';
+import { isPublicPortal } from '../utils/domain';
+import { ensurePublicPortalUrl } from '../utils/publicUrls';
 
 interface FormField {
   id: number;
@@ -41,10 +49,13 @@ const globalStyles = `
     --text-primary:    #111110;
     --text-secondary:  #6B6B63;
     --text-placeholder:#AEAEAD;
-    --accent:          #0057FF;
-    --accent-light:    #EEF3FF;
+    --accent:          #dc2626;
+    --accent-light:    #fee2e2;
     --error:           #C0392B;
     --error-bg:        #FDF2F2;
+    --info:            #B45309;
+    --info-bg:         #FFFBEB;
+    --info-border:     #FCD34D;
     --success:         #1E7E41;
     --success-bg:      #EDF7F1;
     --radius-sm:       6px;
@@ -407,6 +418,32 @@ const globalStyles = `
   }
   .pf-banner svg { flex-shrink: 0; margin-top: 1px; }
 
+  .pf-existing-app {
+    display: flex; gap: 14px; padding: 18px 20px; margin-bottom: 22px;
+    background: var(--info-bg); border: 1px solid var(--info-border);
+    border-radius: var(--radius-md); animation: fadeUp 0.35s ease both;
+  }
+  .pf-existing-app-icon {
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px;
+    background: #FEF3C7; color: var(--info);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pf-existing-app-title { font-size: 15px; font-weight: 600; color: #92400E; margin-bottom: 10px; line-height: 1.45; }
+  .pf-existing-app-meta { display: flex; gap: 24px; margin-bottom: 14px; font-size: 13px; }
+  .pf-existing-app-meta dt { color: var(--text-secondary); font-weight: 500; margin-bottom: 2px; }
+  .pf-existing-app-meta dd { color: #78350F; font-weight: 600; }
+  .pf-existing-app-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .pf-btn {
+    font-family: var(--font); font-size: 13px; font-weight: 600;
+    padding: 9px 14px; border-radius: var(--radius-sm); cursor: pointer;
+    border: 1px solid transparent; transition: background var(--ease);
+  }
+  .pf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .pf-btn-primary { background: #92400E; color: #fff; }
+  .pf-btn-secondary { background: #fff; border-color: var(--info-border); color: #92400E; }
+  .pf-btn-ghost { background: transparent; color: #B45309; text-decoration: underline; padding-left: 4px; }
+  .pf-existing-app-help { font-size: 12px; color: var(--text-secondary); }
+
   /* SUBMIT */
   .pf-submit-area { margin-top: 6px; }
   .pf-submit {
@@ -566,7 +603,17 @@ const CustomSelect: React.FC<SelectProps> = ({ id, options, value, placeholder, 
 
 /* ── Main Component ── */
 const PublicFormPage: React.FC = () => {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, shortCode: shortCodeParam } = useParams<{
+    slug?: string;
+    shortCode?: string;
+    prefix?: string;
+  }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathPrefix = location.pathname.split('/').filter(Boolean)[0] || 'a';
+  const shortCode = shortCodeParam;
+  const isShortLink = Boolean(shortCode && ['a', 'j', 'c'].includes(pathPrefix));
+
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const shareToken = searchParams.get('share');
@@ -591,22 +638,69 @@ const PublicFormPage: React.FC = () => {
   const [drag, setDrag] = useState<string|null>(null);
   const fileRefs = useRef<Record<string,HTMLInputElement|null>>({});
 
-  useEffect(() => { load(); }, [slug, token, shareToken]);
+  useEffect(() => { load(); }, [slug, token, shareToken, shortCode, isShortLink]);
+
+  useEffect(() => {
+    if (isShortLink || !slug || !shareToken) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resolved = await resolveLegacyShareLink(slug, shareToken);
+        if (!cancelled && resolved.redirectPath) {
+          // Migration: legacy HR-host links redirect to apply.bylinelms.com short URLs
+          if (!isPublicPortal() && resolved.url) {
+            window.location.replace(ensurePublicPortalUrl(resolved.url));
+            return;
+          }
+          navigate(resolved.redirectPath, { replace: true });
+        }
+      } catch {
+        /* keep legacy form usable if resolve fails */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [slug, shareToken, isShortLink, navigate]);
 
   const load = async () => {
-    if (!token && !shareToken) { setError('Access token is missing. Please use the link provided.'); setLoading(false); return; }
+    if (isShortLink && shortCode) {
+      try {
+        const data = await fetchPublicForm(shortCode);
+        setFormData({
+          form: {
+            id: 0,
+            name: data.title,
+            description: data.description || '',
+            job_title: null,
+          },
+          fields: data.fields,
+        });
+      } catch (e: unknown) {
+        const err = e as { response?: { data?: { message?: string } } };
+        setError(err.response?.data?.message || 'Failed to load this application.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (!token && !shareToken) {
+      setError('Access token is missing. Please use the link provided.');
+      setLoading(false);
+      return;
+    }
     try {
       const r = await axios.get(`${API_BASE_URL}/public/forms/${slug}?${authParam}`);
       setFormData(r.data.data);
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Failed to load this form.');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setError(err.response?.data?.message || 'Failed to load this form.');
     } finally { setLoading(false); }
   };
 
-  const change = (key: string, val: any) => {
-    setVals(p => ({ ...p, [key]: val }));
-    setTouched(p => ({ ...p, [key]: true }));
-    if (errors[key]) setErrors(p => { const n = { ...p }; delete n[key]; return n; });
+  const change = (key: string, val: unknown) => {
+    setVals((p) => ({ ...p, [key]: val }));
+    setTouched((p) => ({ ...p, [key]: true }));
+    if (errors[key]) setErrors((p) => { const n = { ...p }; delete n[key]; return n; });
   };
 
   const fileChange = (key: string, f: File|null) => {
@@ -636,24 +730,48 @@ const PublicFormPage: React.FC = () => {
     return Math.round(req.filter(f => !!vals[f.field_key]).length / req.length * 100);
   })();
 
+  const buildFormData = () => {
+    const fd = new FormData();
+    Object.keys(vals).forEach((k) => {
+      const v = vals[k];
+      if (v instanceof File) fd.append(k, v);
+      else if (v != null) fd.append(k, v.toString());
+    });
+    return fd;
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    setSubmitting(true); setError(null);
+    setSubmitting(true);
+    setError(null);
     try {
-      const fd = new FormData();
-      Object.keys(vals).forEach(k => {
-        const v = vals[k];
-        if (v instanceof File) fd.append(k, v);
-        else if (v != null) fd.append(k, v.toString());
-      });
-      await axios.post(`${API_BASE_URL}/public/forms/${slug}/submit?${authParam}`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setSuccess(true); setVals({}); setTouched({});
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Something went wrong. Please try again.');
-    } finally { setSubmitting(false); }
+      const fd = buildFormData();
+      if (isShortLink && shortCode) {
+        await submitApplication(shortCode, pathPrefix, fd);
+      } else {
+        await submitLegacyApplication(slug!, authParam, fd);
+      }
+      setSuccess(true);
+      setVals({});
+      setTouched({});
+    } catch (e: unknown) {
+      const err = e as {
+        response?: { status?: number; data?: { message?: string; errors?: Record<string, string> } };
+      };
+      const apiMessage = err.response?.data?.message;
+      const apiErrors = err.response?.data?.errors;
+
+      if (apiErrors && typeof apiErrors === 'object') {
+        setErrors(apiErrors);
+        const first = Object.values(apiErrors)[0];
+        setError(typeof first === 'string' ? first : 'Please fix the highlighted fields and try again.');
+      } else {
+        setError(apiMessage || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   /* ── Section mapping ── */
@@ -722,7 +840,8 @@ const PublicFormPage: React.FC = () => {
         required={!!field.is_required} placeholder={field.placeholder||''}
         className={`pf-input${cls}`}
         value={vals[field.field_key]||''}
-        onChange={e => change(field.field_key, e.target.value)} onBlur={blurFn} />
+        onChange={e => change(field.field_key, e.target.value)}
+        onBlur={blurFn} />
     );
   };
 

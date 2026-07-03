@@ -2,8 +2,24 @@ import { memo, useCallback, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Mail, Phone, MoreVertical, MapPin, Briefcase, Pencil, Check } from 'lucide-react';
+import { Mail, Phone, MoreVertical, MapPin, Briefcase, Pencil, Check, Trash2 } from 'lucide-react';
 import { Candidate as ApiCandidate } from '../../services/api';
+import {
+  getInterviewSubStageMenuLabel,
+  getKanbanColumnForCandidate,
+  INTERVIEW_KANBAN_SUB_STAGES,
+  isInterviewKanbanSubStage,
+} from '../../utils/candidateStage';
+
+const formatViewedTime = (value?: string | null): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
 
 interface CandidateCardProps {
   candidate: ApiCandidate;
@@ -78,9 +94,16 @@ const CandidateCard = memo(
     emailFailed = false,
   }: CandidateCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [hovered, setHovered] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+
+    const isAppliedStage = candidate.stage === 'Applied';
+    const tracksCardView = Boolean(candidate.tracksCardView);
+    const isUnviewed = isAppliedStage && tracksCardView && candidate.isViewed === false;
+    const isFlaggedDuplicate = Boolean(candidate.isFlaggedDuplicate);
+    const hasMergedApplications = Boolean(candidate.hasMergedApplications);
 
     // Drag is a stage-change interaction. If the user lacks edit permission, keep drag disabled.
     const canDrag = hasEditPermission;
@@ -123,8 +146,8 @@ const CandidateCard = memo(
         e.stopPropagation();
         setMenuOpen(false);
         
-        // Don't move if already in this stage
-        if (newStage === candidate.stage) return;
+        // Don't move if already in this kanban column (includes interview sub-stages)
+        if (newStage === getKanbanColumnForCandidate(candidate)) return;
         
         // Call the stage change handler
         if (onStageChange) {
@@ -212,6 +235,24 @@ const CandidateCard = memo(
       .toUpperCase()
       .slice(0, 2);
 
+    const lastOpenedHint =
+      tracksCardView && candidate.lastViewedBy && candidate.lastViewedAt
+        ? `${candidate.lastViewedBy} · ${formatViewedTime(candidate.lastViewedAt)}`
+        : tracksCardView
+          ? candidate.lastViewedBy || null
+          : null;
+
+    const handleDeleteClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setMenuOpen(false);
+        if (window.confirm(`Delete ${formattedName}? This cannot be undone.`)) {
+          onDelete(candidate.id);
+        }
+      },
+      [candidate.id, formattedName, onDelete]
+    );
+
     return (
       <div
         ref={setNodeRef}
@@ -220,7 +261,15 @@ const CandidateCard = memo(
         {...(canDrag ? attributes : {})}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
-        className={`group relative bg-white rounded-[10px] border border-gray-200 touch-none select-none candidate-card ${
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={`group relative rounded-[10px] border touch-none select-none candidate-card ${
+          isFlaggedDuplicate
+            ? 'candidate-card--duplicate border-red-900 bg-red-50/90 ring-1 ring-red-400/60 shadow-sm'
+            : isUnviewed
+              ? 'candidate-card--unviewed border-indigo-300 bg-indigo-50/40'
+              : 'bg-white border-gray-200'
+        } ${
           isBeingDragged
             ? 'scale-95 shadow-none opacity-35'
             : ''
@@ -229,7 +278,7 @@ const CandidateCard = memo(
         }`}
         onClick={handleClick}
         role="button"
-        aria-label={`${formattedName}, ${formattedRole}, ${candidate.stage}`}
+        aria-label={`${formattedName}, ${formattedRole}, ${candidate.stage}${isUnviewed ? ', new application' : ''}`}
         aria-grabbed={isBeingDragged}
         tabIndex={0}
       >
@@ -244,15 +293,32 @@ const CandidateCard = memo(
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-semibold text-gray-900 truncate leading-tight">
-                {formattedName}
-              </p>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-[14px] font-semibold text-gray-900 truncate leading-tight">
+                  {formattedName}
+                </p>
+                {hasMergedApplications && (
+                  <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-violet-700 text-white">
+                    Merged
+                  </span>
+                )}
+                {isFlaggedDuplicate && (
+                  <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-900 text-white">
+                    Duplicate
+                  </span>
+                )}
+                {isUnviewed && !isFlaggedDuplicate && !hasMergedApplications && (
+                  <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-indigo-600 text-white">
+                    New
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-500 truncate leading-tight">
                 {formattedRole}
               </p>
             </div>
-            {/* 3-dot menu - Move To Section */}
-            {hasEditPermission && availableStages.length > 0 && (
+            {/* 3-dot menu — move, delete (admin) */}
+            {(hasEditPermission && availableStages.length > 0) || hasDeletePermission ? (
               <div className="relative flex-shrink-0">
                 <button
                   ref={buttonRef}
@@ -261,7 +327,7 @@ const CandidateCard = memo(
                     setMenuOpen((v) => !v);
                   }}
                   className="p-1 rounded-md text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100"
-                  aria-label="Move to section"
+                  aria-label="Card actions"
                   aria-expanded={menuOpen}
                 >
                   <MoreVertical size={14} />
@@ -287,17 +353,22 @@ const CandidateCard = memo(
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {/* Menu Title */}
                       <div className="px-3 py-1.5 border-b border-gray-200">
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                          Move To
+                          {hasEditPermission && availableStages.length > 0 ? 'Move To' : 'Actions'}
                         </p>
                       </div>
 
                       {/* Stage Options */}
+                      {hasEditPermission && availableStages.length > 0 && (
                       <div className="py-1">
-                        {availableStages.map((stage, index) => {
-                          const isCurrentStage = stage === candidate.stage;
+                        {availableStages.map((stage) => {
+                          const interviewSubLabel = getInterviewSubStageMenuLabel(candidate);
+                          const isCurrentStage =
+                            stage === getKanbanColumnForCandidate(candidate) ||
+                            (isInterviewKanbanSubStage(stage) &&
+                              INTERVIEW_KANBAN_SUB_STAGES[stage]?.subStage === candidate.subStage) ||
+                            (interviewSubLabel !== null && stage === interviewSubLabel);
                           
                           // Determine if this is a sub-stage (indented)
                           const isSubStage = [
@@ -347,12 +418,29 @@ const CandidateCard = memo(
                           );
                         })}
                       </div>
+                      )}
+
+                      {hasDeletePermission && (
+                        <>
+                          {hasEditPermission && availableStages.length > 0 && (
+                            <div className="my-1 border-t border-gray-200" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={handleDeleteClick}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                          >
+                            <Trash2 size={14} className="flex-shrink-0" />
+                            Delete candidate
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>,
                   document.body
                 )}
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Key info row: email/phone, location, experience */}
@@ -407,13 +495,19 @@ const CandidateCard = memo(
         </div>
 
         {/* Footer */}
-        <div className="px-3.5 py-2 border-t border-gray-100 flex items-center justify-between">
-          <span className="text-xs text-gray-400">
-            {new Date(candidate.appliedDate).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-            })}
-          </span>
+        <div className="px-3.5 py-2 border-t border-gray-100 flex items-center justify-between gap-2">
+          {isAppliedStage && tracksCardView && hovered && lastOpenedHint ? (
+            <span className="text-[11px] text-gray-500 truncate min-w-0" title={lastOpenedHint}>
+              {lastOpenedHint}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400 flex-shrink-0">
+              {new Date(candidate.appliedDate).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+          )}
           <div className="flex items-center gap-2">
             {assignmentDeadline && (
               <span className="text-xs text-amber-600 font-medium">
@@ -437,7 +531,7 @@ const CandidateCard = memo(
               style={{
                 width: 26,
                 height: 26,
-                background: '#6366f1',
+                background: '#dc2626',
                 border: 'none',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
@@ -491,6 +585,13 @@ const CandidateCard = memo(
     prev.candidate.position === next.candidate.position &&
     prev.candidate.source === next.candidate.source &&
     prev.candidate.appliedDate === next.candidate.appliedDate &&
+    prev.candidate.createdAt === next.candidate.createdAt &&
+    prev.candidate.tracksCardView === next.candidate.tracksCardView &&
+    prev.candidate.isViewed === next.candidate.isViewed &&
+    prev.candidate.lastViewedBy === next.candidate.lastViewedBy &&
+    prev.candidate.lastViewedAt === next.candidate.lastViewedAt &&
+    prev.candidate.isFlaggedDuplicate === next.candidate.isFlaggedDuplicate &&
+    prev.candidate.hasMergedApplications === next.candidate.hasMergedApplications &&
     prev.candidate.latestInterviewDate === next.candidate.latestInterviewDate &&
     prev.candidate.interviews?.length === next.candidate.interviews?.length &&
     prev.accentColor === next.accentColor &&

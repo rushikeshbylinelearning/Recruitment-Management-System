@@ -7,6 +7,8 @@
  * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 12.3, 12.4
  */
 
+import { canonicalizePositionForStorage } from './jobCardCategoryAggregation.js';
+
 /**
  * Normalize a candidate row
  * @param {Object} row - Raw candidate data
@@ -26,8 +28,11 @@ function normalize(row) {
 
     switch (key) {
       case 'name':
-      case 'position':
       case 'location':
+      case 'position':
+        normalized[key] = canonicalizePositionForStorage(normalizeText(value));
+        break;
+
       case 'notes':
       case 'source':
       case 'resume':
@@ -82,8 +87,14 @@ function normalize(row) {
         break;
 
       default:
-        // For other fields, just normalize text if it's a string
-        normalized[key] = typeof value === 'string' ? normalizeText(value) : value;
+        // Pass objects (e.g. __cellColors) through unchanged.
+        // Normalize strings; leave everything else as-is.
+        if (key.startsWith('__')) {
+          // Metadata fields — never transform, pass through as-is
+          normalized[key] = value;
+        } else {
+          normalized[key] = typeof value === 'string' ? normalizeText(value) : value;
+        }
     }
   }
 

@@ -83,6 +83,7 @@ router.post('/upload',
     const mappingResult = fieldMapperService.mapFields(parsedFile.headers, savedMappingData);
 
     // Normalize data (used for duplicate detection and caching)
+    // CRITICAL: preserve __cellColors so stage detection works in preview and on confirm
     const normalizedRows = parsedFile.rows.map(row => {
       const mappedData = {};
       mappingResult.mappings.forEach(mapping => {
@@ -90,6 +91,10 @@ router.post('/upload',
           mappedData[mapping.targetField] = row[mapping.sourceColumn];
         }
       });
+      // Carry cell color metadata through normalization
+      if (row.__cellColors) {
+        mappedData.__cellColors = row.__cellColors;
+      }
       return normalize(mappedData);
     });
 
@@ -172,7 +177,10 @@ router.post('/confirm',
     // Apply user-confirmed mappings if provided
     let finalMappings = mappings || cachedData.mappings;
     
-    // Re-normalize data with confirmed mappings
+    // Re-normalize data with confirmed mappings.
+    // CRITICAL: __cellColors must be carried through from the raw parsed row
+    // so that bulkInsertService can read the candidate name cell color for
+    // stage detection. Without this, every candidate falls back to 'Applied'.
     let normalizedRows = cachedData.parsedFile.rows.map(row => {
       const mappedData = {};
       finalMappings.forEach(mapping => {
@@ -180,6 +188,11 @@ router.post('/confirm',
           mappedData[mapping.targetField] = row[mapping.sourceColumn];
         }
       });
+
+      // Preserve cell color metadata — NOT a user field, never overwritten by mappings
+      if (row.__cellColors) {
+        mappedData.__cellColors = row.__cellColors;
+      }
       
       return normalize(mappedData);
     });

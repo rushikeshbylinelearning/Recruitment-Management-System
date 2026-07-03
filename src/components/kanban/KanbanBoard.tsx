@@ -23,14 +23,24 @@ import NotesPanel from '../NotesPanel';
 import { Candidate as ApiCandidate } from '../../services/api';
 import { InterviewFormPayload } from '../../types/interview';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
+import { useKanbanMatchScroll } from '../../hooks/useKanbanMatchScroll';
 import { useSyncManager } from '../../hooks/useSyncManager';
 import { useToastManager } from '../../hooks/useToastManager';
 import { DEFAULT_STAGE_CONFIG, UmbrellaStage } from '../../types/umbrellaStage';
+import { candidatesAPI } from '../../services/api';
+import {
+  candidateNeedsInterviewStageMove,
+  collectInterviewColumnCandidates,
+  INTERVIEW_KANBAN_SUB_STAGES,
+  isInterviewKanbanSubStage,
+} from '../../utils/candidateStage';
+import { sortCandidatesNewestFirst, withStageSortTimestamp } from '../../utils/candidateSort';
 
 interface KanbanBoardProps {
   stages: string[];
   candidatesByStage: Record<string, ApiCandidate[]>;
   onStageChange: (candidateId: string, newStage: string) => Promise<void>;
+  onSubStageChange?: (candidateId: string, mainStage: string, subStage: string) => Promise<void>;
   onCandidateClick: (candidate: ApiCandidate) => void;
   onCandidateEdit: (candidate: ApiCandidate) => void;
   onCandidateDelete: (candidateId: string) => void;
@@ -41,28 +51,32 @@ interface KanbanBoardProps {
   selectionMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (candidateId: string) => void;
+  /** When true, scroll board to columns that still have filtered/search matches */
+  matchScrollEnabled?: boolean;
 }
 
-// Flat, minimal accent colors — one per stage
+// Flat, minimal accent colors — one per stage, matching the new required color system
 const STAGE_ACCENTS: Record<string, string> = {
-  Applied: '#6366f1',
-  'Follow Up': '#06b6d4',
+  Applied: '#dc2626',
+  'Follow Up': '#00B0F0',         // NEW: Bright Blue
   Screening: '#f59e0b',
   Interview: '#f97316',
+  Selected: '#92D050',            // NEW: Light Green
   Offer: '#8b5cf6',
   Hired: '#10b981',
-  Rejected: '#ef4444',
+  Rejected: '#FF0000',            // NEW: Bright Red
   'On Hold': '#6b7280',
-  'No Show - Interview': '#ea580c',
+  'No Show - Interview': '#7030A0',  // NEW: Purple
   'No Show - Onboarding': '#ec4899',
   'Last Minute Back Out': '#dc2626',
-  'Profile Not Matched': '#64748b',
+  'Profile Not Matched': '#FFC000',  // NEW: Gold Yellow
 };
 
 export default function KanbanBoard({
   stages,
   candidatesByStage,
   onStageChange,
+  onSubStageChange,
   onCandidateClick,
   onCandidateEdit,
   onCandidateDelete,
@@ -72,6 +86,7 @@ export default function KanbanBoard({
   selectionMode = false,
   selectedIds = new Set(),
   onToggleSelect = () => {},
+  matchScrollEnabled = false,
 }: KanbanBoardProps) {
   const [optimisticCandidatesByStage, setOptimisticCandidatesByStage] =
     useState<Record<string, ApiCandidate[]>>(candidatesByStage);
@@ -139,6 +154,14 @@ export default function KanbanBoard({
     columnRefs: columnRefs.current,
     isDragging,
     cursorPosition,
+  });
+
+  useKanbanMatchScroll({
+    boardRef,
+    candidatesByStage: optimisticCandidatesByStage,
+    enabled: matchScrollEnabled,
+    isDragging,
+    overlayOpen: expandedUmbrellaStage !== null,
   });
 
   // Track live pointer position (DragMoveEvent's activatorEvent is NOT the live cursor)
@@ -522,8 +545,111 @@ export default function KanbanBoard({
   );
 
   const activeAccent = activeCandidate
-    ? STAGE_ACCENTS[activeCandidate.stage] || '#6366f1'
-    : '#6366f1';
+    ? STAGE_ACCENTS[activeCandidate.stage] || '#dc2626'
+    : '#dc2626';
+
+  const handleInterviewSubStageMove = useCallback(
+    async (candidateId: string, newStage: string) => {
+      const config = INTERVIEW_KANBAN_SUB_STAGES[newStage];
+      if (!config) return;
+
+      const currentStage = Object.entries(optimisticCandidatesByStage).find(([, candidates]) =>
+        candidates.some((c) => c.id === candidateId)
+      )?.[0];
+
+      if (!currentStage) return;
+
+      const candidate =
+        Object.values(optimisticCandidatesByStage).flat().find((c) => c.id === candidateId) ?? null;
+      if (!candidate) return;
+
+      if (config.escalateTo) {
+        const escalateStage = config.escalateTo;
+        if (currentStage === escalateStage) return;
+
+        const rollbackSnapshot = optimisticRef.current;
+        setOptimisticCandidatesByStage((prev) => {
+          const sourceList = Array.from(prev[currentStage] ?? []);
+          const destList = Array.from(prev[escalateStage] ?? []);
+          const sourceIndex = sourceList.findIndex((c) => c.id === candidateId);
+          if (sourceIndex === -1) return prev;
+
+          const [moved] = sourceList.splice(sourceIndex, 1);
+          destList.unshift(withStageSortTimestamp({ ...moved, stage: escalateStage } as ApiCandidate));
+
+          return {
+            ...prev,
+            [currentStage]: sourceList,
+            [escalateStage]: destList,
+          };
+        });
+
+        try {
+          await syncDrop(candidateId, escalateStage, currentStage);
+        } catch {
+          setOptimisticCandidatesByStage(rollbackSnapshot ?? lastStableRef.current);
+          showToast(`Failed to move candidate to ${escalateStage}`, () =>
+            handleInterviewSubStageMove(candidateId, newStage)
+          );
+        }
+        return;
+      }
+
+      const targetColumn = 'Interview';
+      if (currentStage === targetColumn && candidate.subStage === config.subStage) return;
+
+      const rollbackSnapshot = optimisticRef.current;
+
+      setOptimisticCandidatesByStage((prev) => {
+        const sourceList = Array.from(prev[currentStage] ?? []);
+        const destList = Array.from(prev[targetColumn] ?? []);
+        const sourceIndex = sourceList.findIndex((c) => c.id === candidateId);
+        if (sourceIndex === -1) return prev;
+
+        const [moved] = sourceList.splice(sourceIndex, 1);
+        const movedWithStage = withStageSortTimestamp({
+          ...moved,
+          stage: 'Interview',
+          mainStage: 'interview',
+          subStage: config.subStage,
+        } as ApiCandidate);
+        destList.unshift(movedWithStage);
+
+        return {
+          ...prev,
+          [currentStage]: sourceList,
+          [targetColumn]: destList,
+        };
+      });
+
+      try {
+        if (candidateNeedsInterviewStageMove(candidate)) {
+          const stageResponse = await candidatesAPI.updateCandidateStage(candidateId, 'Interview');
+          if (!stageResponse.success) {
+            throw new Error(stageResponse.message || 'Failed to update stage');
+          }
+        }
+        if (onSubStageChange) {
+          await onSubStageChange(candidateId, 'interview', config.subStage);
+        } else {
+          const response = await candidatesAPI.updateCandidateSubStage(
+            candidateId,
+            'interview',
+            config.subStage
+          );
+          if (!response.success) {
+            throw new Error(response.message || 'Failed to update sub-stage');
+          }
+        }
+      } catch {
+        setOptimisticCandidatesByStage(rollbackSnapshot ?? lastStableRef.current);
+        showToast(`Failed to move candidate to ${newStage}`, () =>
+          handleInterviewSubStageMove(candidateId, newStage)
+        );
+      }
+    },
+    [optimisticCandidatesByStage, onSubStageChange, syncDrop, showToast]
+  );
 
   const handleStageChange = useCallback(
     async (candidateId: string, newStage: string) => {
@@ -539,6 +665,11 @@ export default function KanbanBoard({
 
       if (!currentStage) return;
       if (currentStage === newStage) return;
+
+      if (isInterviewKanbanSubStage(newStage)) {
+        await handleInterviewSubStageMove(candidateId, newStage);
+        return;
+      }
 
       // Check for modal-gated stages
       if (newStage === 'Interview') {
@@ -568,7 +699,7 @@ export default function KanbanBoard({
         if (sourceIndex === -1) return prev;
 
         const [moved] = sourceList.splice(sourceIndex, 1);
-        const movedWithStage = { ...moved, stage: newStage } as ApiCandidate;
+        const movedWithStage = withStageSortTimestamp({ ...moved, stage: newStage } as ApiCandidate);
 
         // Add to beginning of destination column
         destList.unshift(movedWithStage);
@@ -591,12 +722,76 @@ export default function KanbanBoard({
         );
       }
     },
-    [optimisticCandidatesByStage, stages, syncDrop, showToast, manualRetry]
+    [optimisticCandidatesByStage, stages, syncDrop, showToast, manualRetry, handleInterviewSubStageMove]
   );
 
   const handleOpenNotes = useCallback((candidate: ApiCandidate) => {
     setNotesPanelCandidate(candidate);
   }, []);
+
+  const handleSubStageChange = useCallback(
+    async (candidateId: string, mainStage: string, subStage: string) => {
+      const rollbackSnapshot = optimisticRef.current;
+      const targetColumn =
+        mainStage === 'interview'
+          ? 'Interview'
+          : mainStage === 'follow-up'
+            ? 'Follow Up'
+            : null;
+
+      setOptimisticCandidatesByStage((prev) => {
+        let moved: ApiCandidate | null = null;
+        let sourceColumn: string | null = null;
+        const next: Record<string, ApiCandidate[]> = {};
+
+        for (const [stageName, list] of Object.entries(prev)) {
+          next[stageName] = list.filter((c) => {
+            if (c.id === candidateId) {
+              sourceColumn = stageName;
+              moved = withStageSortTimestamp({
+                ...c,
+                mainStage,
+                subStage,
+                stage: targetColumn ?? c.stage,
+              } as ApiCandidate);
+              return false;
+            }
+            return true;
+          });
+        }
+
+        if (moved) {
+          const dest = targetColumn ?? sourceColumn;
+          if (dest) {
+            next[dest] = [moved, ...(next[dest] || [])];
+          }
+        }
+
+        return next;
+      });
+
+      try {
+        if (onSubStageChange) {
+          await onSubStageChange(candidateId, mainStage, subStage);
+        } else {
+          const response = await candidatesAPI.updateCandidateSubStage(
+            candidateId,
+            mainStage,
+            subStage
+          );
+          if (!response.success) {
+            throw new Error(response.message || 'Failed to update sub-stage');
+          }
+        }
+      } catch {
+        setOptimisticCandidatesByStage(rollbackSnapshot ?? lastStableRef.current);
+        showToast('Failed to update interview sub-stage', () =>
+          handleSubStageChange(candidateId, mainStage, subStage)
+        );
+      }
+    },
+    [onSubStageChange, showToast]
+  );
 
   // Handle umbrella stage expansion
   const handleExpandUmbrella = useCallback((umbrellaStage: UmbrellaStage, originElement: HTMLElement) => {
@@ -614,20 +809,22 @@ export default function KanbanBoard({
   const getUmbrellaCandidates = useCallback((umbrellaStage: UmbrellaStage): ApiCandidate[] => {
     if (!umbrellaStage.subStages) return [];
     
-    // Collect all candidates from sub-stages
     const allCandidates: ApiCandidate[] = [];
     
     if (umbrellaStage.id === 'rejected') {
-      // Map legacy stage names to umbrella sub-stages
       const rejectedStages = ['Rejected', 'On Hold', 'Profile Not Matched', 'Last Minute Back Out'];
-      
       rejectedStages.forEach(stageName => {
-        const candidates = optimisticCandidatesByStage[stageName] || [];
-        allCandidates.push(...candidates);
+        allCandidates.push(...(optimisticCandidatesByStage[stageName] || []));
       });
     } else if (umbrellaStage.id === 'interview') {
-      // Interview umbrella: get all Interview stage candidates
-      const candidates = optimisticCandidatesByStage['Interview'] || [];
+      allCandidates.push(
+        ...sortCandidatesNewestFirst(
+          collectInterviewColumnCandidates(optimisticCandidatesByStage) as ApiCandidate[]
+        )
+      );
+    } else if (umbrellaStage.id === 'follow-up') {
+      // Follow Up umbrella includes all Follow Up candidates (with/without no-response sub-stage)
+      const candidates = optimisticCandidatesByStage['Follow Up'] || [];
       allCandidates.push(...candidates);
     }
     
@@ -673,19 +870,34 @@ export default function KanbanBoard({
                 rejectedStages.forEach(stageName => {
                   stageCandidates.push(...(optimisticCandidatesByStage[stageName] || []));
                 });
+                stageCandidates = sortCandidatesNewestFirst(stageCandidates);
               } else if (stageConfig.id === 'interview') {
-                // Interview umbrella: collect all Interview stage candidates
-                stageCandidates = optimisticCandidatesByStage['Interview'] || [];
+                stageCandidates = sortCandidatesNewestFirst(
+                  collectInterviewColumnCandidates(
+                    optimisticCandidatesByStage
+                  ) as ApiCandidate[]
+                );
+              } else if (stageConfig.id === 'follow-up') {
+                stageCandidates = sortCandidatesNewestFirst(
+                  optimisticCandidatesByStage['Follow Up'] || []
+                );
               }
             } else {
               // Regular stage: map to legacy stage name
               const legacyStageName = stageConfig.name;
-              stageCandidates = optimisticCandidatesByStage[legacyStageName] || [];
+              stageCandidates = sortCandidatesNewestFirst(
+                optimisticCandidatesByStage[legacyStageName] || []
+              );
             }
 
             if (stageConfig.isUmbrella) {
               return (
-                <div key={stageConfig.id} data-umbrella-stage={stageConfig.id}>
+                <div
+                  key={stageConfig.id}
+                  data-umbrella-stage={stageConfig.id}
+                  data-kanban-stage={stageConfig.id}
+                  className="flex-shrink-0"
+                >
                   <UmbrellaStageColumn
                     stage={stageConfig}
                     candidates={stageCandidates}
@@ -718,8 +930,12 @@ export default function KanbanBoard({
             }
 
             return (
-              <KanbanColumn
+              <div
                 key={stageConfig.id}
+                data-kanban-stage={stageConfig.id}
+                className="flex-shrink-0"
+              >
+              <KanbanColumn
                 stage={stageConfig.name}
                 candidates={stageCandidates}
                 accentColor={stageConfig.accentColor}
@@ -741,6 +957,7 @@ export default function KanbanBoard({
                 selectedIds={selectedIds}
                 onToggleSelect={onToggleSelect}
               />
+              </div>
             );
           })}
         </div>
@@ -824,6 +1041,7 @@ export default function KanbanBoard({
           candidates={getUmbrellaCandidates(expandedUmbrellaStage)}
           onClose={handleCloseUmbrella}
           onStageChange={handleStageChange}
+          onSubStageChange={handleSubStageChange}
           onCandidateClick={onCandidateClick}
           onCandidateEdit={onCandidateEdit}
           onCandidateDelete={onCandidateDelete}

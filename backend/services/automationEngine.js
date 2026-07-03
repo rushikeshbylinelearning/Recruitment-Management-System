@@ -245,12 +245,11 @@ class AutomationEngine {
       let assignedTo = candidate.assigned_to || userId;
       if (config.assigned_to === 'recruiter' && candidate.assigned_to) {
         assignedTo = candidate.assigned_to;
-      } else if (config.assigned_to === 'hr_manager') {
-        // Get first HR Manager
-        const [hrManager] = await query(
-          "SELECT id FROM users WHERE role = 'HR Manager' AND status = 'Active' LIMIT 1"
+      } else if (config.assigned_to === 'hr_manager' || config.assigned_to === 'admin') {
+        const [adminUser] = await query(
+          "SELECT id FROM users WHERE role = 'Admin' AND status = 'Active' LIMIT 1"
         );
-        if (hrManager) assignedTo = hrManager.id;
+        if (adminUser) assignedTo = adminUser.id;
       }
 
       // Calculate due date

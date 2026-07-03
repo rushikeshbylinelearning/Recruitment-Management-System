@@ -235,46 +235,45 @@ router.get('/candidates/search', authenticateToken, asyncHandler(async (req, res
   const { phone, name, email, date, recruiterId, page = 1, limit = 20 } = req.query;
   const offset = (Number(page) - 1) * Number(limit);
 
-  let conditions = [];
-  let params = [];
+  const structuralConditions = [];
+  const structuralParams = [];
+  const searchConditions = [];
+  const searchParams = [];
 
   // Date filter: candidates that have at least one note on this date
   if (date) {
-    conditions.push('EXISTS (SELECT 1 FROM interaction_notes n WHERE n.candidate_id = ic.id AND DATE(n.created_at) = ?)');
-    params.push(date);
+    structuralConditions.push('EXISTS (SELECT 1 FROM interaction_notes n WHERE n.candidate_id = ic.id AND DATE(n.created_at) = ?)');
+    structuralParams.push(date);
   }
 
-  // Recruiter filter: filter by created_by (only for Admin/HR Manager)
-  if (recruiterId && (req.user.role === 'Admin' || req.user.role === 'HR Manager')) {
-    conditions.push('ic.created_by = ?');
-    params.push(recruiterId);
+  // Recruiter filter: filter by created_by (only for Admin)
+  if (recruiterId && req.user.role === 'Admin') {
+    structuralConditions.push('ic.created_by = ?');
+    structuralParams.push(recruiterId);
   }
 
-  if (phone) { conditions.push('ic.phone LIKE ?'); params.push(`%${phone}%`); }
-  if (name)  { conditions.push('ic.name LIKE ?');  params.push(`%${name}%`); }
-  if (email) { conditions.push('ic.email LIKE ?'); params.push(`%${email}%`); }
+  // Search filters (phone/name/email are OR-combined)
+  if (phone) { searchConditions.push('ic.phone LIKE ?'); searchParams.push(`%${phone}%`); }
+  if (name)  { searchConditions.push('ic.name LIKE ?');  searchParams.push(`%${name}%`); }
+  if (email) { searchConditions.push('ic.email LIKE ?'); searchParams.push(`%${email}%`); }
 
-  // Build WHERE clause
+  // Build WHERE clause — params order must match SQL placeholder order
   let where = '';
-  if (conditions.length) {
-    // Separate structural filters (date, recruiter) from search filters (phone, name, email)
-    const structuralFilters = [];
-    const searchFilters = [];
-    
-    if (date) structuralFilters.push(conditions.shift());
-    if (recruiterId && (req.user.role === 'Admin' || req.user.role === 'HR Manager')) {
-      structuralFilters.push(conditions.shift());
-    }
-    searchFilters.push(...conditions);
-    
-    if (structuralFilters.length && searchFilters.length) {
-      where = `WHERE ${structuralFilters.join(' AND ')} AND (${searchFilters.join(' OR ')})`;
-    } else if (structuralFilters.length) {
-      where = `WHERE ${structuralFilters.join(' AND ')}`;
-    } else if (searchFilters.length) {
-      where = `WHERE ${searchFilters.join(' OR ')}`;
-    }
+  const params = [...structuralParams, ...searchParams];
+
+  if (structuralConditions.length && searchConditions.length) {
+    where = `WHERE ${structuralConditions.join(' AND ')} AND (${searchConditions.join(' OR ')})`;
+  } else if (structuralConditions.length) {
+    where = `WHERE ${structuralConditions.join(' AND ')}`;
+  } else if (searchConditions.length) {
+    where = `WHERE ${searchConditions.join(' OR ')}`;
   }
+
+  // Sanitize pagination values — LIMIT/OFFSET must be inlined as integer literals
+  // because mysql2's pool.execute() (prepared statements) rejects them as bound params
+  // on some MySQL server versions (ER_WRONG_ARGUMENTS).
+  const limitInt = Math.max(1, Math.floor(Number(limit)) || 20);
+  const offsetInt = Math.max(0, Math.floor(offset));
 
   const [rows, countRows] = await Promise.all([
     query(
@@ -286,8 +285,8 @@ router.get('/candidates/search', authenticateToken, asyncHandler(async (req, res
        LEFT JOIN users u ON ic.created_by = u.id
        ${where}
        ORDER BY ic.updated_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, Number(limit), offset]
+       LIMIT ${limitInt} OFFSET ${offsetInt}`,
+      params
     ),
     query(
       `SELECT COUNT(*) AS total FROM interaction_candidates ic ${where}`,
@@ -496,7 +495,7 @@ router.get('/admin/recruiters', authenticateToken, asyncHandler(async (req, res)
             ${notesSub}
      FROM users u
      ${snapshotJoin}
-     WHERE u.role IN ('Recruiter','HR Manager','Admin')
+     WHERE u.role IN ('Recruiter', 'HR Intern', 'Admin')
      ORDER BY today_calls DESC`
   );
 

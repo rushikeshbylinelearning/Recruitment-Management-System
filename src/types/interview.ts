@@ -11,6 +11,9 @@ export interface Interview {
   meeting_link?: string;
   location?: string;
   status: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
+  /** Derived from candidate interview sub-stage + interview status */
+  attendance?: 'Scheduled' | 'Came' | 'Did Not Come' | 'Cancelled' | 'Follow Up';
+  source?: 'interview' | 'candidate';
   notes?: string;
   created_at: string;
   updated_at: string;

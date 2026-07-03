@@ -118,13 +118,25 @@ router.post('/register', validateUser, handleValidationErrors, asyncHandler(asyn
   // Normalize role to match database enum values
   const roleMap = {
     'admin': 'Admin',
-    'hr manager': 'HR Manager',
-    'hr': 'HR Manager',
+    'hr intern': 'HR Intern',
     'recruiter': 'Recruiter',
-    'interviewer': 'Interviewer'
+    'interviewer': 'Interviewer',
+    'team lead': 'Team Lead',
   };
-  
-  const normalizedRole = roleMap[role.toLowerCase()] || role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+
+  const raw = (role || '').trim().toLowerCase();
+  if (raw === 'hr manager' || raw === 'hr') {
+    throw new ValidationError('The HR Manager role is no longer available. Use Admin, Recruiter, HR Intern, Interviewer, or Team Lead.');
+  }
+
+  const normalizedRole =
+    roleMap[raw] ||
+    (raw ? role.trim().charAt(0).toUpperCase() + role.trim().slice(1).toLowerCase() : 'Recruiter');
+
+  const allowedRoles = ['Admin', 'Recruiter', 'Interviewer', 'HR Intern', 'Team Lead'];
+  if (!allowedRoles.includes(normalizedRole)) {
+    throw new ValidationError(`Invalid role. Allowed roles: ${allowedRoles.join(', ')}`);
+  }
 
   // Check if username or email already exists
   const existingUsers = await query(
@@ -182,7 +194,7 @@ router.post('/register', validateUser, handleValidationErrors, asyncHandler(asyn
     }
 
     // Create interviewer profile if role is Interviewer
-    if (role === 'Interviewer') {
+    if (normalizedRole === 'Interviewer') {
       await connection.execute(
         `INSERT INTO interviewer_profiles (user_id, department, expertise, interview_types, total_interviews, average_rating) 
          VALUES (?, ?, ?, ?, 0, 0.00)`,
@@ -355,16 +367,28 @@ function getDefaultPermissions(role) {
       { module: 'analytics', actions: ['view'] },
       { module: 'settings', actions: ['view', 'edit'] },
     ],
-    'HR Manager': [
+    'HR Intern': [
       { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view', 'create', 'edit'] },
+      { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view', 'create', 'edit'] },
-      { module: 'communications', actions: ['view', 'create', 'edit'] },
+      { module: 'interviews', actions: ['view'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },
-      { module: 'team', actions: ['view'] },
-      { module: 'analytics', actions: ['view'] },
+      { module: 'task-updates', actions: ['view', 'create'] },
+      { module: 'form-builder', actions: ['view'] },
+      { module: 'candidates-export', actions: [] },  // No export permissions for HR Intern
     ],
     'Recruiter': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view'] },
+      { module: 'candidates', actions: ['view', 'create', 'edit'] },
+      { module: 'interviews', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'communications', actions: ['view', 'create'] },
+      { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'task-updates', actions: ['view', 'create'] },
+      { module: 'team', actions: ['view', 'create'] },
+      { module: 'analytics', actions: ['view'] },
+    ],
+    'Team Lead': [
       { module: 'dashboard', actions: ['view'] },
       { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view', 'edit'] },

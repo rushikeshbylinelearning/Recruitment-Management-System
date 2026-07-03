@@ -23,18 +23,28 @@ const getDefaultPermissions = (role) => {
       { module: 'analytics', actions: ['view'] },
       { module: 'settings', actions: ['view', 'edit'] },
     ],
-    'HR Manager': [
+    'HR Intern': [
       { module: 'dashboard', actions: ['view'] },
-      { module: 'jobs', actions: ['view', 'create', 'edit'] },
+      { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view', 'create', 'edit'] },
-      { module: 'interviews', actions: ['view', 'create', 'edit', 'delete'] },
-      { module: 'communications', actions: ['view', 'create', 'edit'] },
-      { module: 'assignments', actions: ['view', 'create', 'edit'] },
+      { module: 'interviews', actions: ['view'] },
       { module: 'tasks', actions: ['view', 'create', 'edit'] },
-      { module: 'team', actions: ['view'] },
-      { module: 'analytics', actions: ['view'] },
+      { module: 'task-updates', actions: ['view', 'create'] },
+      { module: 'form-builder', actions: ['view'] },
     ],
     'Recruiter': [
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'jobs', actions: ['view'] },
+      { module: 'candidates', actions: ['view', 'edit'] },
+      { module: 'interviews', actions: ['view', 'create', 'edit', 'delete'] },
+      { module: 'communications', actions: ['view', 'create'] },
+      { module: 'assignments', actions: ['view', 'create', 'edit'] },
+      { module: 'tasks', actions: ['view', 'create', 'edit'] },
+      { module: 'task-updates', actions: ['view', 'create'] },
+      { module: 'team', actions: ['view', 'create'] },
+      { module: 'analytics', actions: ['view'] },
+    ],
+    'Team Lead': [
       { module: 'dashboard', actions: ['view'] },
       { module: 'jobs', actions: ['view'] },
       { module: 'candidates', actions: ['view', 'edit'] },
@@ -57,7 +67,7 @@ const getDefaultPermissions = (role) => {
   return rolePermissions[role] || [];
 };
 
-// Get all users (Admin/HR Manager only)
+// Get all users (Admin with team permission)
 router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -70,10 +80,26 @@ router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagi
 
   let whereClause = '';
   let params = [];
+  const conditions = [];
 
   if (search) {
-    whereClause = 'WHERE name LIKE ? OR email LIKE ? OR username LIKE ?';
-    params = [`%${search}%`, `%${search}%`, `%${search}%`];
+    conditions.push('(name LIKE ? OR email LIKE ? OR username LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  const requesterRole = (req.user.role || '').trim().toLowerCase();
+  const excludeAdmin =
+    req.query.excludeAdmin === 'true' ||
+    req.query.excludeAdmin === '1' ||
+    requesterRole === 'recruiter';
+
+  // Recruiters must not see Admin accounts on the team page
+  if (excludeAdmin) {
+    conditions.push("LOWER(TRIM(role)) != 'admin'");
+  }
+
+  if (conditions.length > 0) {
+    whereClause = `WHERE ${conditions.join(' AND ')}`;
   }
 
   // Get total count
@@ -136,9 +162,14 @@ router.get('/', authenticateToken, checkPermission('team', 'view'), validatePagi
   });
 }));
 
-// Create new user (Admin/HR Manager only)
+// Create new user (Admin with team permission)
 router.post('/', authenticateToken, checkPermission('team', 'create'), validateUser, handleValidationErrors, asyncHandler(async (req, res) => {
   const { username, email, name, password, role, avatar, status } = req.body;
+
+  const requesterRole = (req.user.role || '').trim().toLowerCase();
+  if (requesterRole === 'recruiter' && (role || '').trim().toLowerCase() !== 'interviewer') {
+    throw new ValidationError('Recruiters can only create Interviewer accounts');
+  }
 
   // Check if username or email already exists
   const existingUsers = await query(
@@ -211,6 +242,12 @@ router.get('/:id', authenticateToken, checkPermission('team', 'view'), validateI
   );
 
   if (users.length === 0) {
+    throw new NotFoundError('User not found');
+  }
+
+  const requesterRole = (req.user.role || '').trim().toLowerCase();
+  const targetRole = (users[0].role || '').trim().toLowerCase();
+  if (requesterRole === 'recruiter' && targetRole === 'admin') {
     throw new NotFoundError('User not found');
   }
 
@@ -295,11 +332,25 @@ router.put('/:id', authenticateToken, checkPermission('team', 'edit'), validateI
 
   // Validate required fields for update
   if (!username || !email || !name || !role) {
+    console.error('Validation failed - missing fields:', { username, email, name, role });
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
       errors: [
         { field: 'required', message: 'Username, email, name, and role are required' }
+      ]
+    });
+  }
+
+  // Validate role is one of the allowed values
+  const validRoles = ['Admin', 'Recruiter', 'Interviewer', 'HR Intern', 'Team Lead', 'HR Manager'];
+  if (!validRoles.includes(role)) {
+    console.error('Invalid role provided:', role);
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [
+        { field: 'role', message: `Role must be one of: ${validRoles.join(', ')}` }
       ]
     });
   }
@@ -314,9 +365,16 @@ router.put('/:id', authenticateToken, checkPermission('team', 'edit'), validateI
   }
 
   // Check if user exists
-  const existingUsers = await query('SELECT id FROM users WHERE id = ?', [userId]);
+  const existingUsers = await query('SELECT id, role FROM users WHERE id = ?', [userId]);
   if (existingUsers.length === 0) {
     throw new NotFoundError('User not found');
+  }
+
+  const requesterRole = (req.user.role || '').trim().toLowerCase();
+  const existingRole = (existingUsers[0].role || '').trim().toLowerCase();
+  const nextRole = (role || '').trim().toLowerCase();
+  if (requesterRole === 'recruiter' && (existingRole === 'admin' || nextRole === 'admin')) {
+    throw new ValidationError('Recruiters cannot view or modify Admin accounts');
   }
 
   // Check if username or email is already taken by another user
@@ -340,10 +398,24 @@ router.put('/:id', authenticateToken, checkPermission('team', 'edit'), validateI
     userId
   ];
 
-  await query(
+  console.log('Executing update with params:', { username, email, name, role, status, userId });
+
+  const updateResult = await query(
     'UPDATE users SET username = ?, email = ?, name = ?, role = ?, avatar = ?, status = ?, updated_at = NOW() WHERE id = ?',
     updateParams
   );
+
+  console.log('Update result:', updateResult);
+
+  // Verify the update was successful by fetching the user
+  const updatedUsers = await query(
+    'SELECT id, username, email, name, role, status FROM users WHERE id = ?',
+    [userId]
+  );
+
+  if (updatedUsers.length > 0) {
+    console.log('User after update:', updatedUsers[0]);
+  }
 
   // Update password if provided
   if (password && password.trim()) {
@@ -461,8 +533,8 @@ router.put('/:id/interviewer-profile', authenticateToken, checkPermission('team'
 router.get('/:id/dashboard', authenticateToken, asyncHandler(async (req, res) => {
   const userId = req.params.id;
 
-  // Check if user can access this data (own data or admin/hr manager)
-  if (req.user.id !== userId && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  // Check if user can access this data (own data or admin only)
+  if (req.user.id !== userId && req.user.role !== 'Admin') {
     throw new ValidationError('Access denied');
   }
 

@@ -50,11 +50,43 @@ const config = {
     sessionTimeout: parseInt(process.env.SESSION_TIMEOUT) || 1800000 // 30 minutes
   },
   
-  // CORS Configuration
+  // HR admin SPA (login, dashboard)
+  frontendUrl: process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',')[0].trim().replace(/\/$/, '')
+    : (process.env.NODE_ENV === 'production'
+      ? 'https://hr.bylinelms.com'
+      : 'http://localhost:5173'),
+
+  // Public apply portal (candidate forms, short links)
+  publicFrontendUrl: process.env.PUBLIC_FRONTEND_URL
+    ? process.env.PUBLIC_FRONTEND_URL.split(',')[0].trim().replace(/\/$/, '')
+    : (process.env.NODE_ENV === 'production'
+      ? 'https://apply.bylinelms.com'
+      : 'http://localhost:5173'),
+
+  // CORS Configuration — both portals + local dev
   cors: {
-    origin: process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(',').map(u => u.trim())
-      : ['http://localhost:5173', 'http://localhost:5174', 'https://hr.bylinelms.com'],
+    origin: (() => {
+      const origins = new Set();
+      const addList = (envVal) => {
+        if (!envVal) return;
+        envVal.split(',').forEach((u) => {
+          const trimmed = u.trim();
+          if (trimmed) origins.add(trimmed);
+        });
+      };
+      addList(process.env.FRONTEND_URL);
+      addList(process.env.PUBLIC_FRONTEND_URL);
+      if (origins.size === 0) {
+        return [
+          'http://localhost:5173',
+          'http://localhost:5174',
+          'https://hr.bylinelms.com',
+          'https://apply.bylinelms.com',
+        ];
+      }
+      return [...origins];
+    })(),
     credentials: true
   }
 };

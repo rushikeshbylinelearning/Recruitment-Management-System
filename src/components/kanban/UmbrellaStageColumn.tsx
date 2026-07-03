@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import CandidateCard from './CandidateCard';
 import { Candidate as ApiCandidate } from '../../services/api';
-import { UmbrellaStage } from '../../types/umbrellaStage';
+import { getCandidateSubStageId, UmbrellaStage } from '../../types/umbrellaStage';
+import { sortCandidatesNewestFirst } from '../../utils/candidateSort';
 
 interface UmbrellaStageColumnProps {
   stage: UmbrellaStage;
@@ -54,7 +55,9 @@ const UmbrellaStageColumn = memo(
     onExpandUmbrella,
   }: UmbrellaStageColumnProps) {
     const { setNodeRef, isOver: isOverDnd } = useDroppable({ id: stage.id });
-    const safeCandidates = Array.isArray(candidates) ? candidates : [];
+    const safeCandidates = sortCandidatesNewestFirst(
+      Array.isArray(candidates) ? candidates : []
+    );
     const isDropTarget = (isOver || isOverDnd) && isDragging;
 
     const localScrollRef = useRef<HTMLDivElement | null>(null);
@@ -76,21 +79,35 @@ const UmbrellaStageColumn = memo(
     const subStageBreakdown = stage.isUmbrella && stage.subStages
       ? stage.subStages.map(subStage => {
           let count = 0;
-          
-          // Handle different umbrella stages
+
           if (stage.id === 'rejected') {
-            // Rejected umbrella logic
-            if (subStage.id === 'rejected') count = safeCandidates.filter(c => c.stage === 'Rejected').length;
-            else if (subStage.id === 'on-hold') count = safeCandidates.filter(c => c.stage === 'On Hold').length;
-            else if (subStage.id === 'profile-not-matched') count = safeCandidates.filter(c => c.stage === 'Profile Not Matched').length;
-            else if (subStage.id === 'last-minute-back-out') count = safeCandidates.filter(c => c.stage === 'Last Minute Back Out').length;
+            // Map sub-stage id → legacy stage name for counting
+            const legacyMap: Record<string, string> = {
+              'rejected':             'Rejected',
+              'on-hold':              'On Hold',
+              'profile-not-matched':  'Profile Not Matched',
+              'last-minute-back-out': 'Last Minute Back Out',
+            };
+            const legacyName = legacyMap[subStage.id];
+            if (legacyName) {
+              count = safeCandidates.filter(c => c.stage === legacyName).length;
+            }
           } else if (stage.id === 'interview') {
-            // Interview umbrella logic - all candidates in Interview stage
-            // For now, distribute evenly or use metadata if available
-            // In production, you'd check candidate.subStage or metadata
-            count = Math.floor(safeCandidates.length / (stage.subStages?.length || 1));
+            count = safeCandidates.filter(
+              (c) => getCandidateSubStageId(c, 'interview') === subStage.id
+            ).length;
+          } else if (stage.id === 'follow-up') {
+            if (subStage.id === 'no-response') {
+              count = safeCandidates.filter(
+                (c) => getCandidateSubStageId(c, 'follow-up') === 'no-response'
+              ).length;
+            } else {
+              count = safeCandidates.filter(
+                (c) => getCandidateSubStageId(c, 'follow-up') !== 'no-response'
+              ).length;
+            }
           }
-          
+
           return { ...subStage, count };
         })
       : [];

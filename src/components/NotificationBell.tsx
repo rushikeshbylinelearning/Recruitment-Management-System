@@ -1,18 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+/**
+ * NotificationBell
+ * Reads notification state from NotificationContext (no local polling).
+ * The context also drives desktop toast popups automatically.
+ */
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, CheckCheck, Calendar, Clock, Info, ArrowRight } from 'lucide-react';
+import { Bell, X, CheckCheck, Calendar, Clock, Info, ArrowRight, ClipboardList } from 'lucide-react';
+import { useNotifications, AppNotification } from '../contexts/NotificationContext';
 
-interface AppNotification {
-  id: number;
-  type: string;
-  title: string;
-  message: string;
-  link: string | null;
-  is_read: boolean | number;
-  created_at: string;
-}
-
-const POLL_INTERVAL = 30_000;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -43,6 +39,18 @@ function notifIcon(type: string) {
         <Bell size={18} className="text-blue-600" />
       </div>
     );
+  if (type === 'duplicate_application')
+    return (
+      <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
+        <Info size={18} className="text-red-800" />
+      </div>
+    );
+  if (type === 'task_update' || type === 'task_assigned')
+    return (
+      <div className="w-10 h-10 rounded-2xl bg-violet-100 flex items-center justify-center flex-shrink-0">
+        <ClipboardList size={18} className="text-violet-600" />
+      </div>
+    );
   return (
     <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center flex-shrink-0">
       <Info size={18} className="text-gray-500" />
@@ -51,40 +59,21 @@ function notifIcon(type: string) {
 }
 
 function typeBadge(type: string) {
-  if (type === 'interview_scheduled') return { label: 'Scheduled', cls: 'bg-indigo-50 text-indigo-600' };
-  if (type === 'interview_rescheduled') return { label: 'Rescheduled', cls: 'bg-amber-50 text-amber-600' };
-  if (type === 'interview_reminder') return { label: 'Reminder', cls: 'bg-blue-50 text-blue-600' };
+  if (type === 'interview_scheduled')   return { label: 'Scheduled',    cls: 'bg-indigo-50 text-indigo-600' };
+  if (type === 'interview_rescheduled') return { label: 'Rescheduled',  cls: 'bg-amber-50 text-amber-600' };
+  if (type === 'interview_reminder')    return { label: 'Reminder',     cls: 'bg-blue-50 text-blue-600' };
+  if (type === 'duplicate_application') return { label: 'Duplicate',    cls: 'bg-red-100 text-red-900' };
+  if (type === 'task_update')           return { label: 'Work Update',  cls: 'bg-violet-50 text-violet-600' };
+  if (type === 'task_assigned')         return { label: 'Task Assigned',cls: 'bg-violet-50 text-violet-600' };
   return { label: 'Info', cls: 'bg-gray-100 text-gray-500' };
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function NotificationBell() {
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [open, setOpen] = useState(false);
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const [open, setOpen]         = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
-
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const res = await fetch('/api/notifications', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.success) {
-        setNotifications(json.data.notifications);
-        setUnreadCount(json.data.unreadCount);
-      }
-    } catch {
-      // silent
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchNotifications();
-    const timer = setInterval(fetchNotifications, POLL_INTERVAL);
-    return () => clearInterval(timer);
-  }, [fetchNotifications]);
 
   // Lock body scroll when drawer is open
   useEffect(() => {
@@ -92,51 +81,36 @@ export default function NotificationBell() {
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  const markRead = async (id: number) => {
-    try {
-      const token = localStorage.getItem('authToken');
-      await fetch(`/api/notifications/${id}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch { /* silent */ }
-  };
-
-  const markAllRead = async () => {
-    setMarkingAll(true);
-    try {
-      const token = localStorage.getItem('authToken');
-      await fetch('/api/notifications/read-all', {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
-      setUnreadCount(0);
-    } catch { /* silent */ }
-    finally { setMarkingAll(false); }
-  };
-
   const handleNotifClick = (notif: AppNotification) => {
     if (!notif.is_read) markRead(notif.id);
+    setOpen(false);
     if (notif.link) window.location.href = notif.link;
   };
 
+  const handleMarkAll = async () => {
+    setMarkingAll(true);
+    await markAllRead();
+    setMarkingAll(false);
+  };
+
   const unread = notifications.filter(n => !n.is_read);
-  const read = notifications.filter(n => n.is_read);
+  const read   = notifications.filter(n =>  n.is_read);
 
   const drawer = (
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40 transition-opacity duration-300 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40 transition-opacity duration-300 ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
         onClick={() => setOpen(false)}
       />
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-[420px] max-w-full bg-white z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-[420px] max-w-full bg-white z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-white">
@@ -154,7 +128,7 @@ export default function NotificationBell() {
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
               <button
-                onClick={markAllRead}
+                onClick={handleMarkAll}
                 disabled={markingAll}
                 className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
               >
@@ -185,34 +159,23 @@ export default function NotificationBell() {
             </div>
           ) : (
             <div className="px-4 py-4 space-y-1">
-              {/* Unread section */}
               {unread.length > 0 && (
                 <>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2 pb-2">
                     New
                   </p>
                   {unread.map(notif => (
-                    <NotifCard
-                      key={notif.id}
-                      notif={notif}
-                      onClick={() => handleNotifClick(notif)}
-                    />
+                    <NotifCard key={notif.id} notif={notif} onClick={() => handleNotifClick(notif)} />
                   ))}
                 </>
               )}
-
-              {/* Read section */}
               {read.length > 0 && (
                 <>
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2 pt-4 pb-2">
                     Earlier
                   </p>
                   {read.map(notif => (
-                    <NotifCard
-                      key={notif.id}
-                      notif={notif}
-                      onClick={() => handleNotifClick(notif)}
-                    />
+                    <NotifCard key={notif.id} notif={notif} onClick={() => handleNotifClick(notif)} />
                   ))}
                 </>
               )}
@@ -223,11 +186,11 @@ export default function NotificationBell() {
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/60">
           <a
-            href="/interviews"
+            href="/tasks"
             onClick={() => setOpen(false)}
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
           >
-            View all interviews
+            View Tasks &amp; Updates
             <ArrowRight size={15} />
           </a>
         </div>
@@ -256,19 +219,17 @@ export default function NotificationBell() {
   );
 }
 
-// ── Notification card ────────────────────────────────────────────────────────
+// ─── Notification card ────────────────────────────────────────────────────────
 
 function NotifCard({ notif, onClick }: { notif: AppNotification; onClick: () => void }) {
-  const badge = typeBadge(notif.type);
+  const badge   = typeBadge(notif.type);
   const isUnread = !notif.is_read;
 
   return (
     <button
       onClick={onClick}
       className={`w-full text-left flex gap-3 p-3 rounded-2xl transition-all group ${
-        isUnread
-          ? 'bg-indigo-50/60 hover:bg-indigo-50'
-          : 'hover:bg-gray-50'
+        isUnread ? 'bg-indigo-50/60 hover:bg-indigo-50' : 'hover:bg-gray-50'
       }`}
     >
       {notifIcon(notif.type)}
@@ -280,9 +241,7 @@ function NotifCard({ notif, onClick }: { notif: AppNotification; onClick: () => 
           </span>
           {isUnread && <span className="w-2 h-2 bg-indigo-500 rounded-full flex-shrink-0 mt-1.5" />}
         </div>
-
         <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{notif.message}</p>
-
         <div className="flex items-center gap-2 mt-1.5">
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>
             {badge.label}

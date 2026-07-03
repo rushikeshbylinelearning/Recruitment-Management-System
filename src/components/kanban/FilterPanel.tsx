@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { X, ChevronDown, SlidersHorizontal, Upload, UserPlus, FileSpreadsheet, FileText } from 'lucide-react';
+import { X, ChevronDown, SlidersHorizontal, Upload, UserPlus, FileSpreadsheet, FileText, GitMerge } from 'lucide-react';
+
+/** Filter candidates by duplicate / merge status */
+export type DuplicateFilterValue = 'all' | 'flagged' | 'merged' | 'any';
 
 export interface FilterState {
   search: string;
@@ -17,6 +20,7 @@ export interface FilterState {
   noticePeriod: string;
   appliedDateFrom: string;
   appliedDateTo: string;
+  duplicateFilter: DuplicateFilterValue;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -35,7 +39,15 @@ export const DEFAULT_FILTERS: FilterState = {
   noticePeriod: '',
   appliedDateFrom: '',
   appliedDateTo: '',
+  duplicateFilter: 'all',
 };
+
+const DUPLICATE_FILTER_OPTIONS: { value: DuplicateFilterValue; label: string; hint: string }[] = [
+  { value: 'all', label: 'All profiles', hint: 'No merge filter' },
+  { value: 'flagged', label: 'Flagged duplicate', hint: 'Re-applied / possible duplicate' },
+  { value: 'merged', label: 'Merged primary', hint: 'Received merged applications' },
+  { value: 'any', label: 'Any merge-related', hint: 'Flagged or merged' },
+];
 
 interface FilterPanelProps {
   open: boolean;
@@ -51,6 +63,7 @@ interface FilterPanelProps {
   onExportExcel: () => void;
   onExportPdf: () => void;
   exportLoading: boolean;
+  canExport?: boolean;
 }
 
 export default function FilterPanel({ 
@@ -66,7 +79,8 @@ export default function FilterPanel({
   totalCandidates,
   onExportExcel,
   onExportPdf,
-  exportLoading
+  exportLoading,
+  canExport = true
 }: FilterPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +120,7 @@ export default function FilterPanel({
     filters.noticePeriod,
     filters.appliedDateFrom,
     filters.appliedDateTo,
+    filters.duplicateFilter !== 'all',
   ].filter(Boolean).length;
 
   return (
@@ -194,6 +209,38 @@ export default function FilterPanel({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Merge / Duplicate */}
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">
+              <GitMerge size={14} className="text-red-700" />
+              Merge / Duplicate
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {DUPLICATE_FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  title={opt.hint}
+                  onClick={() => set('duplicateFilter', opt.value)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all font-medium ${
+                    filters.duplicateFilter === opt.value
+                      ? opt.value === 'flagged'
+                        ? 'bg-red-700 text-white border-red-700 shadow-sm'
+                        : 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {filters.duplicateFilter !== 'all' && (
+              <p className="mt-2 text-[11px] text-gray-500 leading-snug">
+                {DUPLICATE_FILTER_OPTIONS.find((o) => o.value === filters.duplicateFilter)?.hint}
+              </p>
+            )}
           </div>
 
           {/* Role */}
@@ -363,24 +410,26 @@ export default function FilterPanel({
 
         {/* Footer */}
         <div className="px-6 py-5 border-t border-gray-100 bg-gray-50 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onExportExcel}
-              disabled={exportLoading}
-              className="w-full py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-            >
-              <FileSpreadsheet size={15} />
-              <span>Download Excel</span>
-            </button>
-            <button
-              onClick={onExportPdf}
-              disabled={exportLoading}
-              className="w-full py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-lg hover:bg-rose-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-            >
-              <FileText size={15} />
-              <span>Download PDF</span>
-            </button>
-          </div>
+          {canExport && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onExportExcel}
+                disabled={exportLoading}
+                className="w-full py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                <FileSpreadsheet size={15} />
+                <span>Download Excel</span>
+              </button>
+              <button
+                onClick={onExportPdf}
+                disabled={exportLoading}
+                className="w-full py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-lg hover:bg-rose-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                <FileText size={15} />
+                <span>Download PDF</span>
+              </button>
+            </div>
+          )}
           {activeCount > 0 && (
             <button
               onClick={onReset}

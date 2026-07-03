@@ -3,6 +3,8 @@ import { query, transaction } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
 import { validateJobPosting, validateId, validatePagination, handleValidationErrors } from '../middleware/validation.js';
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
+import { computeJobCardApplicantTotals } from '../services/jobCardCategoryAggregation.js';
+import { buildNotesMapForCandidates } from '../services/hrNotesSyncService.js';
 
 const router = express.Router();
 
@@ -47,6 +49,8 @@ router.get('/', authenticateToken, checkPermission('jobs', 'view'), validatePagi
      LIMIT ${limitNum} OFFSET ${offsetNum}`;
   
   const jobs = await query(jobsQuery, params);
+
+  const jobCardApplicantTotals = await computeJobCardApplicantTotals(query);
 
   // Get portals and assignments for each job
   for (let job of jobs) {
@@ -102,6 +106,7 @@ router.get('/', authenticateToken, checkPermission('jobs', 'view'), validatePagi
     success: true,
     data: {
       jobs,
+      jobCardApplicantTotals,
       pagination: {
         page,
         limit,
@@ -384,13 +389,16 @@ router.get('/:id/candidates', authenticateToken, checkPermission('candidates', '
   }
 
   const candidates = await query(
-    `SELECT c.*, u.name as assigned_to_name 
+    `SELECT c.*, u.name as assigned_to_name, uploader.name as uploaded_by_name
      FROM candidates c
      LEFT JOIN users u ON c.assigned_to = u.id
+     LEFT JOIN users uploader ON c.uploaded_by = uploader.id
      WHERE c.job_id = ?
      ORDER BY c.applied_date DESC`,
     [jobId]
   );
+
+  const notesMap = await buildNotesMapForCandidates(candidates.map((c) => c.id));
 
   // Parse JSON fields and add communications count
   for (let candidate of candidates) {
@@ -411,6 +419,7 @@ router.get('/:id/candidates', authenticateToken, checkPermission('candidates', '
     candidate.appliedDate = candidate.applied_date;
     candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
     candidate.assignedToId = candidate.assigned_to || null;
+    candidate.uploadedBy = candidate.uploaded_by_name || null;
     candidate.salary = {
       expected: candidate.salary_expected || '',
       offered: candidate.salary_offered || '',
@@ -428,10 +437,13 @@ router.get('/:id/candidates', authenticateToken, checkPermission('candidates', '
       inHouseAssignmentStatus: candidate.in_house_assignment_status || undefined,
     };
 
+    candidate.notes = notesMap[candidate.id] || [];
+
     // Remove snake_case fields
     delete candidate.applied_date;
     delete candidate.assigned_to_name;
     delete candidate.assigned_to;
+    delete candidate.uploaded_by_name;
     delete candidate.salary_expected;
     delete candidate.salary_offered;
     delete candidate.salary_negotiable;

@@ -1,120 +1,232 @@
 /* ============================================
-   JobApplicantsModal - Dedicated Styles
+   JobApplicantsModal - Modern SaaS Design
    ============================================ */
 
-/* ─── Scrollbar Styles ─────────────────────────────────────────────────────
-   Applied to:
-     - .job-applicants-month-sidebar   (left month list)
-     - .job-applicants-rows-container  (right candidate list)
-     - .job-applicants-notes-list      (notes inside each card)
-   All three elements must have overflow-y: auto so the scrollbar appears.
-   ──────────────────────────────────────────────────────────────────────── */
-.job-applicants-modal-scrollbar {
-  overflow-y: auto !important;
-  scrollbar-width: thin;
-  scrollbar-color: #94a3b8 #e2e8f0;
+/* ─── Design tokens ─────────────────────────────────────────────────────── */
+.job-applicants-modal-content {
+  --jam-text-primary: #111827;
+  --jam-text-secondary: #6b7280;
+  --jam-text-muted: #9ca3af;
+  /* Match job card header palette (Jobs.css) */
+  --jam-accent: #475569;
+  --jam-accent-plum: #4a3d4f;
+  --jam-header-gradient: linear-gradient(135deg, #334155 0%, #1e293b 50%, #4a3d4f 100%);
+  --jam-surface: #f8fafc;
+  --jam-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Webkit Scrollbar Styling */
+/* ─── Scrollbar ─────────────────────────────────────────────────────────── */
+.job-applicants-modal-scrollbar {
+  overflow-y: auto !important;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(71, 85, 105, 0.35) transparent;
+}
+
 .job-applicants-modal-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  background-color: #e2e8f0;
+  width: 6px;
+  background: transparent;
 }
 
 .job-applicants-modal-scrollbar::-webkit-scrollbar-track {
-  background: #e2e8f0;
-  border-radius: 6px;
+  background: transparent;
 }
 
 .job-applicants-modal-scrollbar::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 6px;
-  border: 2px solid #e2e8f0;
-  transition: background 0.2s ease;
+  background: rgba(71, 85, 105, 0.35);
+  border-radius: 999px;
+  transition: background var(--jam-transition, 0.2s ease);
 }
 
 .job-applicants-modal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: rgba(71, 85, 105, 0.55);
 }
 
-/* Dark Mode Scrollbar */
-html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar {
-  background-color: var(--dm-surface);
-}
-
-html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar-track {
-  background: var(--dm-surface);
-  border-radius: 6px;
+html.dark .job-applicants-modal-scrollbar {
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
 }
 
 html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--dm-border-2);
-  border-radius: 6px;
-  border: 2px solid var(--dm-surface);
+  background: rgba(148, 163, 184, 0.35);
 }
 
 html.dark .job-applicants-modal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--dm-accent);
+  background: rgba(148, 163, 184, 0.55);
 }
 
-/* Smooth Scrolling */
-.job-applicants-modal-scrollbar {
-  scroll-behavior: smooth;
-}
-
-/* ─── Modal Container ────────────────────────────────────────────────────── */
+/* ─── Backdrop — same as CandidateViewModal (bg-black/50 + 8px blur) ─────── */
 .job-applicants-modal-container {
   position: fixed;
   inset: 0;
-  /* Upgraded: matches candidate modal elegant blur backdrop */
-  background-color: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(8px) saturate(140%);
-  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
-  padding: 1.5rem;
-  /* entry animation declared in JobModalAnimations.css */
+  padding: 1.25rem;
+  animation: job-applicants-overlay-in 0.2s ease-out both;
 }
 
+@keyframes job-applicants-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ─── Modal shell (glassmorphism lite) ──────────────────────────────────── */
 .job-applicants-modal-content {
-  background-color: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  width: 90%;
-  max-width: 1100px;
-  max-height: 82vh;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.25),
+    0 8px 20px rgba(0, 0, 0, 0.12);
+  width: 92%;
+  max-width: 1120px;
+  max-height: 86vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 html.dark .job-applicants-modal-content {
-  background-color: var(--dm-surface);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  background: rgba(30, 41, 59, 0.98);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.5),
+    0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
-/* ─── Header Gradient ────────────────────────────────────────────────────── */
+/* ─── Header (job card slate → plum gradient) ─────────────────────────────── */
 .job-applicants-modal-header {
-  background: linear-gradient(to right, #9333ea, #a855f7, #6366f1);
-  padding: 0.75rem 1.25rem;
+  background: var(--job-header-gradient, var(--jam-header-gradient));
+  padding: 1.125rem 1.5rem;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-radius: 24px 24px 0 0;
+  position: relative;
+  overflow: hidden;
 }
 
-/* ─── Month Sidebar ──────────────────────────────────────────────────────── */
+.job-applicants-modal-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--job-header-accent, linear-gradient(90deg, transparent, rgba(248, 113, 113, 0.18), transparent));
+  pointer-events: none;
+}
+
+.job-applicants-modal-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+html.dark .job-applicants-modal-header {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 50%, #3f3545 100%);
+}
+
+.job-applicants-header-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.job-applicants-header-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.job-applicants-header-year-select {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--jam-transition), border-color var(--jam-transition);
+}
+
+.job-applicants-header-year-select:hover,
+.job-applicants-header-year-select:focus {
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.job-applicants-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.job-applicants-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--jam-transition), border-color var(--jam-transition), transform var(--jam-transition);
+}
+
+.job-applicants-header-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.job-applicants-header-btn:active {
+  transform: scale(0.98);
+}
+
+.job-applicants-header-btn--primary {
+  background: #ffffff;
+  border-color: rgba(255, 255, 255, 0.9);
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.job-applicants-header-btn--primary:hover {
+  background: #f8fafc;
+}
+
+.job-applicants-header-btn--icon {
+  padding: 0.5rem;
+}
+
+/* ─── Body layout ───────────────────────────────────────────────────────── */
+.job-applicants-body-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Month sidebar ─────────────────────────────────────────────────────── */
 .job-applicants-month-sidebar {
-  width: 13rem;
+  width: 14rem;
   flex-shrink: 0;
-  border-right: 1px solid #e5e7eb;
-  background-color: #f9fafb;
-  padding: 0.75rem;
-  /* KEY FIX: min-h-0 lets the flex child shrink so overflow-y actually
-     activates. Without it the sidebar stretches to its content height
-     and never scrolls. */
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  background: #f8fafc;
+  padding: 1rem 0.875rem;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -122,163 +234,534 @@ html.dark .job-applicants-modal-content {
 }
 
 html.dark .job-applicants-month-sidebar {
-  background-color: var(--dm-surface);
+  background: var(--dm-surface);
   border-right-color: var(--dm-border);
 }
 
-/* ─── Month Card ─────────────────────────────────────────────────────────── */
 .job-applicants-month-card {
   width: 100%;
   text-align: left;
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  transition: all 0.2s ease;
-  background-color: white;
-  flex-shrink: 0; /* cards must not shrink — sidebar scrolls instead */
+  border-radius: 14px;
+  padding: 0.875rem 1rem;
+  border: 1px solid transparent;
+  background: #ffffff;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition:
+    background var(--jam-transition),
+    border-color var(--jam-transition),
+    box-shadow var(--jam-transition);
 }
 
 .job-applicants-month-card:hover {
-  border-color: #d8b4fe;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .job-applicants-month-card.active {
-  border-color: #a855f7;
-  background-color: #faf5ff;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  background: rgba(51, 65, 85, 0.08);
+  border: 1px solid rgba(74, 61, 79, 0.28);
 }
 
-html.dark .job-applicants-month-card {
-  background-color: var(--dm-surface-2);
-  border-color: var(--dm-border);
-}
-
-html.dark .job-applicants-month-card.active {
-  background-color: var(--dm-surface-3);
-  border-color: var(--dm-accent);
-}
-
-/* Focus Styles for Accessibility */
 .job-applicants-month-card:focus-visible {
-  outline: 2px solid #a855f7;
+  outline: 2px solid #64748b;
   outline-offset: 2px;
 }
 
-/* ─── Candidate List Container ───────────────────────────────────────────── */
+.job-applicants-month-card__label {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--jam-text-primary);
+  line-height: 1.25;
+  margin: 0;
+}
+
+.job-applicants-month-card.active .job-applicants-month-card__label {
+  color: #334155;
+}
+
+.job-applicants-month-card__count {
+  font-size: 0.8125rem;
+  color: var(--jam-text-secondary);
+  margin: 0.25rem 0 0;
+}
+
+.job-applicants-month-card.active .job-applicants-month-card__count {
+  color: #64748b;
+}
+
+.job-applicants-month-delete {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.375rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity var(--jam-transition), background var(--jam-transition);
+  cursor: pointer;
+  z-index: 10;
+}
+
+.job-applicants-month-item:hover .job-applicants-month-delete {
+  opacity: 1;
+}
+
+.job-applicants-month-delete:hover {
+  background: #fee2e2;
+}
+
+/* ─── List panel ─────────────────────────────────────────────────────────── */
 .job-applicants-list-container {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  /* KEY FIX: min-h-0 is required so the flex child can shrink
-     and its inner overflow-y containers can scroll */
   min-height: 0;
   overflow: hidden;
-  background-color: white;
+  background: var(--jam-surface);
 }
 
 html.dark .job-applicants-list-container {
-  background-color: var(--dm-surface-2);
+  background: var(--dm-surface-2);
 }
 
-/* ─── Search Bar ─────────────────────────────────────────────────────────── */
+/* ─── Search + filter ───────────────────────────────────────────────────── */
 .job-applicants-search-bar {
   display: flex;
   gap: 0.75rem;
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid #e5e7eb;
-  background-color: white;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: #ffffff;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 html.dark .job-applicants-search-bar {
-  background-color: var(--dm-surface-2);
+  background: var(--dm-surface-2);
   border-bottom-color: var(--dm-border);
 }
 
-/* ─── Candidate Rows Scrollable Area ─────────────────────────────────────── */
+.job-applicants-search-wrap {
+  flex: 1;
+  min-width: 12rem;
+  position: relative;
+}
+
+.job-applicants-search-icon {
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--jam-text-muted);
+  pointer-events: none;
+}
+
+.job-applicants-search-input,
+.job-applicants-filter-select {
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 1rem 0 2.5rem;
+  font-size: 0.875rem;
+  color: var(--jam-text-primary);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition:
+    border-color var(--jam-transition),
+    box-shadow var(--jam-transition);
+}
+
+.job-applicants-filter-select {
+  padding: 0 1rem;
+  width: 10rem;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.job-applicants-search-input:focus,
+.job-applicants-filter-select:focus {
+  outline: none;
+  border-color: #64748b;
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.12);
+}
+
+html.dark .job-applicants-search-input,
+html.dark .job-applicants-filter-select {
+  background: var(--dm-surface);
+  border-color: var(--dm-border);
+  color: var(--dm-text);
+}
+
+/* ─── Candidate list ────────────────────────────────────────────────────── */
 .job-applicants-rows-container {
   flex: 1;
-  /* KEY FIX: min-height: 0 is essential — without it a flex child
-     defaults to min-height: auto (content height) and never scrolls */
   min-height: 0;
-  background-color: #f9fafb;
-  padding: 1rem;
-  /* overflow-y: auto is injected by .job-applicants-modal-scrollbar */
+  background: var(--jam-surface);
+  padding: 1rem 1.25rem 1.25rem;
 }
 
-html.dark .job-applicants-rows-container {
-  background-color: var(--dm-surface);
+.job-applicants-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
 }
 
-/* ─── Candidate Card ─────────────────────────────────────────────────────── */
+/* ─── Candidate card ─────────────────────────────────────────────────────── */
 .job-applicants-candidate-card {
-  background-color: white;
-  border-radius: 0.5rem;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
   overflow: hidden;
-  transition: all 0.2s ease;
+  transition:
+    transform var(--jam-transition),
+    box-shadow var(--jam-transition),
+    border-color var(--jam-transition);
 }
 
 .job-applicants-candidate-card:hover {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
 }
 
 html.dark .job-applicants-candidate-card {
-  background-color: var(--dm-surface-2);
+  background: var(--dm-surface-2);
   border-color: var(--dm-border);
 }
 
-html.dark .job-applicants-candidate-card:hover {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+.job-applicants-candidate-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  flex-wrap: nowrap;
 }
 
-/* ─── Notes Panel ────────────────────────────────────────────────────────── */
-.job-applicants-notes-panel {
-  border-top: 1px solid #f3f4f6;
-  background-color: rgba(238, 242, 255, 0.3);
-  padding: 1rem;
-}
-
-html.dark .job-applicants-notes-panel {
-  background-color: rgba(37, 99, 235, 0.05);
-  border-top-color: var(--dm-border);
-}
-
-/* ─── Notes List Scrollable ──────────────────────────────────────────────── */
-.job-applicants-notes-list {
-  max-height: 11rem;
-  /* overflow-y: auto is injected by .job-applicants-modal-scrollbar */
-}
-
-/* ─── Avatar ─────────────────────────────────────────────────────────────── */
 .job-applicants-avatar {
   width: 3rem;
   height: 3rem;
   border-radius: 9999px;
-  background: linear-gradient(to bottom right, #a855f7, #6366f1);
+  background: linear-gradient(135deg, #475569, #334155);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(30, 41, 59, 0.2);
 }
 
-/* ─── Stage Badge ────────────────────────────────────────────────────────── */
+.job-applicants-avatar span {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.8125rem;
+}
+
+.job-applicants-candidate-info {
+  flex: 1;
+  min-width: 10rem;
+}
+
+/* ── New two-row body layout ────────────────────────────────────────────── */
+.job-applicants-candidate-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Row 1 – name + contact on one line */
+.job-applicants-candidate-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.job-applicants-candidate-name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--jam-text-primary);
+  margin: 0;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-applicants-candidate-contact {
+  font-size: 0.8125rem;
+  color: var(--jam-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.job-applicants-contact-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+  font-size: 0.8125rem;
+  color: var(--jam-text-secondary);
+}
+
+.job-applicants-contact-phone {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--jam-text-muted);
+}
+
+.job-applicants-candidate-contact > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.job-applicants-candidate-contact > span:last-child {
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--jam-text-muted);
+  font-size: 0.8125rem;
+}
+
+.job-applicants-contact-sep {
+  color: #d1d5db;
+  font-weight: 300;
+  flex-shrink: 0;
+}
+
+/* Row 2 – chips left, actions right */
+.job-applicants-candidate-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.job-applicants-info-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* keep legacy selectors pointing to new class (used elsewhere) */
+.job-applicants-candidate-email {
+  font-size: 0.8125rem;
+  color: var(--jam-text-secondary);
+}
+
+.job-applicants-candidate-phone {
+  font-size: 0.8125rem;
+  color: var(--jam-text-muted);
+}
+
+.job-applicants-candidate-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.job-applicants-score-pill {
+  font-size: 0.75rem;
+  color: var(--jam-text-secondary);
+  background: #f1f5f9;
+  padding: 0.25rem 0.6rem;
+  border-radius: 8px;
+  white-space: nowrap;
+  border: 1px solid #e2e8f0;
+}
+
+.job-applicants-date-text {
+  font-size: 0.75rem;
+  color: var(--jam-text-muted);
+  white-space: nowrap;
+}
+
+/* Uploader attribution tag – shows recruiter/intern who added the candidate */
+.job-applicants-uploader-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6d28d9;
+  background: #ede9fe;
+  border: 1px solid #ddd6fe;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Stage badges (pastel) ───────────────────────────────────────────────── */
 .job-applicants-stage-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.875rem;
   font-weight: 600;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  white-space: nowrap;
+  min-width: 7.5rem;
+  text-align: center;
+  display: inline-block;
 }
 
-/* ─── Loading Spinner ────────────────────────────────────────────────────── */
+.job-applicants-stage-badge--applied {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.job-applicants-stage-badge--selected,
+.job-applicants-stage-badge--hired,
+.job-applicants-stage-badge--offer {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.job-applicants-stage-badge--rejected {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.job-applicants-stage-badge--follow-up,
+.job-applicants-stage-badge--screening {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.job-applicants-stage-badge--interview {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.job-applicants-stage-badge--default {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* ─── Action buttons ──────────────────────────────────────────────────────── */
+.job-applicants-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.job-applicants-icon-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.job-applicants-interaction-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background var(--jam-transition), border-color var(--jam-transition);
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  white-space: nowrap;
+}
+
+.job-applicants-interaction-btn:hover {
+  background: #fee2e2;
+}
+
+.job-applicants-interaction-btn.is-expanded {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.job-applicants-interaction-btn.is-expanded:hover {
+  background: #e2e8f0;
+}
+
+.job-applicants-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  transition: background var(--jam-transition), color var(--jam-transition);
+}
+
+.job-applicants-icon-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.job-applicants-icon-btn--view:hover {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.job-applicants-icon-btn--edit:hover {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.job-applicants-icon-btn--delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.job-applicants-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ─── Notes panel ─────────────────────────────────────────────────────────── */
+.job-applicants-notes-panel {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(248, 250, 252, 0.9);
+  padding: 1rem 1.25rem;
+}
+
+html.dark .job-applicants-notes-panel {
+  background: rgba(30, 41, 59, 0.5);
+  border-top-color: var(--dm-border);
+}
+
+.job-applicants-notes-list {
+  max-height: 11rem;
+}
+
+/* ─── Loading / empty ─────────────────────────────────────────────────────── */
 .job-applicants-spinner {
   border-radius: 9999px;
-  border: 3px solid #e9d5ff;
-  border-top-color: #9333ea;
+  border: 3px solid #e2e8f0;
+  border-top-color: #475569;
   animation: job-applicants-spin 0.8s linear infinite;
 }
 
@@ -286,36 +769,100 @@ html.dark .job-applicants-notes-panel {
   to { transform: rotate(360deg); }
 }
 
-/* ─── Empty State ────────────────────────────────────────────────────────── */
 .job-applicants-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 400px;
-  gap: 1rem;
-  padding: 5rem 0;
+  min-height: 280px;
+  gap: 0.75rem;
+  padding: 3rem 1rem;
+  color: var(--jam-text-muted);
 }
 
-/* ─── Responsive Adjustments ─────────────────────────────────────────────── */
+.job-applicants-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1rem;
+  gap: 0.75rem;
+}
+
+.job-applicants-loading p {
+  color: var(--jam-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .job-applicants-month-sidebar {
-    width: 14rem;
+  .job-applicants-modal-content {
+    max-width: 96%;
   }
 }
 
 @media (max-width: 768px) {
+  .job-applicants-modal-container {
+    padding: 0.75rem;
+    align-items: flex-end;
+  }
+
   .job-applicants-modal-content {
-    max-height: 95vh;
+    max-height: 94vh;
+    width: 100%;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .job-applicants-modal-header {
+    padding: 1rem;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .job-applicants-header-title {
+    font-size: 1rem;
+  }
+
+  .job-applicants-body-layout {
+    flex-direction: column;
   }
 
   .job-applicants-month-sidebar {
-    width: 12rem;
+    width: 100%;
+    max-height: 9rem;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     padding: 0.75rem;
+    gap: 0.5rem;
   }
 
   .job-applicants-month-card {
-    padding: 0.75rem;
+    min-width: 8.5rem;
+    flex-shrink: 0;
+  }
+
+  .job-applicants-candidate-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .job-applicants-candidate-meta {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .job-applicants-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+
+  .job-applicants-filter-select {
+    width: 100%;
   }
 }
 
@@ -357,7 +904,7 @@ html.dark .job-applicants-notes-panel {
   justify-content: space-between;
   padding: 1.5rem;
   border-bottom: 1px solid #e5e7eb;
-  background: linear-gradient(to right, #eef2ff, #f5f3ff);
+  background: linear-gradient(to right, #fee2e2, #ffffff);
   flex-shrink: 0; /* never let the header shrink or scroll away */
 }
 

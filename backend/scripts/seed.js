@@ -36,7 +36,7 @@ async function seedDatabase() {
         email: 'sarah.johnson@company.com',
         name: 'Sarah Johnson',
         password_hash: hashedPasswords.sarah,
-        role: 'HR Manager'
+        role: 'HR Intern'
       },
       {
         username: 'mike.chen',
@@ -85,12 +85,11 @@ async function seedDatabase() {
     const permissions = {
       'sarah.johnson': [
         { module: 'dashboard', actions: ['view'] },
-        { module: 'jobs', actions: ['view', 'create', 'edit'] },
+        { module: 'jobs', actions: ['view'] },
         { module: 'candidates', actions: ['view', 'create', 'edit'] },
-        { module: 'communications', actions: ['view', 'create', 'edit'] },
+        { module: 'interviews', actions: ['view'] },
         { module: 'tasks', actions: ['view', 'create', 'edit'] },
-        { module: 'team', actions: ['view'] },
-        { module: 'analytics', actions: ['view'] },
+        { module: 'form-builder', actions: ['view'] },
       ],
       'mike.chen': [
         { module: 'dashboard', actions: ['view'] },
@@ -312,7 +311,7 @@ async function seedDatabase() {
     console.log('   - 2 tasks');
     console.log('🔑 Login credentials:');
     console.log('   - admin / admin123 (Admin)');
-    console.log('   - sarah.johnson / sarah123 (HR Manager)');
+    console.log('   - sarah.johnson / sarah123 (HR Intern)');
     console.log('   - mike.chen / mike123 (Recruiter)');
     console.log('   - emma.wilson / emma123 (Team Lead)');
     console.log('   - john.smith / john123 (Interviewer)');

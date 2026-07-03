@@ -191,9 +191,9 @@ class WorkflowEngine {
     const desc  = this._interpolate(config.description || '', vars);
 
     let assignedTo = entityData.assigned_to || userId;
-    if (config.assigned_to === 'hr_manager') {
-      const [hr] = await query("SELECT id FROM users WHERE role = 'HR Manager' AND status = 'Active' LIMIT 1");
-      if (hr) assignedTo = hr.id;
+    if (config.assigned_to === 'hr_manager' || config.assigned_to === 'admin') {
+      const [adminUser] = await query("SELECT id FROM users WHERE role = 'Admin' AND status = 'Active' LIMIT 1");
+      if (adminUser) assignedTo = adminUser.id;
     }
 
     const dueDate = new Date();

@@ -24,3 +24,14 @@ dist-ssr
 *.sw?
 .env
 uploads/*
+
+backend/.env
+# Ignore all zip/tar archives
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+
+dist/
+backend/exports/

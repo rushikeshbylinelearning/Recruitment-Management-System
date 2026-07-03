@@ -100,34 +100,53 @@ const STAGE_ALIASES = {
   'withdrew': { mainStage: 'rejected', subStage: 'last-minute-back-out', legacyStage: 'Last Minute Back Out' },
   'withdrawal': { mainStage: 'rejected', subStage: 'last-minute-back-out', legacyStage: 'Last Minute Back Out' },
   'candidate withdrew': { mainStage: 'rejected', subStage: 'last-minute-back-out', legacyStage: 'Last Minute Back Out' },
+
+  // ── NEW: Selected (standalone stage — color #92D050) ──────────
+  'selected': { mainStage: 'selected', legacyStage: 'Selected' },
+  'shortlisted': { mainStage: 'selected', legacyStage: 'Selected' },
+  'cleared': { mainStage: 'selected', legacyStage: 'Selected' },
+  'approved': { mainStage: 'selected', legacyStage: 'Selected' },
+
+  // ── NEW: Not Relevant (color #FFC000 → profile-not-matched) ───
+  'not relevant': { mainStage: 'rejected', subStage: 'profile-not-matched', legacyStage: 'Profile Not Matched' },
+  'irrelevant': { mainStage: 'rejected', subStage: 'profile-not-matched', legacyStage: 'Profile Not Matched' },
+  'not a fit': { mainStage: 'rejected', subStage: 'profile-not-matched', legacyStage: 'Profile Not Matched' },
+
+  // ── NEW: Didn't Respond (color #7F7F7F → no-response) ─────────
+  "didn't respond": { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'didnt respond': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'did not respond': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'no response': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'no-response': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'unresponsive': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'not reachable': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
+  'unreachable': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
 };
 
 /**
  * Color-based stage hints
- * Secondary enhancement to text matching
- * Includes colors for all main stages and umbrella sub-stages
+ *
+ * NEW REQUIRED COLOR SYSTEM (v2) — these are the ONLY colors used for
+ * Excel name-cell color detection. Each entry is the primary color plus
+ * near-tolerance shades so minor Excel rendering differences still match.
+ *
+ *  Rejected                → #FF0000  (Bright Red)
+ *  Selected                → #92D050  (Light Green)
+ *  Not Relevant            → #FFC000  (Gold Yellow)  → profile-not-matched
+ *  Follow up               → #00B0F0  (Bright Blue)
+ *  Came Down for interview → #FFFF00  (Bright Yellow)
+ *  Didn't came down        → #7030A0  (Purple)       → no-show
+ *  didn't respond          → #7F7F7F  (Gray)         → no-response
  */
 const COLOR_HINTS = {
-  // Main Stages
-  'applied': ['#4169E1', '#1E90FF', '#6495ED', '#5B9BD5', '#4472C4'], // Blue shades
-  'follow-up': ['#00B0F0', '#00B8E6', '#17A2B8', '#0DCAF0', '#20C997'], // Cyan/Teal shades
-  'screening': ['#FFC000', '#FFB900', '#F39C12', '#E67E22', '#D68910'], // Amber/Gold shades
-  'offer': ['#9370DB', '#8A2BE2', '#9932CC', '#BA55D3', '#8B5CF6'], // Purple shades
-  'hired': ['#00FF00', '#228B22', '#008000', '#10B981'], // Green shades (removed #32CD32)
-  
-  // Interview Umbrella (Orange shades)
-  'interview': ['#FF6347', '#FF4500', '#FF7F50', '#FF8C69', '#FFA07A'], // Orange/Coral shades
-  'follow-up-interview': ['#FF8C00', '#FF7F00', '#FF9500'], // Dark Orange (Interview Follow Up)
-  'came-down': ['#FF6347', '#FF5733', '#FF4500'], // Tomato/Orange Red (Attended)
-  'no-show': ['#DC143C', '#C71585', '#B22222'], // Crimson/Dark Pink (No Show)
-  'selected-interview': ['#32CD32', '#3CB371', '#2E8B57', '#00FA9A'], // Medium Green (Selected) - distinct from hired
-  'rejected-interview': ['#FF1493', '#FF69B4', '#DB7093'], // Deep Pink (Rejected after interview)
-  
-  // Rejected Umbrella (Red/Orange/Yellow shades)
-  'rejected': ['#FF0000', '#DC143C', '#8B0000', '#B22222', '#CD5C5C'], // Red shades (Standard Rejection)
-  'on-hold': ['#FFA500', '#FF8C00', '#FFD700', '#F0E68C', '#FFEB3B'], // Orange/Yellow (On Hold)
-  'profile-not-matched': ['#E74C3C', '#C0392B', '#A93226', '#922B21'], // Dark Red (Profile Mismatch)
-  'last-minute-back-out': ['#FF6B6B', '#FF5252', '#EF5350', '#F44336'], // Light Red/Pink (Back Out)
+  // ── 7 REQUIRED WORKFLOW COLORS ──────────────────────────────
+  'rejected':            ['#FF0000', '#EE0000', '#CC0000', '#FF1111', '#FF2222'],
+  'selected':            ['#92D050', '#8DC44A', '#9AD855', '#85C040', '#A0D860'],
+  'profile-not-matched': ['#FFC000', '#FFB800', '#FFCA00', '#F0B400', '#FFD000'],
+  'follow-up':           ['#00B0F0', '#00A8E8', '#00B8F8', '#00A0E0', '#10B8F0'],
+  'came-down':           ['#FFFF00', '#F8F800', '#FFFF11', '#EEEE00', '#FFFF22'],
+  'no-show':             ['#7030A0', '#6828A0', '#7838A8', '#6020A0', '#8040B0'],
+  'no-response':         ['#7F7F7F', '#787878', '#888888', '#707070', '#909090'],
 };
 
 /**
@@ -366,31 +385,43 @@ function detectStage(options) {
 }
 
 /**
- * Get legacy stage name from main_stage and sub_stage
- * Mirrors the database function get_legacy_stage_name()
+ * Get legacy stage name from main_stage and sub_stage.
+ * Mirrors the database function get_legacy_stage_name().
+ *
+ * NEW STAGES:
+ *  selected              → 'Selected'
+ *  follow-up/no-response → 'Follow Up'
  */
 function getLegacyStage(mainStage, subStage) {
   if (mainStage === 'rejected') {
     switch (subStage) {
-      case 'rejected': return 'Rejected';
-      case 'on-hold': return 'On Hold';
-      case 'profile-not-matched': return 'Profile Not Matched';
-      case 'last-minute-back-out': return 'Last Minute Back Out';
-      default: return 'Rejected';
+      case 'rejected':              return 'Rejected';
+      case 'on-hold':               return 'On Hold';
+      case 'profile-not-matched':   return 'Profile Not Matched';
+      case 'last-minute-back-out':  return 'Last Minute Back Out';
+      default:                      return 'Rejected';
     }
-  } else if (mainStage === 'interview') {
-    // All Interview sub-stages map to 'Interview' for legacy compatibility
+  }
+
+  if (mainStage === 'interview') {
+    // All interview sub-stages map to 'Interview' for legacy compatibility
     return 'Interview';
-  } else {
-    switch (mainStage) {
-      case 'applied': return 'Applied';
-      case 'follow-up': return 'Follow Up';
-      case 'screening': return 'Screening';
-      case 'interview': return 'Interview';
-      case 'offer': return 'Offer';
-      case 'hired': return 'Hired';
-      default: return 'Applied';
-    }
+  }
+
+  if (mainStage === 'follow-up') {
+    // follow-up/no-response still maps to 'Follow Up' in legacy column
+    return 'Follow Up';
+  }
+
+  switch (mainStage) {
+    case 'applied':   return 'Applied';
+    case 'follow-up': return 'Follow Up';
+    case 'screening': return 'Screening';
+    case 'interview': return 'Interview';
+    case 'offer':     return 'Offer';
+    case 'hired':     return 'Hired';
+    case 'selected':  return 'Selected';
+    default:          return 'Applied';
   }
 }
 

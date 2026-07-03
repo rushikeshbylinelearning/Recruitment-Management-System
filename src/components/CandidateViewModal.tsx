@@ -1,10 +1,12 @@
-import { Mail, Phone, MapPin, Download, FileText, Calendar, Clock, Briefcase, DollarSign, Star, CheckCircle, XCircle, AlertCircle, User, Edit, Pencil } from 'lucide-react';
+import { Mail, Phone, MapPin, Download, FileText, Calendar, Clock, Briefcase, DollarSign, Star, CheckCircle, XCircle, AlertCircle, User, Edit, Pencil, GitMerge } from 'lucide-react';
 import { Candidate } from '../types';
 import { candidatesAPI, assignmentsAPI, Assignment } from '../services/api';
 import { useState, useEffect } from 'react';
 import FileViewer, { ViewerFile } from './FileViewer';
 import NotesPanel from './NotesPanel';
 import HRNotesTimeline from './HRNotesTimeline';
+import MergeReviewModal from './MergeReviewModal';
+import '../styles/MergeReviewModal.css';
 
 interface CandidateAssignmentNew {
   id: number;
@@ -31,11 +33,12 @@ interface CandidateViewModalProps {
   onClose: () => void;
   candidate: Candidate | null;
   onEdit?: (candidate: Candidate) => void;
+  onMerged?: () => void;
 }
 
 // Matches STAGE_ACCENTS in KanbanBoard.tsx exactly
 const STAGE_ACCENTS: Record<string, string> = {
-  Applied: '#6366f1',
+  Applied: '#dc2626',
   Screening: '#f59e0b',
   Interview: '#f97316',
   Offer: '#8b5cf6',
@@ -89,7 +92,28 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
   );
 }
 
-export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit }: CandidateViewModalProps) {
+export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit, onMerged }: CandidateViewModalProps) {
+  const [mergeReviewOpen, setMergeReviewOpen] = useState(false);
+  const [activityTimeline, setActivityTimeline] = useState<
+    Array<{ type: string; date: string; title: string }>
+  >([]);
+  const [positionsList, setPositionsList] = useState<Array<{ position_name: string }>>([]);
+  const [emailDuplicateMatches, setEmailDuplicateMatches] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [mergeTargets, setMergeTargets] = useState<{
+    primaryId: string;
+    duplicateId: string;
+    primaryName: string;
+  } | null>(null);
+  const [mergeCluster, setMergeCluster] = useState<{
+    primaryId: string;
+    primaryName: string;
+    duplicateIds: string[];
+    allMatches: Array<{ id: string; name: string }>;
+  } | null>(null);
+  const [mergingAll, setMergingAll] = useState(false);
+  const [mergeAllError, setMergeAllError] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [freshCandidate, setFreshCandidate] = useState<Candidate | null>(null);
@@ -114,12 +138,66 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
       fetchFreshCandidateData();
       fetchAssignments();
       fetchCandidateAssignmentsNew();
+      loadDuplicateCluster();
       // Reset to details tab when opening
       setActiveTab('details');
       // Refresh HR notes
       setHrNotesKey(prev => prev + 1);
+    } else {
+      setEmailDuplicateMatches([]);
+      setMergeTargets(null);
+      setMergeCluster(null);
+      setMergeAllError(null);
     }
   }, [isOpen, candidate]);
+
+  const loadDuplicateCluster = async () => {
+    if (!candidate?.id) {
+      setEmailDuplicateMatches([]);
+      setMergeTargets(null);
+      setMergeCluster(null);
+      return;
+    }
+    try {
+      const res = await candidatesAPI.getDuplicateCluster(candidate.id);
+      const data = res.success && res.data ? res.data : null;
+      const matches = data?.matches || [];
+      const suggestedPrimaryId = data?.suggestedPrimaryId || null;
+      const duplicateIds = data?.duplicateIds || [];
+
+      if (matches.length < 2 || !suggestedPrimaryId || !duplicateIds.length) {
+        setEmailDuplicateMatches([]);
+        setMergeTargets(null);
+        setMergeCluster(null);
+        return;
+      }
+
+      const primary = matches.find((m) => m.id === suggestedPrimaryId) || matches[0];
+      setMergeCluster({
+        primaryId: suggestedPrimaryId,
+        primaryName: primary.name,
+        duplicateIds,
+        allMatches: matches.map((m) => ({ id: m.id, name: m.name })),
+      });
+      setEmailDuplicateMatches(
+        matches.filter((m) => m.id !== candidate.id).map((m) => ({ id: m.id, name: m.name }))
+      );
+
+      const reviewDuplicateId =
+        candidate.id === suggestedPrimaryId ? duplicateIds[0] : candidate.id;
+      if (reviewDuplicateId) {
+        setMergeTargets({
+          primaryId: suggestedPrimaryId,
+          duplicateId: reviewDuplicateId,
+          primaryName: primary.name,
+        });
+      }
+    } catch {
+      setEmailDuplicateMatches([]);
+      setMergeTargets(null);
+      setMergeCluster(null);
+    }
+  };
 
   const fetchCandidateAssignmentsNew = async () => {
     if (!candidate) return;
@@ -193,9 +271,43 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
     }
   };
 
+  useEffect(() => {
+    if (!isOpen || !candidate?.id) {
+      setActivityTimeline([]);
+      setPositionsList([]);
+      return;
+    }
+    candidatesAPI
+      .getCandidateTimeline(candidate.id)
+      .then((res) => {
+        if (res.success && res.data) {
+          setActivityTimeline((res.data.timeline as Array<{ type: string; date: string; title: string }>) || []);
+          setPositionsList((res.data.positions as Array<{ position_name: string }>) || []);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, candidate?.id]);
+
   if (!isOpen || !candidate) return null;
 
   const c = freshCandidate || candidate;
+  const assignmentDetails = c.assignmentDetails;
+  const inOfficeAssignmentText = (
+    assignmentDetails?.inOfficeAssignment ??
+    (c as Candidate & { inOfficeAssignment?: string }).inOfficeAssignment ??
+    ''
+  ).trim();
+  const inHouseAssignmentStatus = assignmentDetails?.inHouseAssignmentStatus;
+  const assignmentLocation = (c.assignmentLocation ?? '').trim();
+  const assignmentInterviewDate = assignmentDetails?.interviewDate;
+  const hasInOfficeAssignmentInfo = Boolean(
+    inOfficeAssignmentText ||
+    assignmentLocation ||
+    assignmentInterviewDate ||
+    (inHouseAssignmentStatus && inHouseAssignmentStatus !== 'Pending')
+  );
+  const hasFormalAssignments =
+    candidateAssignmentsNew.length > 0 || assignments.length > 0;
   const accent = STAGE_ACCENTS[candidate.stage] || '#6b7280';
   const displayName = toTitleCase(c.name);
   const displayRole = toTitleCase(c.position);
@@ -216,6 +328,49 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
     };
     return map[status] || 'bg-gray-100 text-gray-700';
   };
+
+  const renderInOfficeAssignmentCard = (wrapperClass = 'space-y-3 py-2') => (
+    <div className={wrapperClass}>
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <p className="text-sm font-medium text-gray-800">In-Office Assignment</p>
+          {inHouseAssignmentStatus && (
+            <span className={`shrink-0 px-2 py-0.5 text-xs rounded-full font-medium ${getAssignmentStatusColor(inHouseAssignmentStatus)}`}>
+              {inHouseAssignmentStatus}
+            </span>
+          )}
+        </div>
+        {assignmentInterviewDate && (
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
+            <Calendar size={12} />
+            Interview: {new Date(assignmentInterviewDate).toLocaleDateString()}
+          </div>
+        )}
+        {inOfficeAssignmentText ? (
+          <p className="text-sm text-gray-600 whitespace-pre-wrap">{inOfficeAssignmentText}</p>
+        ) : (
+          <p className="text-sm text-gray-400 italic">No assignment notes</p>
+        )}
+        {assignmentLocation && (
+          <div className="mt-2 pt-2 border-t border-gray-200">
+            <p className="text-xs text-gray-500 mb-1">Assignment file / link</p>
+            {/^https?:\/\//i.test(assignmentLocation) ? (
+              <a
+                href={assignmentLocation}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-indigo-600 hover:underline break-all"
+              >
+                {assignmentLocation}
+              </a>
+            ) : (
+              <p className="text-sm text-gray-600 break-all">{assignmentLocation}</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   const handleDownloadResume = async () => {
     try {
@@ -239,14 +394,113 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
 
   const initials = displayName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
+  const isFlaggedDuplicate = Boolean(
+    (c as Candidate & { isFlaggedDuplicate?: boolean }).isFlaggedDuplicate
+  );
+  const hasMergedApplications = Boolean(
+    (c as Candidate & { hasMergedApplications?: boolean }).hasMergedApplications
+  );
+  const duplicatePrimaryName = (c as Candidate & { duplicatePrimaryName?: string }).duplicatePrimaryName;
+  const showMergeBanner = Boolean(mergeCluster && mergeCluster.duplicateIds.length > 0);
+  const mergePrimaryLabel = mergeCluster?.primaryName || mergeTargets?.primaryName || duplicatePrimaryName || 'the existing profile';
+  const duplicateProfileCount = mergeCluster?.allMatches.length ?? 0;
+
+  const handleMergeDuplicate = () => {
+    if (!mergeTargets) return;
+    setMergeReviewOpen(true);
+  };
+
+  const handleMergeAll = async () => {
+    if (!mergeCluster?.duplicateIds.length || mergingAll) return;
+    const count = mergeCluster.duplicateIds.length;
+    const confirmed = window.confirm(
+      `Merge ${count} duplicate profile${count === 1 ? '' : 's'} into "${mergeCluster.primaryName}"?\n\n` +
+        `Profiles to merge: ${mergeCluster.allMatches
+          .filter((m) => mergeCluster.duplicateIds.includes(m.id))
+          .map((m) => m.name)
+          .join(', ')}\n\n` +
+        'Applications, notes, and resumes will be combined. This cannot be undone from the UI.'
+    );
+    if (!confirmed) return;
+
+    setMergingAll(true);
+    setMergeAllError(null);
+    try {
+      const res = await candidatesAPI.executeBatchCandidateMerge({
+        primaryCandidateId: mergeCluster.primaryId,
+        duplicateCandidateIds: mergeCluster.duplicateIds,
+        strategy: 'AUTO_SAFE',
+      });
+      if (res?.success !== false) {
+        onMerged?.();
+        onClose();
+        return;
+      }
+      setMergeAllError(res.message || 'Merge all failed');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setMergeAllError(axiosErr.response?.data?.message || 'Merge all failed');
+    } finally {
+      setMergingAll(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+
+        {showMergeBanner && mergeCluster && (
+          <div className="px-6 py-4 bg-red-950 text-white border-b border-red-800">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">
+                  {duplicateProfileCount > 2 ? `${duplicateProfileCount} related profiles` : 'Duplicate application'}
+                </p>
+                <p className="text-sm text-red-100 mt-1">
+                  {isFlaggedDuplicate
+                    ? `This submission matches an existing candidate${duplicatePrimaryName ? `: ${duplicatePrimaryName}` : ''}.`
+                    : `${duplicateProfileCount} profiles share the same contact details (${mergeCluster.allMatches.map((m) => m.name).join(', ')}).`}
+                  {' '}
+                  Merge all into <strong className="text-white">{mergePrimaryLabel}</strong>, or review one pair at a time.
+                </p>
+                {mergeAllError && (
+                  <p className="text-sm text-red-200 mt-2">{mergeAllError}</p>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleMergeAll}
+                  disabled={mergingAll}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-white text-red-950 text-sm font-semibold hover:bg-red-50 disabled:opacity-60"
+                >
+                  <GitMerge size={16} />
+                  {mergingAll
+                    ? 'Merging…'
+                    : `Merge all (${mergeCluster.duplicateIds.length})`}
+                </button>
+                {mergeTargets && (
+                  <button
+                    type="button"
+                    onClick={handleMergeDuplicate}
+                    disabled={mergingAll}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-red-200/40 text-white text-sm font-medium hover:bg-red-900 disabled:opacity-60"
+                  >
+                    Review one pair
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Hero Header ── */}
         <div
           className="px-6 pt-5 pb-5 border-b"
-          style={{ background: `${accent}12`, borderColor: `${accent}30` }}
+          style={{
+            background: isFlaggedDuplicate ? '#fef2f2' : `${accent}12`,
+            borderColor: isFlaggedDuplicate ? '#991b1b' : `${accent}30`,
+          }}
         >
           {/* Top row: avatar + name + stage pill + close */}
           <div className="flex items-center gap-4">
@@ -263,8 +517,13 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
               <p className="text-sm truncate font-medium" style={{ color: accent }}>{displayRole}</p>
             </div>
 
-            {/* Stage pill + actions — inline so they never overlap */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Merged + stage pills + actions */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+              {hasMergedApplications && (
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-100 text-violet-900 outline outline-1 outline-violet-300">
+                  Merged
+                </span>
+              )}
               <span
                 className="px-3 py-1 rounded-full text-xs font-semibold"
                 style={{ backgroundColor: `${accent}18`, color: accent, outline: `1px solid ${accent}40` }}
@@ -335,6 +594,42 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
 
             {/* LEFT */}
             <div className="space-y-4">
+
+              {(activityTimeline.length > 0 || positionsList.length > 1) && (
+                <Section title="Activity & applications" icon={<Clock size={15} />}>
+                  {positionsList.length > 0 && (
+                    <div className="py-2 border-b border-gray-100">
+                      <p className="text-xs font-medium text-gray-500 mb-1">Positions</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {positionsList.map((p) => (
+                          <span
+                            key={p.position_name}
+                            className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 font-medium"
+                          >
+                            {p.position_name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <ul className="py-2 space-y-2 max-h-40 overflow-y-auto">
+                    {activityTimeline.slice(0, 8).map((ev, i) => (
+                      <li key={`${ev.type}-${i}`} className="merge-timeline-item text-sm">
+                        <p className="text-xs text-gray-500">
+                          {ev.date
+                            ? new Date(ev.date).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                            : '—'}
+                        </p>
+                        <p className="text-gray-800 font-medium">{ev.title}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
 
               {/* Contact */}
               <Section title="Contact" icon={<Mail size={15} />}>
@@ -434,7 +729,9 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
                             <span className="text-xs font-semibold text-gray-800">{note.user_name}</span>
                             <span className="text-xs text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
                           </div>
-                          {note.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes}</p>}
+                          {(note.notes || note.note_text) && (
+                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes || note.note_text}</p>
+                          )}
                           {note.rating && (
                             <div className="flex items-center gap-1 mt-1.5">
                               {[1,2,3,4,5].map(s => (
@@ -526,7 +823,7 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
 
               {/* Assignments */}
               <Section title="Assignments" icon={<Calendar size={15} />}>
-                {(assignmentsLoading || caLoading) && candidateAssignmentsNew.length === 0 && assignments.length === 0 ? (
+                {(assignmentsLoading || caLoading) && !hasFormalAssignments && !hasInOfficeAssignmentInfo ? (
                   <div className="flex items-center gap-2 py-4 text-gray-500">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600" />
                     <span className="text-sm">Loading...</span>
@@ -617,11 +914,16 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
                       </div>
                     ))}
                   </div>
+                ) : hasInOfficeAssignmentInfo ? (
+                  renderInOfficeAssignmentCard()
                 ) : (
                   <div className="flex flex-col items-center py-6 text-gray-400">
                     <Clock size={28} className="mb-2 opacity-50" />
                     <p className="text-sm">No assignments yet</p>
                   </div>
+                )}
+                {hasFormalAssignments && hasInOfficeAssignmentInfo && (
+                  renderInOfficeAssignmentCard('space-y-3 py-2 border-t border-gray-100 mt-2')
                 )}
               </Section>
 
@@ -648,7 +950,9 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
                             {note.recommendation}
                           </span>
                         )}
-                        {note.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes}</p>}
+                        {(note.notes || note.note_text) && (
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{note.notes || note.note_text}</p>
+                        )}
                         {note.rating && (
                           <div className="flex items-center gap-1 mt-2">
                             {[1,2,3,4,5].map(s => (
@@ -700,6 +1004,20 @@ export default function CandidateViewModal({ isOpen, onClose, candidate, onEdit 
         isOpen={notesPanelOpen}
         onClose={() => setNotesPanelOpen(false)}
       />
+
+      {mergeReviewOpen && mergeTargets && (
+        <MergeReviewModal
+          isOpen={mergeReviewOpen}
+          onClose={() => setMergeReviewOpen(false)}
+          primaryId={mergeTargets.primaryId}
+          duplicateId={mergeTargets.duplicateId}
+          onMerged={() => {
+            setMergeReviewOpen(false);
+            onMerged?.();
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }

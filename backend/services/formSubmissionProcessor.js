@@ -28,58 +28,36 @@ class FormSubmissionProcessor {
    * @param {string} userAgent - Browser user agent
    * @returns {Promise<Object>} - Result with candidateId and submissionId
    */
-  async processSubmission(formId, submissionData, file = null, ipAddress = null, userAgent = null) {
+  async processSubmission(
+    formId,
+    submissionData,
+    file = null,
+    ipAddress = null,
+    userAgent = null,
+    options = {}
+  ) {
+    const { existingCandidateId = null } = options;
     try {
       console.log('[FormSubmissionProcessor] Starting submission process for form:', formId);
       console.log('[FormSubmissionProcessor] Submission data:', JSON.stringify(submissionData, null, 2));
       
-      // Use transaction to ensure atomicity
-      const result = await transaction(async (connection) => {
-        // Step 1: Create submission record with pending status
-        console.log('[FormSubmissionProcessor] Creating submission record...');
-        const [submissionResult] = await connection.execute(
-          `INSERT INTO form_submissions 
-           (form_id, submission_data, ip_address, user_agent, status, submitted_at)
-           VALUES (?, ?, ?, ?, 'pending', NOW())`,
-          [formId, JSON.stringify(submissionData), ipAddress, userAgent]
-        );
-        
-        const submissionId = submissionResult.insertId;
-        console.log('[FormSubmissionProcessor] Submission record created, ID:', submissionId);
-
-        // Step 2: Handle file upload if present
-        let resumeFileId = null;
-        if (file) {
-          console.log('[FormSubmissionProcessor] Processing file upload...');
-          const fileResult = await this.handleFileUpload(file, submissionData);
-          if (!fileResult.success) {
-            throw new Error(`File upload failed: ${fileResult.error}`);
-          }
-          resumeFileId = fileResult.fileId;
-          console.log('[FormSubmissionProcessor] File uploaded, ID:', resumeFileId);
+      let resumeFileId = null;
+      if (file) {
+        const fileResult = await this.handleFileUpload(file, submissionData);
+        if (!fileResult.success) {
+          throw new Error(`File upload failed: ${fileResult.error}`);
         }
+        resumeFileId = fileResult.fileId;
+      }
 
-        // Step 3: Create candidate record
-        console.log('[FormSubmissionProcessor] Creating candidate record...');
-        const candidateId = await this.createCandidateRecord(
-          connection,
-          formId,
-          submissionData,
-          resumeFileId
-        );
-        console.log('[FormSubmissionProcessor] Candidate created, ID:', candidateId);
-
-        // Step 4: Update submission record with candidate_id and processed status
-        console.log('[FormSubmissionProcessor] Updating submission status...');
-        await connection.execute(
-          `UPDATE form_submissions 
-           SET candidate_id = ?, status = 'processed', processed_at = NOW()
-           WHERE id = ?`,
-          [candidateId, submissionId]
-        );
-
-        return { candidateId, submissionId };
-      });
+      const result = await transaction(async (connection) =>
+        this.processSubmissionInTransaction(connection, formId, submissionData, {
+          ipAddress,
+          userAgent,
+          existingCandidateId,
+          resumeFileId,
+        })
+      );
 
       console.log('[FormSubmissionProcessor] Transaction completed successfully');
 
@@ -143,6 +121,49 @@ class FormSubmissionProcessor {
   }
 
   /**
+   * Core submission steps inside an open transaction (used by publicSubmissionService).
+   */
+  async processSubmissionInTransaction(connection, formId, submissionData, opts = {}) {
+    const { ipAddress = null, userAgent = null, existingCandidateId = null, resumeFileId = null } = opts;
+
+    const [submissionResult] = await connection.execute(
+      `INSERT INTO form_submissions 
+       (form_id, submission_data, ip_address, user_agent, status, submitted_at)
+       VALUES (?, ?, ?, ?, 'pending', NOW())`,
+      [formId, JSON.stringify(submissionData), ipAddress, userAgent]
+    );
+
+    const submissionId = submissionResult.insertId;
+    let candidateId;
+
+    if (existingCandidateId) {
+      candidateId = await this.updateCandidateRecord(
+        connection,
+        existingCandidateId,
+        formId,
+        submissionData,
+        resumeFileId
+      );
+    } else {
+      candidateId = await this.createCandidateRecord(
+        connection,
+        formId,
+        submissionData,
+        resumeFileId
+      );
+    }
+
+    await connection.execute(
+      `UPDATE form_submissions 
+       SET candidate_id = ?, status = 'processed', processed_at = NOW()
+       WHERE id = ?`,
+      [candidateId, submissionId]
+    );
+
+    return { success: true, candidateId, submissionId };
+  }
+
+  /**
    * Create candidate record in candidates table
    * @param {Object} connection - Database connection (for transaction)
    * @param {number} formId - The form ID
@@ -169,9 +190,9 @@ class FormSubmissionProcessor {
       const candidateName = this.getFirstValue(data, ['name', 'full_name', 'candidate_name', 'applicant_name'], 'Unknown Candidate');
       const candidateEmail = this.getFirstValue(data, ['email', 'email_id', 'email_address', 'emailid'], null);
       const candidatePhone = this.getFirstValue(data, ['phone', 'phone_number', 'mobile', 'mobile_number', 'contact_number', 'contact'], null);
-      const candidatePosition = this.getFirstValue(data, ['position', 'postion', 'job_title', 'job_role', 'role', 'designation', 'profile', 'job_profile'], 'Not Specified');
+      const candidatePosition = this.getFirstValue(data, ['position', 'position_applied', 'applied_position', 'postion', 'job_title', 'job_role', 'role', 'designation', 'profile', 'job_profile'], 'Not Specified');
       const candidateSource = this.getFirstValue(data, ['source', 'referral_source', 'application_source'], 'Form Submission');
-      const candidateExperience = this.getFirstValue(data, ['experience', 'years_experience', 'years_of_experience', 'exp', 'work_experience', 'total_experience'], null);
+      const candidateExperience = this.getFirstValue(data, ['experience', 'experience_in_years', 'years_experience', 'years_of_experience', 'exp', 'work_experience', 'total_experience'], null);
       const candidateNoticePeriod = this.getFirstValue(data, ['notice_period', 'notice_period_days', 'notice_period_in_days'], null);
 
       console.log('[FormSubmissionProcessor] Candidate data:', {
@@ -241,8 +262,8 @@ class FormSubmissionProcessor {
         `INSERT INTO candidates 
          (id, job_id, name, email, phone, position, stage, source, applied_date, 
           experience, salary_expected, notice_period, current_ctc, resume_file_id, 
-          notes, location, expertise, work_preference, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          notes, location, expertise, work_preference, requires_card_view, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
         safeInsertValues
       );
 
@@ -265,6 +286,59 @@ class FormSubmissionProcessor {
         throw new Error('Database error: ' + error.message);
       }
     }
+  }
+
+  /**
+   * Update an existing candidate from a new public form submission (re-application).
+   */
+  async updateCandidateRecord(connection, candidateId, formId, data, resumeFileId = null) {
+    const [formRows] = await connection.execute('SELECT job_id FROM forms WHERE id = ?', [formId]);
+    const jobId = formRows[0]?.job_id || this.getFirstValue(data, ['job_id', 'job_profile'], null);
+    const candidateName = this.getFirstValue(data, ['name', 'full_name', 'candidate_name', 'applicant_name'], null);
+    const candidateEmail = this.getFirstValue(data, ['email', 'email_id', 'email_address', 'emailid'], null);
+    const candidatePhone = this.getFirstValue(data, ['phone', 'phone_number', 'mobile', 'mobile_number', 'contact_number', 'contact'], null);
+    const candidatePosition = this.getFirstValue(data, ['position', 'position_applied', 'applied_position', 'postion', 'job_title', 'job_role', 'role', 'designation', 'profile', 'job_profile'], null);
+    const candidateExperience = this.getFirstValue(data, ['experience', 'experience_in_years', 'years_experience', 'years_of_experience', 'exp', 'work_experience', 'total_experience'], null);
+    const candidateNoticePeriod = this.getFirstValue(data, ['notice_period', 'notice_period_days', 'notice_period_in_days'], null);
+
+    await connection.execute(
+      `UPDATE candidates SET
+         job_id = COALESCE(?, job_id),
+         name = COALESCE(?, name),
+         email = COALESCE(?, email),
+         phone = COALESCE(?, phone),
+         position = COALESCE(?, position),
+         experience = COALESCE(?, experience),
+         salary_expected = COALESCE(?, salary_expected),
+         notice_period = COALESCE(?, notice_period),
+         current_ctc = COALESCE(?, current_ctc),
+         resume_file_id = COALESCE(?, resume_file_id),
+         notes = COALESCE(?, notes),
+         location = COALESCE(?, location),
+         expertise = COALESCE(?, expertise),
+         work_preference = COALESCE(?, work_preference),
+         updated_at = NOW()
+       WHERE id = ?`,
+      [
+        jobId,
+        candidateName,
+        candidateEmail,
+        candidatePhone,
+        candidatePosition,
+        candidateExperience,
+        data.expected_ctc ?? data.expected_salary ?? null,
+        candidateNoticePeriod,
+        data.current_ctc ?? null,
+        resumeFileId,
+        data.notes ?? data.hr_remarks ?? null,
+        data.location ?? null,
+        data.expertise ?? data.skills ?? null,
+        data.work_preference ?? null,
+        candidateId,
+      ]
+    );
+
+    return candidateId;
   }
 
   /**

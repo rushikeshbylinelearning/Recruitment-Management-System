@@ -69,6 +69,8 @@ export interface PaginationInfo {
 export interface PaginatedResponse<T> {
   jobs: T[];
   pagination: PaginationInfo;
+  /** Aggregated applicant totals keyed by fixed dashboard job card title */
+  jobCardApplicantTotals?: Record<string, number>;
 }
 
 export interface UsersResponse {
@@ -108,7 +110,7 @@ export interface User {
   username: string;
   email: string;
   name: string;
-  role: 'Admin' | 'HR Manager' | 'Recruiter' | 'Interviewer' | 'Team Lead';
+  role: 'Admin' | 'Recruiter' | 'Interviewer' | 'Team Lead' | 'HR Intern';
   avatar?: string | null;
   status: 'Active' | 'Away' | 'Busy';
   last_login?: string | null;
@@ -171,6 +173,7 @@ export const usersAPI = {
     page?: number;
     limit?: number;
     search?: string;
+    excludeAdmin?: boolean;
   }): Promise<ApiResponse<UsersResponse>> => {
     const response = await api.get('/users', { params });
     return response.data;
@@ -476,6 +479,21 @@ export interface Candidate {
   stage: 'Applied' | 'Follow Up' | 'Screening' | 'Interview' | 'Offer' | 'Hired' | 'On Hold' | 'Rejected' | 'No Show - Interview' | 'No Show - Onboarding' | 'Last Minute Back Out' | 'Profile Not Matched';
   source: string;
   appliedDate: string;
+  createdAt?: string | null;
+  /** When the candidate last entered their current stage/sub-stage (kanban sort). */
+  stageUpdatedAt?: string | null;
+  /** True only for applicants created via public form link */
+  tracksCardView?: boolean;
+  isViewed?: boolean;
+  lastViewedBy?: string | null;
+  lastViewedAt?: string | null;
+  isFlaggedDuplicate?: boolean;
+  hasMergedApplications?: boolean;
+  duplicateOfCandidateId?: string | null;
+  duplicateDetectedAt?: string | null;
+  duplicatePrimaryName?: string | null;
+  duplicatePrimaryEmail?: string | null;
+  duplicatePrimaryStage?: string | null;
   resume: string;
   notes: string;
   score: number;
@@ -513,6 +531,8 @@ export interface Candidate {
   interviews: Interview[];
   latestInterviewDate?: string; // Added for Interview stage sorting
   job_id?: number; // Added for job filtering
+  mainStage?: string | null;
+  subStage?: string | null;
 }
 
 export interface Communication {
@@ -572,8 +592,137 @@ export const candidatesAPI = {
     return response.data;
   },
 
-  createCandidate: async (candidateData: Omit<Candidate, 'id' | 'communications' | 'interviews'>): Promise<ApiResponse<{ candidateId: string }>> => {
+  markCandidateViewed: async (
+    id: string
+  ): Promise<ApiResponse<{ isViewed: boolean; lastViewedBy: string | null; lastViewedAt: string | null }>> => {
+    const response = await api.post(`/candidates/${id}/mark-viewed`);
+    return response.data;
+  },
+
+  mergeDuplicateCandidate: async (
+    duplicateId: string,
+    primaryCandidateId?: string,
+    options?: { duplicateCandidateId?: string }
+  ): Promise<ApiResponse<{ primaryCandidateId: string }>> => {
+    const urlId = options?.duplicateCandidateId ? primaryCandidateId || duplicateId : duplicateId;
+    const response = await api.post(`/candidates/${urlId}/merge-duplicate`, {
+      primaryCandidateId: options?.duplicateCandidateId ? undefined : primaryCandidateId,
+      duplicateCandidateId: options?.duplicateCandidateId,
+    });
+    return response.data;
+  },
+
+  previewCandidateMerge: async (body: {
+    primaryCandidateId: string;
+    duplicateCandidateId: string;
+    strategy?: string;
+  }): Promise<ApiResponse<Record<string, unknown>>> => {
+    const response = await api.post('/candidates/merge/preview', body);
+    return response.data;
+  },
+
+  executeCandidateMerge: async (body: {
+    primaryCandidateId: string;
+    duplicateCandidateId: string;
+    strategy?: string;
+    decisions?: Record<string, unknown>;
+  }): Promise<ApiResponse<{ primaryCandidateId: string; mergeHistoryId: number }>> => {
+    const response = await api.post('/candidates/merge/execute', body);
+    return response.data;
+  },
+
+  executeBatchCandidateMerge: async (body: {
+    primaryCandidateId: string;
+    duplicateCandidateIds: string[];
+    strategy?: string;
+  }): Promise<
+    ApiResponse<{
+      primaryCandidateId: string;
+      mergedCount: number;
+      merges: Array<{ mergeHistoryId: number }>;
+    }>
+  > => {
+    const response = await api.post('/candidates/merge/execute-batch', body);
+    return response.data;
+  },
+
+  getDuplicateCluster: async (
+    candidateId: string
+  ): Promise<
+    ApiResponse<{
+      matches: Array<{
+        id: string;
+        name: string;
+        email?: string;
+        phone?: string;
+        position?: string;
+        stage: string;
+        isFlaggedDuplicate?: boolean;
+      }>;
+      suggestedPrimaryId: string | null;
+      duplicateIds: string[];
+    }>
+  > => {
+    const response = await api.get(`/candidates/merge/cluster/${candidateId}`);
+    return response.data;
+  },
+
+  rollbackCandidateMerge: async (
+    mergeHistoryId: number
+  ): Promise<ApiResponse<{ primaryId: string }>> => {
+    const response = await api.post('/candidates/merge/rollback', { mergeHistoryId });
+    return response.data;
+  },
+
+  getCandidateMergeHistory: async (
+    candidateId: string
+  ): Promise<ApiResponse<{ history: unknown[] }>> => {
+    const response = await api.get(`/candidates/merge/history/${candidateId}`);
+    return response.data;
+  },
+
+  getCandidateResumeHistory: async (
+    candidateId: string
+  ): Promise<ApiResponse<{ resumes: unknown[] }>> => {
+    const response = await api.get(`/candidates/${candidateId}/resume-history`);
+    return response.data;
+  },
+
+  getCandidateTimeline: async (
+    candidateId: string
+  ): Promise<ApiResponse<{ timeline: unknown[]; positions: unknown[] }>> => {
+    const response = await api.get(`/candidates/${candidateId}/timeline`);
+    return response.data;
+  },
+
+  createCandidate: async (
+    candidateData: Omit<Candidate, 'id' | 'communications' | 'interviews'> & {
+      forceDuplicate?: boolean;
+    }
+  ): Promise<ApiResponse<{ candidateId: string; candidate?: Candidate; duplicateWarning?: boolean }>> => {
     const response = await api.post('/candidates', candidateData);
+    return response.data;
+  },
+
+  checkCandidateDuplicates: async (params: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    excludeId?: string;
+  }): Promise<ApiResponse<{
+    matches: Array<{
+      id: string;
+      name: string;
+      email?: string;
+      phone?: string;
+      position?: string;
+      stage: string;
+      isFlaggedDuplicate?: boolean;
+    }>;
+    suggestedPrimaryId?: string | null;
+    duplicateIds?: string[];
+  }>> => {
+    const response = await api.get('/candidates/check-duplicates', { params });
     return response.data;
   },
 
@@ -605,6 +754,36 @@ export const candidatesAPI = {
   updateCandidateStage: async (id: string, stage: string, notes?: string): Promise<ApiResponse> => {
     const response = await api.patch(`/candidates/${id}/stage`, { stage, notes });
     return response.data;
+  },
+
+  updateCandidateSubStage: async (
+    id: string,
+    mainStage: string,
+    subStage: string
+  ): Promise<ApiResponse> => {
+    const legacyStage =
+      mainStage === 'interview'
+        ? 'Interview'
+        : mainStage === 'follow-up'
+          ? 'Follow Up'
+          : 'Interview';
+
+    try {
+      const response = await api.patch(`/candidates/${id}/sub-stage`, { mainStage, subStage });
+      return response.data;
+    } catch (error) {
+      const status = (error as AxiosError)?.response?.status;
+      if (status !== 404) {
+        throw error;
+      }
+      // Fallback for servers not yet restarted with the dedicated sub-stage route
+      const response = await api.patch(`/candidates/${id}/stage`, {
+        stage: legacyStage,
+        mainStage,
+        subStage,
+      });
+      return response.data;
+    }
   },
 
   downloadResume: async (candidateId: string): Promise<Blob> => {
@@ -691,6 +870,12 @@ export const candidatesAPI = {
   // Get candidates for a specific job by job_id
   getCandidatesByJob: async (jobId: number): Promise<ApiResponse<{ candidates: Candidate[]; job: any }>> => {
     const response = await api.get(`/jobs/${jobId}/candidates`);
+    return response.data;
+  },
+
+  /** Candidates whose `position` maps to a dashboard job card category (see shared/jobCardCategoryMapping.json) */
+  getCandidatesByJobCardTitle: async (title: string): Promise<ApiResponse<{ candidates: Candidate[] }>> => {
+    const response = await api.get('/candidates/by-job-card', { params: { title } });
     return response.data;
   },
 };
@@ -870,6 +1055,7 @@ export interface Task {
   createdByName?: string;
   createdDate: string;
   updatedDate?: string;
+  category?: 'hr-operations' | 'admin-operations' | 'misc';
 }
 
 export const tasksAPI = {
@@ -899,6 +1085,7 @@ export const tasksAPI = {
     status: 'Pending' | 'In Progress' | 'Completed';
     dueDate: string;
     createdBy: number;
+    category?: 'hr-operations' | 'admin-operations' | 'misc';
   }): Promise<ApiResponse<{ taskId: number }>> => {
     const response = await api.post('/tasks', taskData);
     return response.data;
@@ -936,6 +1123,101 @@ export const tasksAPI = {
 
   getTaskStats: async (): Promise<ApiResponse<{ statistics: any }>> => {
     const response = await api.get('/tasks/stats/overview');
+    return response.data;
+  },
+};
+
+// ─── Task Update (EOD) types & API ───────────────────────────────────────────
+
+export interface TaskUpdate {
+  id: number;
+  taskId: number;
+  taskTitle: string;
+  taskStatus: string | null;
+  taskPriority: string | null;
+  taskDueDate: string | null;
+  taskCategory: string | null;
+  submittedBy: number;
+  submittedByName: string;
+  submittedByEmail: string | null;
+  submittedByRole: string;
+  assignedTo: number | null;
+  assignedToName: string | null;
+  workSummary: string;
+  todayProgress: string | null;
+  blockers: string | null;
+  nextPlan: string | null;
+  attachments: Array<{ name: string; url: string; type: string }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskUpdateUserStat {
+  id: number;
+  name: string;
+  role: string;
+  email: string;
+  pending_tasks: number;
+  completed_tasks: number;
+  inprogress_tasks: number;
+  total_tasks: number;
+  today_updates: number;
+  last_submission: string | null;
+}
+
+export const taskUpdatesAPI = {
+  /** Submit a new EOD work update */
+  createUpdate: async (data: {
+    taskId: number;
+    workSummary: string;
+    todayProgress?: string;
+    blockers?: string;
+    nextPlan?: string;
+    attachments?: Array<{ name: string; url: string; type: string }>;
+  }): Promise<ApiResponse<{ updateId: number }>> => {
+    const response = await api.post('/task-updates', data);
+    return response.data;
+  },
+
+  /** List updates — Admin sees all; others see own */
+  getUpdates: async (params?: {
+    page?: number;
+    limit?: number;
+    taskId?: number;
+    userId?: number;
+    date?: string;
+    search?: string;
+  }): Promise<ApiResponse<{ updates: TaskUpdate[]; pagination: PaginationInfo }>> => {
+    const response = await api.get('/task-updates', { params });
+    return response.data;
+  },
+
+  /** Single update by ID */
+  getUpdateById: async (id: number): Promise<ApiResponse<{ update: TaskUpdate }>> => {
+    const response = await api.get(`/task-updates/${id}`);
+    return response.data;
+  },
+
+  /** All updates for a specific task */
+  getUpdatesByTask: async (
+    taskId: number,
+  ): Promise<ApiResponse<{ updates: TaskUpdate[]; total: number }>> => {
+    const response = await api.get(`/task-updates/task/${taskId}`);
+    return response.data;
+  },
+
+  /** All updates submitted by a user */
+  getUpdatesByUser: async (
+    userId: number,
+    params?: { page?: number; limit?: number },
+  ): Promise<ApiResponse<{ updates: TaskUpdate[]; pagination: PaginationInfo }>> => {
+    const response = await api.get(`/task-updates/user/${userId}`, { params });
+    return response.data;
+  },
+
+  /** Admin: per-user task + update summary for Recruiter Monitor cards */
+  getUserStats: async (): Promise<ApiResponse<{ users: TaskUpdateUserStat[] }>> => {
+    const response = await api.get('/task-updates/admin/user-stats');
     return response.data;
   },
 };
@@ -1134,6 +1416,72 @@ export const analyticsAPI = {
     }>;
   }>> => {
     const response = await api.get('/analytics/candidate-quality');
+    return response.data;
+  },
+};
+
+// ─── Hiring Trends API ───────────────────────────────────────────────────────
+
+export interface HiringTrendsDataset {
+  key: string;
+  label: string;
+  color: string;
+  data: number[];
+}
+
+export interface HiringTrendsResponse {
+  labels: string[];
+  datasets: HiringTrendsDataset[];
+  meta: {
+    startDate: string;
+    endDate: string;
+    groupBy: string;
+    totalPoints: number;
+  };
+}
+
+export interface HiringTrendsParams {
+  startDate?: string;
+  endDate?: string;
+  groupBy?: 'daily' | 'weekly' | 'monthly' | 'quarterly';
+  recruiterId?: number | null;
+  jobId?: number | null;
+  department?: string | null;
+  status?: string | null; // comma-separated keys e.g. "applied,hired"
+}
+
+export const hiringTrendsAPI = {
+  getTrends: async (params: HiringTrendsParams = {}): Promise<ApiResponse<HiringTrendsResponse>> => {
+    const query = new URLSearchParams();
+    if (params.startDate)   query.set('startDate',   params.startDate);
+    if (params.endDate)     query.set('endDate',     params.endDate);
+    if (params.groupBy)     query.set('groupBy',     params.groupBy);
+    if (params.recruiterId) query.set('recruiterId', String(params.recruiterId));
+    if (params.jobId)       query.set('jobId',       String(params.jobId));
+    if (params.department)  query.set('department',  params.department);
+    if (params.status)      query.set('status',      params.status);
+    const response = await api.get(`/candidates/hiring-trends?${query.toString()}`);
+    return response.data;
+  },
+
+  getRecruiters: async (): Promise<ApiResponse<Array<{ id: number; name: string }>>> => {
+    const response = await api.get('/candidates/hiring-trends/recruiters');
+    return response.data;
+  },
+
+  getDepartments: async (): Promise<ApiResponse<string[]>> => {
+    const response = await api.get('/candidates/hiring-trends/departments');
+    return response.data;
+  },
+
+  getJobs: async (search?: string): Promise<ApiResponse<Array<{ id: number; title: string; department: string }>>> => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await api.get(`/candidates/hiring-trends/jobs${query}`);
+    return response.data;
+  },
+
+  debug: async (): Promise<ApiResponse<any>> => {
+    const response = await api.get('/candidates/hiring-trends/debug');
     return response.data;
   },
 };

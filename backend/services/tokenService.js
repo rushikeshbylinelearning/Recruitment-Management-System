@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../config/database.js';
+import { getFrontendBaseUrl } from '../utils/frontendUrl.js';
 
 /**
  * Generates a cryptographically secure 64-character hex token.
@@ -28,11 +29,7 @@ export async function generateToken(maxRetries = 5) {
  * @returns {string} Full submission URL
  */
 export function buildSubmissionLink(candidateId, token) {
-  const base = (process.env.FRONTEND_URL || 'http://localhost:5173')
-    .split(',')[0]   // take the first URL if comma-separated
-    .trim()
-    .replace(/\/$/, ''); // strip trailing slash
-  return `${base}/submit-assignment/${candidateId}/${token}`;
+  return `${getFrontendBaseUrl()}/submit-assignment/${candidateId}/${token}`;
 }
 
 /**

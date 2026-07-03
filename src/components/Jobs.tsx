@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, MoreVertical, Eye, Edit, Users, UserPlus, Briefcase, ChevronLeft, ChevronRight, Upload, AlertCircle, Filter } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Plus, MoreVertical, Eye, Users, Briefcase, Upload, AlertCircle, Filter,
+  MapPin, CalendarDays, Clock, Building2,
+} from 'lucide-react';
 import { JobPosting } from '../types';
 import { jobsAPI, JobPosting as ApiJobPosting, candidatesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,10 +12,25 @@ import AddJobModal from './AddJobModal';
 import JobDetailsModal from './JobDetailsModal';
 import JobApplicantsModal from './JobApplicantsModal';
 import ApplicantDetailsModal from './ApplicantDetailsModal';
+import CandidateViewModal from './CandidateViewModal';
 import CandidateImportContainer from './import/CandidateImportContainer';
 import '../styles/Jobs.css';
 
 const JOBS_PAGE_SIZE = 10;
+
+// The 10 fixed job categories shown on the jobs page
+const FIXED_JOB_TITLES = [
+  'Sales and Marketing',
+  'Animators',
+  'Graphic Designer',
+  'Full Stack Developer',
+  'Content Writers',
+  'Instructional Designers',
+  'Digital Marketing',
+  'Human Resource',
+  'IT',
+  'Project Coordinators',
+] as const;
 
 export default function Jobs() {
   const { hasPermission } = useAuth();
@@ -38,20 +56,22 @@ export default function Jobs() {
   const [showArchivedJobs, setShowArchivedJobs] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [jobCardApplicantTotals, setJobCardApplicantTotals] = useState<Record<string, number>>({});
 
-  // Load jobs from backend with pagination and filters
+  // Load jobs from backend – fetch all so we can merge into fixed cards
   const loadJobs = useCallback(async (pageNum: number) => {
     try {
       setLoading(true);
       const response = await jobsAPI.getJobs({
-        page: pageNum,
-        limit: 100, // Maximum allowed by backend validation
+        page: 1,
+        limit: 100,
         search: searchTerm.trim() || undefined,
         status: statusFilter === 'All' ? undefined : statusFilter,
       });
       if (response.success && response.data) {
         setJobs(response.data.jobs || []);
         setPagination(response.data.pagination ?? null);
+        setJobCardApplicantTotals(response.data.jobCardApplicantTotals || {});
       } else {
         setError('Failed to load jobs');
       }
@@ -67,8 +87,77 @@ export default function Jobs() {
     loadJobs(page);
   }, [page, searchTerm, statusFilter, loadJobs]);
 
-  // Jobs are already filtered by the API; display current page results
-  const displayJobs = jobs || [];
+  /**
+   * Build exactly 10 fixed job cards by merging live API data.
+   * For each fixed title we find the best matching job from the API
+   * (case-insensitive substring match). If multiple jobs match the same
+   * title we aggregate their applicant counts and use the most-recent one
+   * for metadata. If no match exists we show a placeholder card.
+   */
+  const displayJobs = useMemo((): ApiJobPosting[] => {
+    const useCategoryTotals = Object.keys(jobCardApplicantTotals).length > 0;
+
+    return FIXED_JOB_TITLES.map((fixedTitle, idx) => {
+      const needle = fixedTitle.toLowerCase();
+      const matches = jobs.filter(j =>
+        j.title.toLowerCase().includes(needle) ||
+        needle.includes(j.title.toLowerCase()) ||
+        j.department?.toLowerCase().includes(needle)
+      );
+
+      const jobBasedApplicantTotal = matches.reduce(
+        (sum, j) => sum + (j.applicantCount || 0),
+        0
+      );
+      const categoryApplicantTotal = useCategoryTotals
+        ? (jobCardApplicantTotals[fixedTitle] ?? 0)
+        : 0;
+
+      if (matches.length === 0) {
+        // Placeholder card – no matching job in DB yet
+        return {
+          id: -(idx + 1), // negative id signals placeholder
+          title: fixedTitle,
+          department: fixedTitle,
+          location: 'Remote',
+          jobType: 'Full-time',
+          status: 'Active',
+          postedDate: new Date().toISOString().split('T')[0],
+          deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          description: '',
+          requirements: [],
+          portals: [],
+          applicantCount: useCategoryTotals ? categoryApplicantTotal : 0,
+          assignedTo: [],
+        } as unknown as ApiJobPosting;
+      }
+
+      // Prefer position-based rollup from the API when it is non-zero; otherwise use the sum
+      // of applicant counts on matched job postings. Production often stores `position` as the
+      // umbrella card title (e.g. "Sales and Marketing"), which used to miss category aliases
+      // and showed 0 even though job rows had applicants.
+      // FALLBACK: If category total is 0 but job-based total is > 0, use job-based total
+      let totalApplicants = 0;
+      if (useCategoryTotals) {
+        // Prefer category total, but fall back to job-based if category is 0
+        totalApplicants = categoryApplicantTotal > 0 ? categoryApplicantTotal : jobBasedApplicantTotal;
+      } else {
+        totalApplicants = jobBasedApplicantTotal;
+      }
+
+      // Use the most recently posted job as the base card
+      const base = matches.sort((a, b) =>
+        new Date(b.postedDate || 0).getTime() - new Date(a.postedDate || 0).getTime()
+      )[0];
+
+      return {
+        ...base,
+        title: fixedTitle,          // always show the canonical fixed title
+        applicantCount: totalApplicants,
+        _matchedIds: matches.map(j => j.id), // carry all matched IDs for the modal
+      } as unknown as ApiJobPosting;
+    });
+  }, [jobs, jobCardApplicantTotals]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -239,9 +328,10 @@ export default function Jobs() {
   return (
     <ProtectedComponent module="jobs" action="view">
       <div className="jobs-page-container">
-        {/* Floating Action Buttons - Right Corner */}
-        {hasPermission('jobs', 'create') && (
-          <div className="fab-container">
+        {/* Bottom-right stack: post new job, bulk import (candidates/create), then filter / archive / bulk select */}
+        <div className="fab-bottom-right-stack">
+          {/* Post New Job — only users with jobs/create */}
+          {hasPermission('jobs', 'create') && (
             <button
               onClick={() => setShowAddJobModal(true)}
               className="fab fab-primary"
@@ -249,6 +339,9 @@ export default function Jobs() {
             >
               <Plus size={24} />
             </button>
+          )}
+
+          {hasPermission('candidates', 'create') && (
             <button
               onClick={() => setShowBulkImportModal(true)}
               className="fab fab-secondary"
@@ -256,11 +349,8 @@ export default function Jobs() {
             >
               <Upload size={22} />
             </button>
-          </div>
-        )}
+          )}
 
-        {/* Floating Filter & Archive Buttons - Bottom Right Stack */}
-        <div className="fab-bottom-right-stack">
           {/* Filter Button */}
           <div className="fab-filter-container">
             <button
@@ -345,8 +435,7 @@ export default function Jobs() {
 
         {/* Loading State */}
         {loading && (
-          <div className="jobs-loading">
-            <div className="spinner"></div>
+          <div className="jobs-loading" aria-live="polite">
             <span>Loading jobs...</span>
           </div>
         )}
@@ -361,10 +450,12 @@ export default function Jobs() {
         {/* Jobs Grid - Full Screen */}
         {!loading && (
           <>
-            {/* Jobs Grid */}
-            <div className="jobs-grid jobs-grid-compact">
+            <div className="jobs-grid jobs-grid-compact jobs-grid-premium">
               {displayJobs.map((job) => (
-                <div key={job.id} className={`job-card job-card-compact ${bulkSelectMode ? 'selectable' : ''} ${selectedJobIds.has(job.id) ? 'selected' : ''}`}>
+                <div
+                  key={job.id}
+                  className={`job-card job-card-compact ${bulkSelectMode ? 'selectable' : ''} ${selectedJobIds.has(job.id) ? 'selected' : ''}`}
+                >
                   {/* Bulk Select Checkbox */}
                   {bulkSelectMode && (
                     <div className="job-card-checkbox">
@@ -381,7 +472,10 @@ export default function Jobs() {
                     <div className="job-card-title-section">
                       <span className="job-department-tag">{job.department}</span>
                       <h3 className="job-title">{job.title}</h3>
-                      <p className="job-location">{job.location}</p>
+                      <p className="job-location">
+                        <MapPin size={12} className="job-location-icon" aria-hidden />
+                        {job.location}
+                      </p>
                     </div>
                     <div className="job-card-badges">
                       <span className={getStatusColor(job.status)}>
@@ -392,15 +486,24 @@ export default function Jobs() {
 
                   <div className="job-card-meta">
                     <div className="job-meta-row">
-                      <span className="job-meta-label">Type:</span>
+                      <span className="job-meta-label">
+                        <Building2 size={12} className="job-meta-icon" aria-hidden />
+                        Type
+                      </span>
                       <span className="job-meta-value">{job.jobType}</span>
                     </div>
                     <div className="job-meta-row">
-                      <span className="job-meta-label">Posted:</span>
+                      <span className="job-meta-label">
+                        <CalendarDays size={12} className="job-meta-icon" aria-hidden />
+                        Posted
+                      </span>
                       <span className="job-meta-value">{new Date(job.postedDate).toLocaleDateString()}</span>
                     </div>
                     <div className="job-meta-row">
-                      <span className="job-meta-label">Deadline:</span>
+                      <span className="job-meta-label">
+                        <Clock size={12} className="job-meta-icon" aria-hidden />
+                        Deadline
+                      </span>
                       <span className="job-meta-value job-deadline">
                         {isDeadlineNear(job.deadline) && (
                           <AlertCircle size={12} className="deadline-warning-icon" />
@@ -441,7 +544,11 @@ export default function Jobs() {
               <div className="jobs-empty-state">
                 <Briefcase size={48} className="empty-icon" />
                 <h3 className="empty-title">No jobs found</h3>
-                <p className="empty-description">Try adjusting your filters or create a new job posting.</p>
+                <p className="empty-description">
+                  {hasPermission('jobs', 'create')
+                    ? 'Try adjusting your filters or create a new job posting.'
+                    : 'Try adjusting your filters or ask an admin to publish job postings.'}
+                </p>
               </div>
             )}
           </>
@@ -495,6 +602,7 @@ export default function Jobs() {
         {showJobDetailsModal && selectedJob && (
           <JobDetailsModal
             job={selectedJob}
+            allowEdit={hasPermission('jobs', 'edit')}
             onClose={() => {
               setShowJobDetailsModal(false);
               setSelectedJob(null);
@@ -529,6 +637,7 @@ export default function Jobs() {
           onSubmit={handleCandidateSubmit}
           jobs={selectedJobForCandidate ? [selectedJobForCandidate] : jobs}
           editingCandidate={editingCandidate}
+          onEditExisting={(candidate) => setEditingCandidate(candidate)}
         />
 
         {/* Job Applicants Modal */}
@@ -540,6 +649,7 @@ export default function Jobs() {
               setSelectedJob(null);
             }}
             job={selectedJob}
+            matchedJobIds={(selectedJob as any)._matchedIds}
             onAddCandidate={() => {
               setShowApplicantsModal(false);
               setSelectedJobForCandidate(selectedJob);
@@ -555,13 +665,13 @@ export default function Jobs() {
         )}
 
         {/* Applicant Details Modal */}
-        <ApplicantDetailsModal
+        <CandidateViewModal
           isOpen={showApplicantDetails}
           onClose={() => {
             setShowApplicantDetails(false);
             setSelectedApplicant(null);
           }}
-          applicant={selectedApplicant}
+          candidate={selectedApplicant}
         />
 
         {/* Bulk Import Modal */}

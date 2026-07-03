@@ -66,23 +66,23 @@ export default function DashboardLayout() {
     setGlobalSearchTerm('');
   }, [location.pathname]);
 
-  const sidebarWidth = collapsed ? '4rem' : '16rem';
+  const sidebarWidth = collapsed ? '4.25rem' : '16rem';
 
   return (
     // ── Root: NO z-index, NO overflow:hidden, NO transform ─────────────────
     // Any of those would create a stacking context that traps fixed children.
     <div
-      className="flex h-screen bg-gray-50 dark:bg-[#050d1a]"
+      className="flex h-screen bg-gray-50 dark:bg-brand-black"
       style={{ '--sidebar-width': sidebarWidth } as React.CSSProperties}
     >
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       {/* z-30: background panel, below header and modals */}
       <div
-        className={`flex-shrink-0 transition-all duration-300 ease-in-out ${
-          collapsed ? 'w-16' : 'w-64'
+        className={`relative flex-shrink-0 overflow-visible transition-all duration-300 ease-in-out ${
+          collapsed ? 'w-[4.25rem]' : 'w-64 lg:w-[13.5rem] xl:w-52'
         }`}
-        style={{ position: 'relative', zIndex: 30 }}
+        style={{ zIndex: 30 }}
       >
         <Sidebar
           activeSection={activeSection}
@@ -90,28 +90,6 @@ export default function DashboardLayout() {
           collapsed={collapsed}
         />
       </div>
-
-      {/* ── Sidebar Toggle Button ─────────────────────────────────────────── */}
-      {/* position:fixed + z-70: escapes ALL stacking contexts, always on top */}
-      <button
-        onClick={() => setCollapsed((v) => !v)}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="flex items-center justify-center w-6 h-6 rounded-full
-                   transition-all duration-300 ease-in-out hover:scale-110
-                   focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-        style={{
-          position: 'fixed',
-          left: 'calc(var(--sidebar-width) - 0.75rem)',
-          top: '1.5rem',
-          zIndex: 70,
-          background: 'linear-gradient(135deg, #2563eb, #1e40af)',
-          boxShadow: '0 0 12px rgba(37,99,235,0.5)',
-        }}
-      >
-        {collapsed
-          ? <ChevronRight size={12} className="text-white" />
-          : <ChevronLeft  size={12} className="text-white" />}
-      </button>
 
       {/* ── Main area ────────────────────────────────────────────────────── */}
       {/*
@@ -141,28 +119,27 @@ export default function DashboardLayout() {
           div, which is what was causing the original clip.
         */}
         <header
-          className="shadow-sm border-b px-4 py-2 dark:border-[#1a2f52] flex-shrink-0"
-          style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 40,
-            backgroundColor: 'rgba(255,255,255,0.92)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
+          className="dashboard-topbar-premium relative px-5 py-3 lg:px-4 lg:py-2.5 flex-shrink-0"
+          style={{ position: 'sticky', top: 0, zIndex: 40 }}
         >
-          <style>{`
-            html.dark .dashboard-topbar {
-              background-color: rgba(10,22,40,0.95) !important;
-            }
-          `}</style>
-          <div className="dashboard-topbar flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className={`sidebar-collapse-btn ${collapsed ? 'sidebar-collapse-btn--collapsed' : ''}`}
+          >
+            {collapsed
+              ? <ChevronRight size={12} className="text-white" />
+              : <ChevronLeft size={12} className="text-white" />}
+          </button>
+
+          <div className="dashboard-topbar flex items-center justify-between gap-4 w-full">
             {/* Page Title */}
-            <div>
-              <h1 className="text-lg font-bold capitalize text-gray-900 dark:text-[#e2e8f0]">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold capitalize tracking-tight text-slate-900 dark:text-white">
                 {activeSection.replace('-', ' ')}
               </h1>
-              <p className="text-xs mt-0 text-gray-500 dark:text-[#475569]">
+              <p className="text-sm mt-0.5 text-slate-500 dark:text-slate-400 font-medium">
                 {activeSection === 'dashboard'         && 'Overview of your recruitment process'}
                 {activeSection === 'candidates'        && 'Manage and track all candidates'}
                 {activeSection === 'jobs'              && 'Active job postings and positions'}
@@ -184,7 +161,7 @@ export default function DashboardLayout() {
               {/* Global Search */}
               <div className="relative hidden md:block">
                 <Search
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#475569]"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500"
                   size={16}
                 />
                 <input
@@ -194,11 +171,7 @@ export default function DashboardLayout() {
                   }
                   value={globalSearchTerm}
                   onChange={(e) => setGlobalSearchTerm(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 w-56 rounded-lg text-sm transition-all
-                    border border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-400
-                    focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300
-                    dark:border-[#1a2f52] dark:bg-[#0f1f3d] dark:text-[#e2e8f0] dark:placeholder-[#334155]
-                    dark:focus:ring-[#2563eb] dark:focus:border-[#2563eb]"
+                  className="topbar-search pl-9 pr-4 w-64 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                 />
               </div>
 
@@ -208,31 +181,30 @@ export default function DashboardLayout() {
               <button
                 onClick={() => setDarkMode((v) => !v)}
                 title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="p-1.5 rounded-lg transition-all hover:bg-gray-100 text-gray-600
-                  dark:hover:bg-[#0f1f3d] dark:text-[#64748b] dark:hover:text-[#e2e8f0]
-                  dark:border dark:border-[#1a2f52]"
+                className="p-2 rounded-xl transition-all hover:bg-slate-100 text-slate-600
+                  dark:hover:bg-slate-800/80 dark:text-slate-400 dark:hover:text-white
+                  border border-transparent dark:border-slate-700/50"
               >
                 {darkMode ? (
-                  <Sun size={16} className="text-[#2563eb]" />
+                  <Sun size={16} className="text-red-600" />
                 ) : (
                   <Moon size={16} />
                 )}
               </button>
 
               {/* User Profile */}
-              <div className="flex items-center space-x-2 px-2 py-1 rounded-lg transition-all cursor-pointer
-                hover:bg-gray-100 dark:hover:bg-[#0f1f3d] dark:border dark:border-[#1a2f52]">
+              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-transparent dark:border-slate-700/40">
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center shadow-md flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)' }}
+                  style={{ background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)' }}
                 >
                   <span className="text-white text-xs font-semibold">
                     {user?.name?.charAt(0) || 'U'}
                   </span>
                 </div>
                 <div className="text-xs hidden lg:block">
-                  <p className="font-semibold text-gray-900 dark:text-[#e2e8f0]">{user?.name}</p>
-                  <p className="text-[10px] text-gray-500 dark:text-[#475569]">{user?.role}</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{user?.name}</p>
+                  <p className="text-[10px] text-gray-500 dark:text-neutral-400">{user?.role}</p>
                 </div>
               </div>
             </div>
@@ -244,10 +216,9 @@ export default function DashboardLayout() {
           overflow-auto here (not on parent) — this is the scroll container.
           No z-index needed; content sits at natural z:0 in the flow.
         */}
-        <main className="flex-1 overflow-auto flex flex-col min-h-0 bg-gray-50 dark:bg-[#050d1a]">
+        <main className="flex-1 overflow-auto flex flex-col min-h-0 bg-slate-50 dark:bg-[#0f172a]">
           <ErrorBoundary>
-            {/* flex-1 + min-h-0 lets pages like the Kanban board fill remaining height without creating outer scroll */}
-            <div className="flex-1 flex flex-col min-h-0 h-full px-6 pt-5 pb-6">
+            <div className="dashboard-main-shell flex-1 flex flex-col min-h-0 h-full w-full px-6 pt-5 pb-8 lg:px-4 lg:pt-4 lg:pb-6 xl:px-5">
               <Outlet context={{ globalSearchTerm, setGlobalSearchTerm }} />
             </div>
           </ErrorBoundary>

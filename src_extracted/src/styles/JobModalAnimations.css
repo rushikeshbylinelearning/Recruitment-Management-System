@@ -1,0 +1,160 @@
+/* ============================================================
+   Job Modal Animations — matches the elegant candidate modal
+   style: backdrop blur + scale-fade entry for all job modals
+   ============================================================ */
+
+/* ── Shared overlay (replaces plain bg-black/50 on all job modals) ── */
+.jm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+
+  /* The key difference vs job modals before:
+     layered background + frosted glass blur */
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+
+  /* Overlay itself fades in */
+  animation: jm-overlay-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes jm-overlay-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px) saturate(100%);
+    -webkit-backdrop-filter: blur(0px) saturate(100%);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(8px) saturate(140%);
+    -webkit-backdrop-filter: blur(8px) saturate(140%);
+  }
+}
+
+/* ── Modal panel entry — scale up + fade in ── */
+.jm-panel {
+  animation: jm-panel-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+
+@keyframes jm-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── JobDetailsModal shell (legacy) ── */
+.jm-details-panel {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.10),
+    0 32px 64px rgba(0, 0, 0, 0.12);
+  max-width: 56rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.jm-details-panel::-webkit-scrollbar { width: 5px; }
+.jm-details-panel::-webkit-scrollbar-track { background: transparent; }
+.jm-details-panel::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 99px;
+}
+.jm-details-panel::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+/* ── Modern JobDetailsModal shell ── */
+.jm-details-panel-modern {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    0 16px 48px rgba(0, 0, 0, 0.10),
+    0 24px 80px rgba(0, 0, 0, 0.12);
+  max-width: 62rem;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.jm-details-panel-modern > div:nth-child(2) {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.jm-details-panel-modern > div:nth-child(2)::-webkit-scrollbar { 
+  width: 6px; 
+}
+.jm-details-panel-modern > div:nth-child(2)::-webkit-scrollbar-track { 
+  background: transparent; 
+}
+.jm-details-panel-modern > div:nth-child(2)::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 99px;
+}
+.jm-details-panel-modern > div:nth-child(2)::-webkit-scrollbar-thumb:hover { 
+  background: #cbd5e1; 
+}
+
+/* dark */
+html.dark .jm-overlay {
+  background: rgba(5, 13, 26, 0.72);
+}
+
+html.dark .jm-details-panel {
+  background: #1e1e2e;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 32px 64px rgba(0, 0, 0, 0.5);
+}
+
+html.dark .jm-details-panel-modern {
+  background: #0f172a;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 16px 48px rgba(0, 0, 0, 0.4),
+    0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+/* ── JobApplicantsModal — add entry animation to the content box ── */
+.job-applicants-modal-content {
+  animation: jm-panel-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+
+/* Upgrade the applicants overlay too */
+.job-applicants-modal-container {
+  animation: jm-overlay-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── AddJobModal overlay upgrade (ajm-overlay already uses blur,
+   but let's unify the timing/easing with the other modals) ── */
+.ajm-overlay {
+  animation: jm-overlay-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+}
+
+.ajm-modal {
+  animation: jm-panel-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+}

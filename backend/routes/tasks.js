@@ -21,7 +21,7 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
   let params = [];
 
   // For non-admin users, only show tasks assigned to them
-  if (req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (req.user.role !== 'Admin') {
     whereClause += ' AND t.assigned_to = ?';
     params.push(req.user.id);
   }
@@ -36,7 +36,7 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
     params.push(priority);
   }
 
-  if (assignedTo && (req.user.role === 'Admin' || req.user.role === 'HR Manager')) {
+  if (assignedTo && req.user.role === 'Admin') {
     whereClause += ' AND t.assigned_to = ?';
     params.push(assignedTo);
   }
@@ -77,6 +77,7 @@ router.get('/', authenticateToken, checkPermission('tasks', 'view'), validatePag
     priority: task.priority,
     status: task.status,
     dueDate: task.due_date,
+    category: task.category || 'misc',
     createdBy: task.created_by,
     createdByName: task.created_by_name || 'Unknown',
     createdDate: task.created_at,
@@ -130,6 +131,7 @@ router.get('/:id', authenticateToken, checkPermission('tasks', 'view'), validate
     priority: task.priority,
     status: task.status,
     dueDate: task.due_date,
+    category: task.category || 'misc',
     createdBy: task.created_by,
     createdByName: task.created_by_name || 'Unknown',
     createdDate: task.created_at,
@@ -152,12 +154,16 @@ router.post('/', authenticateToken, checkPermission('tasks', 'create'), validate
     candidateId,
     priority,
     status,
-    dueDate
+    dueDate,
+    category
   } = req.body;
 
-  // Restriction: Recruiters can only assign tasks to themselves
+  // Restriction: Recruiters can assign to themselves OR to HR Interns
   if (req.user.role === 'Recruiter' && assignedTo !== req.user.id) {
-    throw new ValidationError('Recruiters can only assign tasks to themselves');
+    const targetUser = await query("SELECT id FROM users WHERE id = ? AND role = 'HR Intern'", [assignedTo]);
+    if (targetUser.length === 0) {
+      throw new ValidationError('Recruiters can only assign tasks to themselves or HR Interns');
+    }
   }
 
   // Validate assigned user exists
@@ -182,17 +188,21 @@ router.post('/', authenticateToken, checkPermission('tasks', 'create'), validate
     }
   }
 
+  // Determine category: use provided value or default to 'misc'
+  const validCategories = ['hr-operations', 'admin-operations', 'misc'];
+  const taskCategory = validCategories.includes(category) ? category : 'misc';
+
   // Create task
   const result = await query(
-    `INSERT INTO tasks (title, description, assigned_to, job_id, candidate_id, priority, status, due_date, created_by) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [title, description, assignedTo, jobId || null, candidateId || null, priority, status, dueDate, req.user.id]
+    `INSERT INTO tasks (title, description, assigned_to, job_id, candidate_id, priority, status, due_date, category, created_by) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [title, description, assignedTo, jobId || null, candidateId || null, priority, status, dueDate, taskCategory, req.user.id]
   );
 
-  // Notify assignee by email when created by Admin/HR Manager
+  // Notify assignee by email when created by Admin
   let emailResult = null;
   try {
-    if ((req.user.role === 'Admin' || req.user.role === 'HR Manager') && assignedTo) {
+    if (req.user.role === 'Admin' && assignedTo) {
       const assigneeRows = await query('SELECT email, name FROM users WHERE id = ?', [assignedTo]);
       if (assigneeRows.length > 0 && assigneeRows[0].email) {
         const assigneeEmail = assigneeRows[0].email;
@@ -393,7 +403,8 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
     candidateId,
     priority,
     status,
-    dueDate
+    dueDate,
+    category
   } = req.body;
 
   // Check if task exists
@@ -403,9 +414,12 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
   }
   const previousAssignee = existingTasks[0].assigned_to;
 
-  // Restriction: Recruiters can only assign tasks to themselves
+  // Restriction: Recruiters can assign to themselves OR to HR Interns
   if (req.user.role === 'Recruiter' && assignedTo !== req.user.id) {
-    throw new ValidationError('Recruiters can only assign tasks to themselves');
+    const targetUser = await query("SELECT id FROM users WHERE id = ? AND role = 'HR Intern'", [assignedTo]);
+    if (targetUser.length === 0) {
+      throw new ValidationError('Recruiters can only assign tasks to themselves or HR Interns');
+    }
   }
 
   // Validate assigned user exists
@@ -430,19 +444,23 @@ router.put('/:id', authenticateToken, checkPermission('tasks', 'edit'), validate
     }
   }
 
+  // Determine category
+  const validCategories = ['hr-operations', 'admin-operations', 'misc'];
+  const taskCategory = validCategories.includes(category) ? category : 'misc';
+
   // Update task
   await query(
     `UPDATE tasks SET title = ?, description = ?, assigned_to = ?, job_id = ?, candidate_id = ?, priority = ?, 
-     status = ?, due_date = ?, updated_at = NOW() 
+     status = ?, due_date = ?, category = ?, updated_at = NOW() 
      WHERE id = ?`,
-    [title, description, assignedTo, jobId || null, candidateId || null, priority, status, dueDate, taskId]
+    [title, description, assignedTo, jobId || null, candidateId || null, priority, status, dueDate, taskCategory, taskId]
   );
 
-  // If assignee changed and action by Admin/HR Manager, notify new assignee
+  // If assignee changed and action by Admin, notify new assignee
   let emailResult = null;
   try {
     const assigneeChanged = previousAssignee !== assignedTo;
-    if (assigneeChanged && (req.user.role === 'Admin' || req.user.role === 'HR Manager') && assignedTo) {
+    if (assigneeChanged && req.user.role === 'Admin' && assignedTo) {
       const assigneeRows = await query('SELECT email, name FROM users WHERE id = ?', [assignedTo]);
       if (assigneeRows.length > 0 && assigneeRows[0].email) {
         const assigneeEmail = assigneeRows[0].email;
@@ -663,7 +681,7 @@ router.patch('/:id/status', authenticateToken, checkPermission('tasks', 'edit'),
   const task = existingTasks[0];
 
   // Check if user can update this task
-  if (task.assigned_to !== req.user.id && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (task.assigned_to !== req.user.id && req.user.role !== 'Admin') {
     throw new ValidationError('You can only update your own tasks');
   }
 
@@ -684,7 +702,7 @@ router.get('/user/:userId', authenticateToken, validateId('userId'), handleValid
   const userId = req.params.userId;
 
   // Check if user can access this data
-  if (req.user.id !== userId && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (req.user.id !== userId && req.user.role !== 'Admin') {
     throw new ValidationError('Access denied');
   }
 
@@ -713,6 +731,7 @@ router.get('/user/:userId', authenticateToken, validateId('userId'), handleValid
     priority: task.priority,
     status: task.status,
     dueDate: task.due_date,
+    category: task.category || 'misc',
     createdBy: task.created_by,
     createdByName: task.created_by_name || 'Unknown',
     createdDate: task.created_at,
@@ -753,6 +772,7 @@ router.get('/overdue/list', authenticateToken, checkPermission('tasks', 'view'),
     priority: task.priority,
     status: task.status,
     dueDate: task.due_date,
+    category: task.category || 'misc',
     createdBy: task.created_by,
     createdByName: task.created_by_name || 'Unknown',
     createdDate: task.created_at,
@@ -793,6 +813,7 @@ router.get('/due-today/list', authenticateToken, checkPermission('tasks', 'view'
     priority: task.priority,
     status: task.status,
     dueDate: task.due_date,
+    category: task.category || 'misc',
     createdBy: task.created_by,
     createdByName: task.created_by_name || 'Unknown',
     createdDate: task.created_at,

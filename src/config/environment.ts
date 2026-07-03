@@ -1,3 +1,5 @@
+import { getHrAppUrl, getPublicAppUrl } from './domains';
+
 // Environment configuration for the frontend
 export const config = {
   // API Configuration
@@ -6,6 +8,12 @@ export const config = {
   //   - .env.production  sets VITE_API_URL=https://hr.bylinelms.com/api
   // Safety fallback: http://localhost:3001 if variable is not set
   API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+
+  /** @deprecated Use getPublicAppUrl() for share links */
+  APP_URL: getPublicAppUrl(),
+
+  HR_APP_URL: getHrAppUrl(),
+  PUBLIC_APP_URL: getPublicAppUrl(),
 
   // App Configuration
   APP_NAME: import.meta.env.VITE_APP_NAME || 'HR Workflow Management',

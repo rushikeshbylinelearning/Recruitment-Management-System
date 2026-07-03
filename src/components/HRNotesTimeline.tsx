@@ -13,9 +13,11 @@ const STAGE_ORDER = [
   'Screening',
   'Interview',
   'Offer',
+  'Selected',
   'Hired',
   'On Hold',
   'Rejected',
+  'No Response',
   'No Show - Interview',
   'No Show - Onboarding',
   'Last Minute Back Out',
@@ -24,11 +26,13 @@ const STAGE_ORDER = [
 
 // Stage colors matching the Kanban board
 const STAGE_COLORS: Record<string, string> = {
-  Applied: '#6366f1',
+  Applied: '#dc2626',
   Screening: '#f59e0b',
   Interview: '#f97316',
   Offer: '#8b5cf6',
+  Selected: '#92D050',
   Hired: '#10b981',
+  'No Response': '#7F7F7F',
   Rejected: '#ef4444',
   'On Hold': '#6b7280',
   'No Show - Interview': '#ea580c',
@@ -45,7 +49,7 @@ const INTERACTION_ICONS: Record<string, { icon: any; color: string }> = {
   'Interview': { icon: Calendar, color: '#f59e0b' },
   'Stage Change': { icon: ArrowRight, color: '#8b5cf6' },
   'General Note': { icon: FileText, color: '#6b7280' },
-  'System Event': { icon: AlertCircle, color: '#6366f1' },
+  'System Event': { icon: AlertCircle, color: '#dc2626' },
 };
 
 export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
@@ -88,8 +92,13 @@ export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
     return time.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const displayInteractionType = (type: string) => {
+    const trimmed = (type || '').trim();
+    return trimmed || 'General Note';
+  };
+
   const getInteractionIcon = (type: string) => {
-    const config = INTERACTION_ICONS[type] || INTERACTION_ICONS['General Note'];
+    const config = INTERACTION_ICONS[displayInteractionType(type)] || INTERACTION_ICONS['General Note'];
     const Icon = config.icon;
     return <Icon size={14} style={{ color: config.color }} />;
   };
@@ -103,7 +112,7 @@ export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
       'General Note': 'bg-gray-100 text-gray-700 border-gray-200',
       'System Event': 'bg-indigo-100 text-indigo-700 border-indigo-200',
     };
-    return colorMap[type] || colorMap['General Note'];
+    return colorMap[displayInteractionType(type)] || colorMap['General Note'];
   };
 
   if (loading) {
@@ -132,10 +141,19 @@ export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
     );
   }
 
-  // Filter stages that have notes and sort by stage order
-  const stagesWithNotes = STAGE_ORDER.filter(stage => 
-    notesByStage[stage] && notesByStage[stage].length > 0
-  );
+  const getOrderedStagesWithNotes = (): string[] => {
+    const stagesWithData = Object.entries(notesByStage)
+      .filter(([, notes]) => notes && notes.length > 0)
+      .map(([stage]) => (stage?.trim() ? stage.trim() : 'Applied'));
+
+    const orderedKnown = STAGE_ORDER.filter((stage) =>
+      stagesWithData.includes(stage)
+    );
+    const extras = stagesWithData.filter((stage) => !STAGE_ORDER.includes(stage));
+    return [...orderedKnown, ...extras];
+  };
+
+  const stagesWithNotes = getOrderedStagesWithNotes();
 
   if (stagesWithNotes.length === 0) {
     return (
@@ -162,7 +180,10 @@ export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
       </div>
 
       {stagesWithNotes.map((stage, stageIndex) => {
-        const notes = notesByStage[stage] || [];
+        const notes =
+          notesByStage[stage] ||
+          (stage === 'Applied' ? notesByStage[''] : undefined) ||
+          [];
         const stageColor = STAGE_COLORS[stage] || '#6b7280';
         
         return (
@@ -199,7 +220,7 @@ export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
                       className="w-8 h-8 rounded-full border-2 bg-white flex items-center justify-center shadow-sm"
                       style={{ borderColor: `${stageColor}60` }}
                     >
-                      {getInteractionIcon(note.interaction_type)}
+                      {getInteractionIcon(displayInteractionType(note.interaction_type))}
                     </div>
                     {noteIndex < notes.length - 1 && (
                       <div
@@ -221,8 +242,8 @@ export default function HRNotesTimeline({ candidateId }: HRNotesTimelineProps) {
                           <span
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${getInteractionBadgeColor(note.interaction_type)}`}
                           >
-                            {getInteractionIcon(note.interaction_type)}
-                            {note.interaction_type}
+                            {getInteractionIcon(displayInteractionType(note.interaction_type))}
+                            {displayInteractionType(note.interaction_type)}
                           </span>
                           {note.author_name && (
                             <span className="text-xs text-gray-600 flex items-center gap-1">

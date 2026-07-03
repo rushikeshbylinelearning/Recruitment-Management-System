@@ -453,7 +453,7 @@ router.get('/recruiter-performance', authenticateToken, checkPermission('analyti
        COUNT(CASE WHEN c.applied_date >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as new_candidates_last_30_days
      FROM users u
      LEFT JOIN candidates c ON u.id = c.assigned_to
-     WHERE u.role IN ('Recruiter', 'HR Manager')
+     WHERE u.role IN ('Recruiter', 'Admin')
      GROUP BY u.id, u.name, u.role
      ORDER BY hires DESC`,
     []
@@ -471,7 +471,7 @@ router.get('/recruiter-performance', authenticateToken, checkPermission('analyti
        ROUND(COUNT(CASE WHEN c.stage = 'Hired' THEN 1 END) * 100.0 / NULLIF(COUNT(c.id), 0), 2) as hire_rate
      FROM users u
      LEFT JOIN candidates c ON u.id = c.assigned_to
-     WHERE u.role IN ('Recruiter', 'HR Manager') AND c.applied_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+     WHERE u.role IN ('Recruiter', 'Admin') AND c.applied_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
      GROUP BY u.id, u.name, DATE_FORMAT(c.applied_date, '%Y-%m')
      ORDER BY u.name, month DESC`,
     []
@@ -489,7 +489,7 @@ router.get('/recruiter-performance', authenticateToken, checkPermission('analyti
        COALESCE(AVG(c.score), 0) as avg_score
      FROM users u
      LEFT JOIN candidates c ON u.id = c.assigned_to
-     WHERE u.role IN ('Recruiter', 'HR Manager')
+     WHERE u.role IN ('Recruiter', 'Admin')
      GROUP BY u.id, u.name, c.source
      ORDER BY u.name, candidates_from_source DESC`,
     []
@@ -508,7 +508,7 @@ router.get('/recruiter-performance', authenticateToken, checkPermission('analyti
        COUNT(CASE WHEN c.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as updated_this_week
      FROM users u
      LEFT JOIN candidates c ON u.id = c.assigned_to
-     WHERE u.role IN ('Recruiter', 'HR Manager')
+     WHERE u.role IN ('Recruiter', 'Admin')
      GROUP BY u.id, u.name
      ORDER BY total_candidates DESC`,
     []
@@ -524,7 +524,7 @@ router.get('/recruiter-performance', authenticateToken, checkPermission('analyti
        COALESCE(AVG(DATEDIFF(COALESCE(c.updated_at, NOW()), c.applied_date)), 0) as avg_days_in_stage
      FROM users u
      LEFT JOIN candidates c ON u.id = c.assigned_to
-     WHERE u.role IN ('Recruiter', 'HR Manager')
+     WHERE u.role IN ('Recruiter', 'Admin')
      GROUP BY u.id, u.name, c.stage
      ORDER BY u.name, 
        CASE c.stage

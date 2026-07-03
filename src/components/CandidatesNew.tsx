@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { SlidersHorizontal, Download, Trash2, CheckSquare, Square, X } from 'lucide-react';
+import { useSearchParams, useOutletContext } from 'react-router-dom';
+import { SlidersHorizontal, Download, Trash2, CheckSquare, Square, X, UserPlus } from 'lucide-react';
 import { candidatesAPI, Candidate as ApiCandidate, jobsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import AddCandidateModal from './AddCandidateModal';
@@ -9,6 +9,15 @@ import CandidateViewModal from './CandidateViewModal';
 import KanbanBoard from './kanban/KanbanBoard';
 import FilterPanel, { FilterState, DEFAULT_FILTERS } from './kanban/FilterPanel';
 import Toast from './ui/Toast';
+import { isISTDateInInclusiveRange, todayISTYMD } from '../utils/istDate';
+import {
+  candidateNeedsInterviewStageMove,
+  getKanbanColumnForCandidate,
+  INTERVIEW_KANBAN_SUB_STAGES,
+  isInterviewKanbanSubStage,
+  normalizeStageForDisplay,
+} from '../utils/candidateStage';
+import { sortCandidatesNewestFirst, withStageSortTimestamp } from '../utils/candidateSort';
 
 const STAGES = [
   // Main stages
@@ -49,8 +58,55 @@ const parseNumber = (value?: string) => {
   return Number.isNaN(n) ? null : n;
 };
 
+interface OutletContext {
+  globalSearchTerm: string;
+  setGlobalSearchTerm: (term: string) => void;
+}
+
+function candidateMatchesSearch(candidate: ApiCandidate, term: string): boolean {
+  const t = term.toLowerCase();
+  return (
+    (candidate.name || '').toLowerCase().includes(t) ||
+    (candidate.email || '').toLowerCase().includes(t) ||
+    (candidate.phone || '').toLowerCase().includes(t) ||
+    (candidate.position || '').toLowerCase().includes(t) ||
+    (candidate.location || '').toLowerCase().includes(t)
+  );
+}
+
+function mergeCandidateUpdate(existing: ApiCandidate, update: Record<string, unknown>): ApiCandidate {
+  const merged = { ...existing, ...update } as ApiCandidate;
+  const hasAssignmentFields =
+    update.inOfficeAssignment !== undefined ||
+    update.inHouseAssignmentStatus !== undefined ||
+    update.interviewDate !== undefined ||
+    update.interviewerId !== undefined ||
+    update.assignmentLocation !== undefined;
+
+  if (hasAssignmentFields) {
+    merged.assignmentDetails = {
+      ...(existing.assignmentDetails || {}),
+      ...(update.inHouseAssignmentStatus !== undefined
+        ? { inHouseAssignmentStatus: update.inHouseAssignmentStatus as ApiCandidate['assignmentDetails']['inHouseAssignmentStatus'] }
+        : {}),
+      ...(update.interviewDate !== undefined
+        ? { interviewDate: update.interviewDate as string }
+        : {}),
+      ...(update.interviewerId !== undefined
+        ? { interviewerId: update.interviewerId as number | null }
+        : {}),
+      ...(update.inOfficeAssignment !== undefined
+        ? { inOfficeAssignment: update.inOfficeAssignment as string }
+        : {}),
+    };
+  }
+
+  return merged;
+}
+
 export default function CandidatesNew() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  const { globalSearchTerm = '', setGlobalSearchTerm } = useOutletContext<OutletContext>() || {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [candidates, setCandidates] = useState<ApiCandidate[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -73,6 +129,9 @@ export default function CandidatesNew() {
   candidatesRef.current = candidates;
 
   const stages = STAGES;
+
+  // Check if user can export (HR Interns cannot export)
+  const canExport = user?.role !== 'HR Intern';
 
   useEffect(() => {
     const loadData = async () => {
@@ -99,35 +158,19 @@ export default function CandidatesNew() {
     loadData();
   }, []);
 
-  // Handle automatic drawer opening from query parameter
-  useEffect(() => {
-    const candidateId = searchParams.get('id');
-    if (candidateId && candidates.length > 0 && !loading) {
-      // Find the candidate by ID (could be string UUID or number)
-      const candidate = candidates.find(c => String(c.id) === candidateId);
-      if (candidate) {
-        // Open the candidate drawer
-        setSelectedCandidate(candidate);
-        setShowViewModal(true);
-        // Clear the query parameter after opening
-        setSearchParams({});
-      }
-    }
-  }, [searchParams, candidates, loading, setSearchParams]);
-
-  const debouncedSearch = useDebounced(filters.search, 200);
+  const debouncedGlobalSearch = useDebounced(globalSearchTerm, 200);
+  const debouncedFilterSearch = useDebounced(filters.search, 200);
 
   const filteredCandidates = useMemo(() => {
-    const term = debouncedSearch.toLowerCase();
+    const globalTerm = debouncedGlobalSearch.trim().toLowerCase();
+    const filterTerm = debouncedFilterSearch.trim().toLowerCase();
     return candidates.filter((c) => {
-      if (term && !(
-        (c.name || '').toLowerCase().includes(term) ||
-        (c.email || '').toLowerCase().includes(term) ||
-        (c.phone || '').toLowerCase().includes(term) ||
-        (c.position || '').toLowerCase().includes(term)
-      )) return false;
+      if (globalTerm && !candidateMatchesSearch(c, globalTerm)) return false;
+      if (filterTerm && !candidateMatchesSearch(c, filterTerm)) return false;
 
-      if (filters.stages.length > 0 && !filters.stages.includes(c.stage)) return false;
+      if (filters.stages.length > 0 && !filters.stages.includes(getKanbanColumnForCandidate(c))) {
+        return false;
+      }
 
       if (filters.role && !c.position?.toLowerCase().includes(filters.role.toLowerCase())) return false;
 
@@ -139,15 +182,14 @@ export default function CandidatesNew() {
 
       if (filters.noticePeriod && c.availability?.noticePeriod !== filters.noticePeriod) return false;
 
-      const appliedDate = c.appliedDate ? new Date(c.appliedDate) : null;
-      if (filters.appliedDateFrom) {
-        const from = new Date(filters.appliedDateFrom);
-        if (!appliedDate || appliedDate < from) return false;
-      }
-      if (filters.appliedDateTo) {
-        const to = new Date(filters.appliedDateTo);
-        to.setHours(23, 59, 59, 999);
-        if (!appliedDate || appliedDate > to) return false;
+      if (
+        !isISTDateInInclusiveRange(
+          c.appliedDate,
+          filters.appliedDateFrom || undefined,
+          filters.appliedDateTo || undefined
+        )
+      ) {
+        return false;
       }
 
       const minExp = parseNumber(filters.experienceMin);
@@ -162,28 +204,100 @@ export default function CandidatesNew() {
       if (minCtc !== null && (candidateExpectedCtc === null || candidateExpectedCtc < minCtc)) return false;
       if (maxCtc !== null && (candidateExpectedCtc === null || candidateExpectedCtc > maxCtc)) return false;
 
+      if (filters.duplicateFilter !== 'all') {
+        const flagged = Boolean(c.isFlaggedDuplicate);
+        const merged = Boolean(c.hasMergedApplications);
+        if (filters.duplicateFilter === 'flagged' && !flagged) return false;
+        if (filters.duplicateFilter === 'merged' && !merged) return false;
+        if (filters.duplicateFilter === 'any' && !flagged && !merged) return false;
+      }
+
       return true;
     });
-  }, [candidates, debouncedSearch, filters]);
+  }, [candidates, debouncedGlobalSearch, debouncedFilterSearch, filters]);
 
   const candidatesByStage = useMemo(() => {
     const map: Record<string, ApiCandidate[]> = {};
     for (const stage of stages) map[stage] = [];
     for (const c of filteredCandidates) {
-      if (map[c.stage]) map[c.stage].push(c);
+      const stageKey = getKanbanColumnForCandidate(c);
+      if (map[stageKey]) map[stageKey].push({ ...c, stage: stageKey });
     }
-    // Sort each column by newest first (appliedDate descending)
     for (const stage of stages) {
-      map[stage].sort((a, b) => {
-        const dateA = new Date(a.appliedDate).getTime();
-        const dateB = new Date(b.appliedDate).getTime();
-        return dateB - dateA; // Descending order (newest first)
-      });
+      map[stage] = sortCandidatesNewestFirst(map[stage]);
     }
     return map;
   }, [stages, filteredCandidates]);
 
   const handleStageChange = useCallback(async (candidateId: string, newStage: string) => {
+    const candidate = candidatesRef.current.find((c) => c.id === candidateId);
+    if (!candidate) return;
+
+    if (isInterviewKanbanSubStage(newStage)) {
+      const config = INTERVIEW_KANBAN_SUB_STAGES[newStage];
+      if (config.escalateTo) {
+        await handleStageChange(candidateId, config.escalateTo);
+        return;
+      }
+
+      const previous = {
+        stage: candidate.stage,
+        mainStage: candidate.mainStage,
+        subStage: candidate.subStage,
+      };
+
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidateId
+            ? withStageSortTimestamp({
+                ...c,
+                stage: 'Interview',
+                mainStage: 'interview',
+                subStage: config.subStage,
+              })
+            : c
+        )
+      );
+
+      try {
+        if (candidateNeedsInterviewStageMove(candidate)) {
+          const stageResponse = await candidatesAPI.updateCandidateStage(candidateId, 'Interview');
+          if (!stageResponse.success) {
+            throw new Error(stageResponse.message || 'Failed to update stage');
+          }
+        }
+
+        const subResponse = await candidatesAPI.updateCandidateSubStage(
+          candidateId,
+          'interview',
+          config.subStage
+        );
+        if (!subResponse.success) {
+          throw new Error(subResponse.message || 'Failed to update sub-stage');
+        }
+
+        setToast({
+          message: `${candidate.name} → ${newStage}`,
+          type: 'success',
+        });
+      } catch {
+        setCandidates((prev) =>
+          prev.map((c) =>
+            c.id === candidateId
+              ? {
+                  ...c,
+                  stage: previous.stage,
+                  mainStage: previous.mainStage,
+                  subStage: previous.subStage,
+                }
+              : c
+          )
+        );
+        setToast({ message: 'Failed to update interview sub-stage', type: 'error' });
+      }
+      return;
+    }
+
     const validStages: ApiCandidate['stage'][] = [
       'Applied', 'Follow Up', 'Screening', 'Interview', 'Offer', 'Hired',
       'On Hold', 'Rejected', 'No Show - Interview', 'No Show - Onboarding', 'Last Minute Back Out', 'Profile Not Matched',
@@ -193,13 +307,13 @@ export default function CandidatesNew() {
       return;
     }
     const typedStage = newStage as ApiCandidate['stage'];
-    const candidate = candidatesRef.current.find((c) => c.id === candidateId);
-    if (!candidate) return;
     const previousStage = candidate.stage;
 
-    setCandidates((prev) =>
-      prev.map((c) => (c.id === candidateId ? { ...c, stage: typedStage } : c))
-    );
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidateId ? withStageSortTimestamp({ ...c, stage: typedStage }) : c
+        )
+      );
 
     try {
       const response = await candidatesAPI.updateCandidateStage(candidateId, typedStage);
@@ -222,13 +336,149 @@ export default function CandidatesNew() {
     }
   }, []);
 
-  const handleViewCandidate = useCallback((candidate: ApiCandidate) => {
-    setSelectedCandidate(candidate);
-    setShowViewModal(true);
-  }, []);
+  const handleSubStageChange = useCallback(
+    async (candidateId: string, mainStage: string, subStage: string) => {
+      const candidate = candidatesRef.current.find((c) => c.id === candidateId);
+      if (!candidate) return;
+
+      if (candidate.mainStage === mainStage && candidate.subStage === subStage) {
+        return;
+      }
+
+      const previous = {
+        stage: candidate.stage,
+        mainStage: candidate.mainStage,
+        subStage: candidate.subStage,
+      };
+
+      const nextStage = mainStage === 'interview' ? 'Interview' : candidate.stage;
+
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidateId
+            ? withStageSortTimestamp({ ...c, stage: nextStage, mainStage, subStage })
+            : c
+        )
+      );
+
+      try {
+        const response = await candidatesAPI.updateCandidateSubStage(
+          candidateId,
+          mainStage,
+          subStage
+        );
+        if (!response.success) {
+          throw new Error(response.message || 'Failed to update sub-stage');
+        }
+
+        const updated = response.data?.candidate;
+        if (updated) {
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.id === candidateId
+                ? {
+                    ...c,
+                    stage: updated.stage ?? nextStage,
+                    mainStage: updated.mainStage ?? mainStage,
+                    subStage: updated.subStage ?? subStage,
+                    stageUpdatedAt: updated.stageUpdatedAt ?? c.stageUpdatedAt,
+                  }
+                : c
+            )
+          );
+        }
+      } catch {
+        setCandidates((prev) =>
+          prev.map((c) =>
+            c.id === candidateId
+              ? {
+                  ...c,
+                  stage: previous.stage,
+                  mainStage: previous.mainStage,
+                  subStage: previous.subStage,
+                }
+              : c
+          )
+        );
+        setToast({ message: 'Failed to update interview sub-stage', type: 'error' });
+      }
+    },
+    []
+  );
+
+  const recordCandidateViewed = useCallback(
+    async (candidate: ApiCandidate) => {
+      if (!candidate.tracksCardView) return;
+
+      const viewerName = user?.name || 'You';
+      const viewedAt = new Date().toISOString();
+
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidate.id
+            ? {
+                ...c,
+                isViewed: true,
+                lastViewedBy: viewerName,
+                lastViewedAt: viewedAt,
+              }
+            : c
+        )
+      );
+
+      try {
+        const response = await candidatesAPI.markCandidateViewed(candidate.id);
+        if (response.success && response.data) {
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.id === candidate.id
+                ? {
+                    ...c,
+                    isViewed: response.data?.isViewed ?? true,
+                    lastViewedBy: response.data?.lastViewedBy ?? viewerName,
+                    lastViewedAt: response.data?.lastViewedAt ?? viewedAt,
+                  }
+                : c
+            )
+          );
+        }
+      } catch {
+        // Non-blocking — card still opens if tracking fails
+      }
+    },
+    [user?.name]
+  );
+
+  const handleViewCandidate = useCallback(
+    (candidate: ApiCandidate) => {
+      setSelectedCandidate(candidate);
+      setShowViewModal(true);
+      void recordCandidateViewed(candidate);
+    },
+    [recordCandidateViewed]
+  );
+
+  // Open drawer when ?id= is present in the URL
+  useEffect(() => {
+    const candidateId = searchParams.get('id');
+    if (candidateId && candidates.length > 0 && !loading) {
+      const candidate = candidates.find((c) => String(c.id) === candidateId);
+      if (candidate) {
+        setSelectedCandidate(candidate);
+        setShowViewModal(true);
+        void recordCandidateViewed(candidate);
+        setSearchParams({});
+      }
+    }
+  }, [searchParams, candidates, loading, setSearchParams, recordCandidateViewed]);
 
   const handleEditCandidate = useCallback((candidate: ApiCandidate) => {
     setEditingCandidate(candidate);
+    setShowAddModal(true);
+  }, []);
+
+  const handleAddCandidate = useCallback(() => {
+    setEditingCandidate(null);
     setShowAddModal(true);
   }, []);
 
@@ -318,27 +568,91 @@ export default function CandidatesNew() {
         const response = await candidatesAPI.updateCandidate(editing.id, candidateData);
         if (response.success) {
           setCandidates((prev) =>
-            prev.map((c) => (c.id === editing.id ? { ...c, ...candidateData } : c))
+            prev.map((c) =>
+              c.id === editing.id ? mergeCandidateUpdate(c, candidateData) : c
+            )
+          );
+          setSelectedCandidate((prev) =>
+            prev?.id === editing.id ? mergeCandidateUpdate(prev, candidateData) : prev
           );
           setEditingCandidate(null);
           setShowAddModal(false);
           setToast({ message: 'Candidate updated', type: 'success' });
         } else {
-          setToast({ message: 'Failed to update candidate', type: 'error' });
+          throw new Error(response.message || 'Failed to update candidate');
         }
       } else {
-        const response = await candidatesAPI.createCandidate(candidateData);
-        if (response.success) {
-          const res = await candidatesAPI.getCandidates({ limit: 200 });
-          if (res.success && res.data) setCandidates(res.data.candidates || []);
+        const applyCreatedCandidate = async (
+          response: Awaited<ReturnType<typeof candidatesAPI.createCandidate>>
+        ) => {
+          if (!response.success) {
+            throw new Error(response.message || 'Failed to create candidate');
+          }
+
+          const created =
+            response.data?.candidate ||
+            (response.data?.candidateId
+              ? (await candidatesAPI.getCandidateById(String(response.data.candidateId))).data?.candidate
+              : null);
+
+          if (created) {
+            const normalized = { ...created, stage: normalizeStageForDisplay(created.stage) };
+            setCandidates((prev) => [normalized, ...prev.filter((c) => c.id !== normalized.id)]);
+          } else {
+            const res = await candidatesAPI.getCandidates();
+            if (res.success && res.data) setCandidates(res.data.candidates || []);
+          }
+
+          setEditingCandidate(null);
           setShowAddModal(false);
-          setToast({ message: 'Candidate created', type: 'success' });
-        } else {
-          setToast({ message: 'Failed to create candidate', type: 'error' });
+          setToast({
+            message: response.data?.duplicateWarning
+              ? 'Candidate added (duplicate name/email was acknowledged)'
+              : 'Candidate created — check the Applied column',
+            type: 'success',
+          });
+        };
+
+        try {
+          await applyCreatedCandidate(await candidatesAPI.createCandidate({ ...candidateData }));
+        } catch (createErr: any) {
+          if (
+            createErr?.response?.status === 409 &&
+            createErr?.response?.data?.code === 'DUPLICATE_CANDIDATE'
+          ) {
+            const matches = createErr.response.data?.data?.matches || [];
+            const summary = matches
+              .slice(0, 3)
+              .map((m: { name: string; email?: string; position?: string; stage: string }) =>
+                `${m.name}${m.email ? ` (${m.email})` : ''} — ${m.position || 'No role'}, ${m.stage}`
+              )
+              .join('\n');
+            const proceed = window.confirm(
+              `Possible duplicate candidate(s) found:\n\n${summary}\n\nAdd this candidate anyway?`
+            );
+            if (!proceed) {
+              setToast({ message: 'Add cancelled — duplicate candidate exists', type: 'error' });
+              throw createErr;
+            }
+            await applyCreatedCandidate(
+              await candidatesAPI.createCandidate({ ...candidateData, forceDuplicate: true })
+            );
+          } else {
+            throw createErr;
+          }
         }
       }
-    } catch {
-      setToast({ message: 'Failed to save candidate', type: 'error' });
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        err?.response?.data?.errors?.[0]?.message ||
+        err?.response?.data?.errors?.[0]?.msg ||
+        err?.message ||
+        'Failed to save candidate';
+      if (!String(message).includes('cancelled')) {
+        setToast({ message, type: 'error' });
+      }
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -391,8 +705,9 @@ export default function CandidatesNew() {
         setToast({ message: 'Preparing download...', type: 'success' });
       }
 
+      const exportSearch = [globalSearchTerm, filters.search].map((s) => s.trim()).filter(Boolean).join(' ') || undefined;
       const exportResponse = await candidatesAPI.exportCandidates({
-        search: filters.search || undefined,
+        search: exportSearch,
         stage: filters.stages.length ? filters.stages : undefined,
         role: filters.role || undefined,
         location: filters.location || undefined,
@@ -408,7 +723,7 @@ export default function CandidatesNew() {
         format
       });
 
-      const dateStamp = new Date().toISOString().slice(0, 10);
+      const dateStamp = todayISTYMD();
       const fallback = `Candidates_Export_${dateStamp}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
       const contentDisposition = exportResponse.headers['content-disposition'] as string | undefined;
       const filename = getExportFilename(contentDisposition, fallback);
@@ -429,9 +744,30 @@ export default function CandidatesNew() {
     } finally {
       setExportLoading(false);
     }
-  }, [filteredCandidates.length, filters]);
+  }, [filteredCandidates.length, filters, globalSearchTerm]);
+
+  const kanbanMatchScrollEnabled = useMemo(() => {
+    if (debouncedGlobalSearch.trim() || debouncedFilterSearch.trim()) return true;
+    return Boolean(
+      filters.stages.length > 0 ||
+        filters.role ||
+        filters.location ||
+        filters.source ||
+        filters.experienceMin ||
+        filters.experienceMax ||
+        filters.expectedCtcMin ||
+        filters.expectedCtcMax ||
+        filters.currentCtcMin ||
+        filters.currentCtcMax ||
+        filters.immediateJoiner ||
+        filters.noticePeriod ||
+        filters.appliedDateFrom ||
+        filters.appliedDateTo
+    );
+  }, [debouncedGlobalSearch, debouncedFilterSearch, filters]);
 
   const activeFilterCount = [
+    globalSearchTerm.trim(),
     filters.search,
     filters.stages.length > 0,
     filters.role,
@@ -463,8 +799,14 @@ export default function CandidatesNew() {
   const getActiveFilterChips = () => {
     const chips: { label: string; onRemove: () => void }[] = [];
     
+    if (globalSearchTerm.trim()) {
+      chips.push({
+        label: `Search: "${globalSearchTerm.trim()}"`,
+        onRemove: () => setGlobalSearchTerm?.(''),
+      });
+    }
     if (filters.search) {
-      chips.push({ label: `Search: "${filters.search}"`, onRemove: () => setFilters({ ...filters, search: '' }) });
+      chips.push({ label: `Filter search: "${filters.search}"`, onRemove: () => setFilters({ ...filters, search: '' }) });
     }
     if (filters.stages.length > 0) {
       filters.stages.forEach(stage => {
@@ -494,7 +836,18 @@ export default function CandidatesNew() {
         onRemove: () => setFilters({ ...filters, appliedDateFrom: '', appliedDateTo: '' })
       });
     }
-    
+    if (filters.duplicateFilter !== 'all') {
+      const labels: Record<string, string> = {
+        flagged: 'Flagged duplicates',
+        merged: 'Merged profiles',
+        any: 'Merge / duplicate',
+      };
+      chips.push({
+        label: labels[filters.duplicateFilter] || filters.duplicateFilter,
+        onRemove: () => setFilters({ ...filters, duplicateFilter: 'all' }),
+      });
+    }
+
     return chips;
   };
 
@@ -529,7 +882,10 @@ export default function CandidatesNew() {
             </span>
           ))}
           <button
-            onClick={() => setFilters(DEFAULT_FILTERS)}
+            onClick={() => {
+              setFilters(DEFAULT_FILTERS);
+              setGlobalSearchTerm?.('');
+            }}
             className="text-xs text-gray-500 hover:text-gray-700 underline"
           >
             Clear all
@@ -543,6 +899,7 @@ export default function CandidatesNew() {
           stages={stages as unknown as string[]}
           candidatesByStage={candidatesByStage}
           onStageChange={handleStageChange}
+          onSubStageChange={handleSubStageChange}
           onCandidateClick={handleViewCandidate}
           onCandidateEdit={handleEditCandidate}
           onCandidateDelete={handleDeleteCandidate}
@@ -552,6 +909,7 @@ export default function CandidatesNew() {
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
+          matchScrollEnabled={kanbanMatchScrollEnabled}
         />
       </div>
 
@@ -582,63 +940,81 @@ export default function CandidatesNew() {
           )}
         </button>
 
-        {/* Export Button */}
-        <button
-          onClick={() => handleExport('excel')}
-          disabled={exportLoading}
-          className="w-14 h-14 bg-indigo-600 text-white rounded-full shadow-xl hover:shadow-2xl hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Export candidates"
-          style={{ boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' }}
-        >
-          <Download size={20} />
-        </button>
+        {/* Export Button - Hidden for HR Interns */}
+        {canExport && (
+          <button
+            onClick={() => handleExport('excel')}
+            disabled={exportLoading}
+            className="w-14 h-14 bg-indigo-600 text-white rounded-full shadow-xl hover:shadow-2xl hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export candidates"
+            style={{ boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' }}
+          >
+            <Download size={20} />
+          </button>
+        )}
+
+        {/* Add single candidate — primary FAB */}
+        {hasPermission('candidates', 'create') && (
+          <button
+            onClick={handleAddCandidate}
+            className="w-14 h-14 bg-red-600 text-white rounded-full shadow-xl hover:shadow-2xl hover:bg-red-700 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center"
+            title="Add candidate"
+            aria-label="Add candidate"
+            style={{ boxShadow: '0 10px 25px -5px rgba(220, 38, 38, 0.45)' }}
+          >
+            <UserPlus size={22} />
+          </button>
+        )}
       </div>
 
-      {/* Bulk Delete Action Bar — appears at bottom when in selection mode */}
+      {/* Bulk Delete Action Bar — main content only (not over sidebar) */}
       {selectionMode && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-2xl px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div
+          className="fixed bottom-0 right-0 z-30 bg-white border-t border-gray-200 shadow-lg px-4 py-2 flex items-center justify-between gap-3"
+          style={{ left: 'var(--sidebar-width, 16rem)' }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={handleExitSelectionMode}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors shrink-0"
               title="Exit selection mode"
             >
-              <X size={20} />
+              <X size={16} />
             </button>
-            <span className="text-sm font-semibold text-gray-700">
+            <span className="text-xs font-medium text-gray-700 truncate">
               {selectedIds.size > 0
                 ? `${selectedIds.size} candidate${selectedIds.size > 1 ? 's' : ''} selected`
                 : 'Click cards to select'}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleSelectAll}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
             >
-              <CheckSquare size={16} />
+              <CheckSquare size={14} />
               Select All ({filteredCandidates.length})
             </button>
             {selectedIds.size > 0 && (
               <button
                 onClick={handleClearSelection}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
               >
-                <Square size={16} />
+                <Square size={14} />
                 Clear
               </button>
             )}
             <button
               onClick={handleBulkDelete}
               disabled={selectedIds.size === 0 || bulkDeleting}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-md transition-colors"
             >
               {bulkDeleting ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Trash2 size={16} />
+                <Trash2 size={14} />
               )}
-              {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size > 0 ? selectedIds.size : ''}`}
+              {bulkDeleting ? 'Deleting...' : `Delete${selectedIds.size > 0 ? ` ${selectedIds.size}` : ''}`}
             </button>
           </div>
         </div>
@@ -651,14 +1027,18 @@ export default function CandidatesNew() {
         stages={stages as unknown as string[]}
         onClose={() => setFilterPanelOpen(false)}
         onChange={setFilters}
-        onReset={() => setFilters(DEFAULT_FILTERS)}
+        onReset={() => {
+          setFilters(DEFAULT_FILTERS);
+          setGlobalSearchTerm?.('');
+        }}
         hasCreatePermission={hasPermission('candidates', 'create')}
         onImport={() => setShowBulkImportModal(true)}
-        onAddCandidate={() => setShowAddModal(true)}
+        onAddCandidate={handleAddCandidate}
         totalCandidates={filteredCandidates.length}
         onExportExcel={() => handleExport('excel')}
         onExportPdf={() => handleExport('pdf')}
         exportLoading={exportLoading}
+        canExport={canExport}
       />
 
       {/* Modals */}
@@ -669,6 +1049,7 @@ export default function CandidatesNew() {
           onSubmit={handleUpdateCandidate}
           editingCandidate={editingCandidate}
           jobs={jobs}
+          onEditExisting={(candidate) => setEditingCandidate(candidate as ApiCandidate)}
         />
       )}
       {showBulkImportModal && (
@@ -683,6 +1064,11 @@ export default function CandidatesNew() {
           isOpen={showViewModal}
           onClose={() => { setShowViewModal(false); setSelectedCandidate(null); }}
           candidate={selectedCandidate}
+          onMerged={() => {
+            setShowViewModal(false);
+            setSelectedCandidate(null);
+            loadCandidates();
+          }}
           onEdit={(candidate) => {
             setShowViewModal(false);
             setSelectedCandidate(null);

@@ -132,8 +132,14 @@ export function startNotificationCron() {
         }
 
         const payload = JSON.stringify({
-          title: 'Interview Reminder',
-          body: `Interview with ${interview.candidate_name} at ${interview.time}`
+          title: '📅 Interview Reminder',
+          body: `Upcoming interview with ${interview.candidate_name} at ${interview.time}`,
+          icon:  '/icons/icon-192.png',
+          badge: '/icons/badge-72.png',
+          url:   '/interviews',
+          tag:   `interview-reminder-${interview.id}`,
+          type:  'interview_reminder',
+          timestamp: Date.now(),
         });
 
         for (const sub of subscriptions) {

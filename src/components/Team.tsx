@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   Plus,
   Search,
-  MoreVertical,
   Mail,
   CheckCircle,
   Clock,
@@ -15,7 +14,12 @@ import {
 import { TeamMember } from '../types';
 import { usersAPI, User, tasksAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { API_BASE_URL } from '../services/api';
+import {
+  filterTeamMembersForViewer,
+  isAdminRole,
+  isRecruiterRole,
+  shouldHideAdminTeamMembers,
+} from '../utils/roles';
 
 export default function Team() {
   const { hasPermission, user } = useAuth();
@@ -43,16 +47,33 @@ export default function Team() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const hideAdminMembers = shouldHideAdminTeamMembers(user?.role);
+
   useEffect(() => {
+    if (hideAdminMembers && roleFilter === 'Admin') {
+      setRoleFilter('All');
+    }
+  }, [hideAdminMembers, roleFilter]);
+
+  useEffect(() => {
+    if (!user) return;
+
     const loadData = async () => {
       try {
         setLoading(true);
 
-        // Load users
-        const usersResponse = await usersAPI.getUsers();
+        // Load users (exclude admins for recruiters on API + client)
+        const usersResponse = await usersAPI.getUsers({
+          limit: 100,
+          excludeAdmin: hideAdminMembers,
+        });
 
         if (usersResponse.success && usersResponse.data) {
-          setTeam(usersResponse.data.users);
+          const users = filterTeamMembersForViewer(
+            usersResponse.data.users ?? [],
+            user.role
+          );
+          setTeam(users);
         } else {
           setError('Failed to load team members');
         }
@@ -72,7 +93,7 @@ export default function Team() {
     };
 
     loadData();
-  }, []);
+  }, [user?.id, user?.role, hideAdminMembers]);
 
   // Task statistics
   const getActiveTasksForMember = (memberId: number) => {
@@ -91,9 +112,18 @@ export default function Team() {
     ).length;
   };
 
+  const isRecruiter = isRecruiterRole(user?.role);
+
+  // Recruiters must not see Admin accounts on the team page
+  const visibleTeam = filterTeamMembersForViewer(team, user?.role);
+
+  const roleFilterOptions = hideAdminMembers
+    ? ['All', 'Recruiter', 'HR Intern', 'Interviewer']
+    : ['All', 'Recruiter', 'HR Intern', 'Interviewer', 'Admin'];
+
   // Filtered team
   const filteredTeam =
-    team?.filter((member) => {
+    visibleTeam?.filter((member) => {
       const matchesSearch =
         (member.name || '')
           .toLowerCase()
@@ -159,17 +189,14 @@ export default function Team() {
 
   // Roles
   const getAvailableRoles = () => {
-    if (
-      user?.role === 'Admin' ||
-      user?.role === 'HR Manager'
-    ) {
+    if (user?.role === 'Admin') {
       return [
         'Admin',
-        'HR Manager',
         'Recruiter',
-        'Interviewer'
+        'Interviewer',
+        'HR Intern'
       ];
-    } else if (user?.role === 'Recruiter') {
+    } else if (isRecruiterRole(user?.role)) {
       return ['Interviewer'];
     }
 
@@ -188,7 +215,7 @@ export default function Team() {
       username: '',
       password: '',
       role:
-        user?.role === 'Recruiter'
+        isRecruiterRole(user?.role)
           ? 'Interviewer'
           : 'Recruiter',
       status: 'Active'
@@ -200,6 +227,10 @@ export default function Team() {
 
   // Edit member
   const handleEditMember = (member: User) => {
+    if (isRecruiter && isAdminRole(member.role)) {
+      return;
+    }
+
     setEditingMember(member as any);
 
     setMemberFormData({
@@ -297,7 +328,12 @@ export default function Team() {
             usersResponse.success &&
             usersResponse.data
           ) {
-            setTeam(usersResponse.data.users);
+            setTeam(
+              filterTeamMembersForViewer(
+                usersResponse.data.users ?? [],
+                user?.role
+              )
+            );
           }
         } else {
           setError('Failed to update team member');
@@ -306,29 +342,16 @@ export default function Team() {
 
       // Add new member
       else {
-        const registerData = {
+        const createData = {
           name: memberFormData.name,
           email: memberFormData.email,
           username: memberFormData.username,
           password: memberFormData.password,
-          role: memberFormData.role.toLowerCase()
+          role: memberFormData.role,
+          status: memberFormData.status
         };
 
-        const response = await fetch(
-          `${API_BASE_URL}/auth/register`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${localStorage.getItem(
-                'authToken'
-              )}`
-            },
-            body: JSON.stringify(registerData)
-          }
-        );
-
-        const result = await response.json();
+        const result = await usersAPI.createUser(createData);
 
         if (result.success) {
           setError('');
@@ -340,7 +363,12 @@ export default function Team() {
             usersResponse.success &&
             usersResponse.data
           ) {
-            setTeam(usersResponse.data.users);
+            setTeam(
+              filterTeamMembersForViewer(
+                usersResponse.data.users ?? [],
+                user?.role
+              )
+            );
           }
         } else {
           setError('Failed to add team member');
@@ -359,7 +387,7 @@ export default function Team() {
         username: '',
         password: '',
         role:
-          user?.role === 'Recruiter'
+          isRecruiterRole(user?.role)
             ? 'Interviewer'
             : 'Recruiter',
         status: 'Active'
@@ -439,21 +467,11 @@ export default function Team() {
               }
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="All">
-                All Roles
-              </option>
-
-              <option value="Recruiter">
-                Recruiter
-              </option>
-
-              <option value="HR Manager">
-                HR Manager
-              </option>
-
-              <option value="Admin">
-                Admin
-              </option>
+              {roleFilterOptions.map((role) => (
+                <option key={role} value={role}>
+                  {role === 'All' ? 'All Roles' : role}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -577,7 +595,410 @@ export default function Team() {
         </>
       )}
 
-      {/* Add/Edit Modals can stay same */}
+      {/* Add Member Modal */}
+      {showAddMemberModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Add New Team Member</h2>
+              <button
+                onClick={() => {
+                  setShowAddMemberModal(false);
+                  setErrors({});
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={memberFormData.name}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        name: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.name
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Enter full name"
+                  />
+                  {errors.name && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.name}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={memberFormData.email}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        email: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.email
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="member@company.com"
+                  />
+                  {errors.email && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.email}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Username *
+                  </label>
+                  <input
+                    type="text"
+                    value={memberFormData.username}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        username: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.username
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="username"
+                  />
+                  {errors.username && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.username}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={memberFormData.password}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        password: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.password
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Enter password"
+                  />
+                  {errors.password && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.password}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Role
+                  </label>
+                  <select
+                    value={memberFormData.role}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        role: e.target.value
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {roles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                  </label>
+                  <select
+                    value={memberFormData.status}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        status: e.target.value
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {statuses.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowAddMemberModal(false);
+                  setErrors({});
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitMember}
+                disabled={loading}
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                  loading
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                <Save size={16} />
+                <span>{loading ? 'Adding...' : 'Add Member'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Member Modal */}
+      {showEditMemberModal && editingMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Edit Team Member</h2>
+              <button
+                onClick={() => {
+                  setShowEditMemberModal(false);
+                  setEditingMember(null);
+                  setErrors({});
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={memberFormData.name}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        name: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.name
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Enter full name"
+                  />
+                  {errors.name && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.name}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={memberFormData.email}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        email: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.email
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="member@company.com"
+                  />
+                  {errors.email && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.email}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Username *
+                  </label>
+                  <input
+                    type="text"
+                    value={memberFormData.username}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        username: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.username
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="username"
+                  />
+                  {errors.username && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.username}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    New Password{' '}
+                    <span className="text-gray-400 font-normal">
+                      (leave blank to keep current)
+                    </span>
+                  </label>
+                  <input
+                    type="password"
+                    value={memberFormData.password}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        password: e.target.value
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.password
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Enter new password to change it"
+                  />
+                  {errors.password && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.password}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Role
+                  </label>
+                  <select
+                    value={memberFormData.role}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        role: e.target.value
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {roles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                  </label>
+                  <select
+                    value={memberFormData.status}
+                    onChange={(e) =>
+                      setMemberFormData((prev) => ({
+                        ...prev,
+                        status: e.target.value
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {statuses.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowEditMemberModal(false);
+                  setEditingMember(null);
+                  setErrors({});
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitMember}
+                disabled={loading}
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                  loading
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                <Save size={16} />
+                <span>{loading ? 'Saving...' : 'Save Changes'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

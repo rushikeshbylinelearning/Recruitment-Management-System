@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../services/api';
-import { Plus, Edit2, Trash2, Copy, Eye, Settings, BarChart3, ExternalLink, Link, RefreshCw, X, CheckCircle, XCircle } from 'lucide-react';
-import FormBuilderModal from './FormBuilderModal';
+import { Plus, Trash2, Copy, Settings, ExternalLink, Link, RefreshCw, X, CheckCircle, XCircle, Pencil } from 'lucide-react';
+import FormBuilderModal, { type FormToEdit } from './FormBuilderModal';
 import FormFieldEditor from './FormFieldEditor';
-
-// Base URL for the frontend app — used to build shareable form links
-const APP_URL = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
-
-if (import.meta.env.DEV) {
-  console.log('APP_URL (FormBuilder):', APP_URL);
-}
+import { useAuth } from '../contexts/AuthContext';
+import {
+  generatePublicFormUrl,
+  generateLegacyApplyUrl,
+  generateLegacyTokenApplyUrl,
+  ensurePublicPortalUrl,
+} from '../utils/publicUrls';
 
 interface Form {
   id: string | number;
@@ -21,6 +21,7 @@ interface Form {
   access_token: string;
   token_validity_hours: number;
   token_expires_at: string;
+  job_id: number | null;
   job_title: string | null;
   created_by_name: string;
   submission_count: number;
@@ -37,11 +38,30 @@ interface ShareLink {
   id: number;
   token: string;
   link: string;
+  shortCode?: string | null;
+  routePrefix?: string;
+  legacyLink?: string;
   created_at: string;
   expires_at: string | null;
   used_count: number;
   is_active: boolean;
 }
+
+const buildShareApplyUrl = (slug: string, shareToken: string) =>
+  generateLegacyApplyUrl(slug, shareToken);
+
+const buildShortUrl = (routePrefix: string, shortCode: string) =>
+  generatePublicFormUrl(shortCode, routePrefix);
+
+const normalizeShareLink = (slug: string, raw: ShareLink): ShareLink => ({
+  ...raw,
+  link: ensurePublicPortalUrl(
+    raw.shortCode && raw.routePrefix
+      ? buildShortUrl(raw.routePrefix, raw.shortCode)
+      : raw.link || (raw.token ? buildShareApplyUrl(slug, raw.token) : '')
+  ),
+  legacyLink: raw.legacyLink || (raw.token ? buildShareApplyUrl(slug, raw.token) : undefined),
+});
 
 const normalizeForm = (rawForm: any): Form => ({
   ...rawForm,
@@ -56,9 +76,12 @@ const hasValidFormId = (id: string | number | undefined | null): boolean => {
 };
 
 const FormBuilder: React.FC = () => {
+  const { user } = useAuth();
+  const isIntern = user?.role === 'HR Intern';
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingForm, setEditingForm] = useState<FormToEdit | null>(null);
   const [selectedForm, setSelectedForm] = useState<SelectedForm | null>(null);
   const [showFieldEditor, setShowFieldEditor] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | number | null>(null);
@@ -66,12 +89,14 @@ const FormBuilder: React.FC = () => {
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
   const [shareLinksLoading, setShareLinksLoading] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadForms();
   }, []);
 
   const loadForms = async () => {
+    setLoadError(null);
     try {
       const token = localStorage.getItem('authToken');
       const response = await axios.get(`${API_BASE_URL}/form-builder/forms`, {
@@ -79,11 +104,33 @@ const FormBuilder: React.FC = () => {
       });
       const normalizedForms: Form[] = (response?.data?.data?.forms || []).map(normalizeForm);
       setForms(normalizedForms);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load forms:', error);
+      const message =
+        axios.isAxiosError(error) && error.response?.data?.message
+          ? String(error.response.data.message)
+          : 'Could not load forms. Please refresh or contact support.';
+      setLoadError(message);
+      setForms([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const openEditModal = (form: Form) => {
+    if (!hasValidFormId(form?.id)) {
+      alert('This form has an invalid ID. Please refresh and try again.');
+      return;
+    }
+    setEditingForm({
+      id: form.id,
+      name: form.name,
+      slug: form.slug,
+      description: form.description,
+      job_id: form.job_id,
+      token_validity_hours: form.token_validity_hours,
+      token_expires_at: form.token_expires_at
+    });
   };
 
   const openFieldEditor = (form: Form) => {
@@ -128,6 +175,19 @@ const FormBuilder: React.FC = () => {
   };
 
   const copyFormLink = async (form: Form) => {
+    const applyUrl = generateLegacyTokenApplyUrl(form.slug, form.access_token);
+    if (isIntern) {
+      try {
+        await navigator.clipboard.writeText(applyUrl);
+        setCopiedToken(form.id);
+        setTimeout(() => setCopiedToken(null), 2000);
+      } catch (err) {
+        console.error('Failed to copy link:', err);
+        alert('Could not copy link to clipboard');
+      }
+      return;
+    }
+
     try {
       const authToken = localStorage.getItem('authToken');
       const response = await axios.post(
@@ -135,7 +195,15 @@ const FormBuilder: React.FC = () => {
         {},
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
-      const link = response.data?.data?.link;
+      const data = response.data?.data;
+      const link = ensurePublicPortalUrl(
+        data?.link ||
+        (data?.shortCode && data?.routePrefix
+          ? buildShortUrl(data.routePrefix, data.shortCode)
+          : data?.shareToken
+            ? buildShareApplyUrl(form.slug, data.shareToken)
+            : '')
+      );
       if (link) {
         console.log('Generated share link:', link);
         await navigator.clipboard.writeText(link);
@@ -145,7 +213,7 @@ const FormBuilder: React.FC = () => {
     } catch (error) {
       console.error('Failed to generate share link:', error);
       // Fallback: build the link client-side using the correct frontend base URL
-      const link = `${APP_URL}/apply/${form.slug}?token=${form.access_token}`;
+      const link = applyUrl;
       console.log('Fallback share link:', link);
       navigator.clipboard.writeText(link);
       setCopiedToken(form.id);
@@ -153,23 +221,41 @@ const FormBuilder: React.FC = () => {
     }
   };
 
-  const regenerateToken = async (formId: string | number) => {
-    if (!confirm('Are you sure you want to regenerate the access token? The old link will stop working.')) {
+  const previewForm = async (form: Form) => {
+    const fallbackUrl = generateLegacyTokenApplyUrl(form.slug, form.access_token);
+    if (isIntern) {
+      window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
       return;
     }
-
     try {
-      const token = localStorage.getItem('authToken');
-      await axios.post(
-        `${API_BASE_URL}/form-builder/forms/${formId}/regenerate-token`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      const authToken = localStorage.getItem('authToken');
+      const listRes = await axios.get(
+        `${API_BASE_URL}/form-builder/forms/${form.id}/share-links`,
+        { headers: { Authorization: `Bearer ${authToken}` } }
       );
-      loadForms();
-      alert('Access token regenerated successfully');
+      const existing = (listRes.data?.data?.links || []).find(
+        (l: ShareLink) => l.is_active && (l.shortCode || l.link)
+      );
+      if (existing) {
+        const normalized = normalizeShareLink(form.slug, existing);
+        window.open(normalized.link, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const response = await axios.post(
+        `${API_BASE_URL}/form-builder/forms/${form.id}/generate-share-link`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      const data = response.data?.data;
+      const url = ensurePublicPortalUrl(
+        data?.shortCode && data?.routePrefix
+          ? buildShortUrl(data.routePrefix, data.shortCode)
+          : data?.link || fallbackUrl
+      );
+      window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      console.error('Failed to regenerate token:', error);
-      alert('Failed to regenerate token');
+      console.error('Failed to open preview:', error);
+      window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -182,7 +268,8 @@ const FormBuilder: React.FC = () => {
         `${API_BASE_URL}/form-builder/forms/${form.id}/share-links`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setShareLinks(response.data?.data?.links || []);
+      const rawLinks: ShareLink[] = response.data?.data?.links || [];
+      setShareLinks(rawLinks.map(l => normalizeShareLink(form.slug, l)));
     } catch (error) {
       console.error('Failed to load share links:', error);
       setShareLinks([]);
@@ -217,17 +304,26 @@ const FormBuilder: React.FC = () => {
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
       const newLink = response.data?.data;
-      if (newLink) {
+      if (newLink?.shareToken || newLink?.link) {
+        const link = ensurePublicPortalUrl(
+          newLink.link ||
+          (newLink.shortCode && newLink.routePrefix
+            ? buildShortUrl(newLink.routePrefix, newLink.shortCode)
+            : buildShareApplyUrl(manageLinksForm.slug, newLink.shareToken))
+        );
         setShareLinks(prev => [{
-          id: Date.now(), // temp id until refresh
+          id: Date.now(),
           token: newLink.shareToken,
-          link: newLink.link,
+          link,
+          shortCode: newLink.shortCode,
+          routePrefix: newLink.routePrefix,
+          legacyLink: newLink.legacyLink,
           created_at: new Date().toISOString(),
           expires_at: null,
           used_count: 0,
           is_active: true
         }, ...prev]);
-        await navigator.clipboard.writeText(newLink.link);
+        await navigator.clipboard.writeText(link);
         setCopiedToken(manageLinksForm.id);
         setTimeout(() => setCopiedToken(null), 2000);
       }
@@ -257,31 +353,56 @@ const FormBuilder: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Form Builder</h1>
-          <p className="text-gray-600 mt-1">Create and manage custom candidate intake forms</p>
+          <p className="text-gray-600 mt-1">
+            {isIntern
+              ? 'View active intake forms and copy the public apply link.'
+              : 'Create and manage custom candidate intake forms'}
+          </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          Create New Form
-        </button>
+        {!isIntern && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            Create New Form
+          </button>
+        )}
       </div>
 
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {loadError}
+          <button
+            type="button"
+            onClick={() => { setLoading(true); loadForms(); }}
+            className="ml-3 font-medium underline hover:no-underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Forms Grid */}
-      {forms.length === 0 ? (
+      {!loadError && forms.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
           <div className="text-gray-400 text-5xl mb-4">📝</div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No forms yet</h3>
-          <p className="text-gray-600 mb-4">Create your first candidate intake form to get started</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Create Form
-          </button>
+          <p className="text-gray-600 mb-4">
+            {isIntern
+              ? 'Ask an admin or recruiter to publish a form. You can copy its apply link when it appears here.'
+              : 'Create your first candidate intake form to get started'}
+          </p>
+          {!isIntern && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Create Form
+            </button>
+          )}
         </div>
-      ) : (
+      ) : !loadError ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {forms.map(form => (
             <div key={form.id} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
@@ -307,6 +428,11 @@ const FormBuilder: React.FC = () => {
                     {form.job_title}
                   </div>
                 )}
+                {form.token_expires_at && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Link expires: {new Date(form.token_expires_at).toLocaleString()}
+                  </p>
+                )}
               </div>
 
               {/* Stats */}
@@ -326,7 +452,7 @@ const FormBuilder: React.FC = () => {
                 <button
                   onClick={() => copyFormLink(form)}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
-                  title="Copy form link"
+                  title="Copy apply link"
                 >
                   {copiedToken === form.id ? (
                     <>✓ Copied</>
@@ -337,54 +463,74 @@ const FormBuilder: React.FC = () => {
                     </>
                   )}
                 </button>
-                <button
-                  onClick={() => openManageLinks(form)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-50 text-purple-700 rounded hover:bg-purple-100 transition-colors"
-                  title="Manage share links"
-                >
-                  <Link size={14} />
-                  Manage Links
-                </button>
-                <button
-                  onClick={() => openFieldEditor(form)}
-                  disabled={!hasValidFormId(form?.id)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-                  title="Edit fields"
-                >
-                  <Settings size={14} />
-                  Fields
-                </button>
-                <button
-                  onClick={() => window.open(`${APP_URL}/apply/${form.slug}?token=${form.access_token}`, '_blank')}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-                  title="Preview form"
-                >
-                  <ExternalLink size={14} />
-                  Preview
-                </button>
-                <button
-                  onClick={() => handleToggleActive(form)}
-                  className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded transition-colors ${
-                    form.is_active
-                      ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
-                      : 'bg-green-50 text-green-700 hover:bg-green-100'
-                  }`}
-                >
-                  {form.is_active ? 'Deactivate' : 'Activate'}
-                </button>
-                <button
-                  onClick={() => handleDeleteForm(form.id)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors"
-                  title="Delete form"
-                >
-                  <Trash2 size={14} />
-                  Delete
-                </button>
+                {!isIntern && (
+                  <button
+                    onClick={() => openEditModal(form)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 transition-colors"
+                    title="Edit form name, description, expiry, and job link"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </button>
+                )}
+                {!isIntern && (
+                  <button
+                    onClick={() => openManageLinks(form)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-50 text-purple-700 rounded hover:bg-purple-100 transition-colors"
+                    title="Manage share links"
+                  >
+                    <Link size={14} />
+                    Manage Links
+                  </button>
+                )}
+                {!isIntern && (
+                  <button
+                    onClick={() => openFieldEditor(form)}
+                    disabled={!hasValidFormId(form?.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                    title="Edit fields"
+                  >
+                    <Settings size={14} />
+                    Fields
+                  </button>
+                )}
+                {!isIntern && (
+                  <button
+                    onClick={() => previewForm(form)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                    title="Preview form"
+                  >
+                    <ExternalLink size={14} />
+                    Preview
+                  </button>
+                )}
+                {!isIntern && (
+                  <button
+                    onClick={() => handleToggleActive(form)}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded transition-colors ${
+                      form.is_active
+                        ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+                        : 'bg-green-50 text-green-700 hover:bg-green-100'
+                    }`}
+                  >
+                    {form.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                )}
+                {!isIntern && (
+                  <button
+                    onClick={() => handleDeleteForm(form.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors"
+                    title="Delete form"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Modals */}
       {showCreateModal && (
@@ -392,6 +538,17 @@ const FormBuilder: React.FC = () => {
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
             setShowCreateModal(false);
+            loadForms();
+          }}
+        />
+      )}
+
+      {editingForm && (
+        <FormBuilderModal
+          formToEdit={editingForm}
+          onClose={() => setEditingForm(null)}
+          onSuccess={() => {
+            setEditingForm(null);
             loadForms();
           }}
         />

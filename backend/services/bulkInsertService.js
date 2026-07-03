@@ -15,11 +15,7 @@ import {
   getCandidateKey,
 } from './roleMatchingService.js';
 import { detectStage, getLegacyStage } from './stageMappingService.js';
-
-// SYSTEM_USER_ID is used as the author_id for bulk-imported notes.
-// It must be a valid user ID that exists in your users table.
-// Change this to match your actual system/admin user UUID or integer ID.
-const BULK_IMPORT_AUTHOR_ID = null; // null = no author (author_id allows NULL)
+import { insertHrNote, resolveHrNoteAuthorId } from './hrNotesSyncService.js';
 
 // Configuration
 const DEFAULT_BATCH_SIZE = 250;
@@ -64,7 +60,7 @@ async function insertCandidates(candidates, batchSize = DEFAULT_BATCH_SIZE, prog
   const jobIdOverride = options.jobId ? Number(options.jobId) : null;
   // authorId is used when inserting hr_notes for bulk-uploaded candidates.
   // Pass the logged-in user's ID here so notes are attributed to the importer.
-  const authorId = options.authorId || BULK_IMPORT_AUTHOR_ID;
+  const authorId = await resolveHrNoteAuthorId(options.authorId);
   const { lookupMap: jobLookupMap, matchResults, jobs } = await buildJobSegregationMap(candidates, jobIdOverride);
 
   // Process in batches
@@ -197,7 +193,7 @@ async function insertBatch(batch, startIndex, jobIdOverride = null, jobLookupMap
 
       const matchInfo = matchResults.get(candidateKey) || null;
 
-      const rowData = prepareRowData(systemId, candidate.normalized, resolvedJobId);
+      const rowData = prepareRowData(systemId, candidate.normalized, resolvedJobId, authorId);
       insertData.push(rowData);
 
       candidateMap.set(systemId, {
@@ -235,7 +231,7 @@ async function insertBatch(batch, startIndex, jobIdOverride = null, jobLookupMap
         }));
 
       if (notesInsertData.length > 0) {
-        await insertBulkNotes(notesInsertData);
+        await insertBulkNotes(notesInsertData, authorId);
       }
       // ── END FIX ──
 
@@ -277,7 +273,7 @@ async function insertBatch(batch, startIndex, jobIdOverride = null, jobLookupMap
  * @param {number|null} jobId - Optional job_id override
  * @returns {Object} Row data ready for insertion
  */
-function prepareRowData(systemId, normalized, jobId = null) {
+function prepareRowData(systemId, normalized, jobId = null, uploadedBy = null) {
   // Sanitize work_preference to only accepted ENUM values
   const WORK_PREF_ENUM = ['Onsite', 'WFH', 'Hybrid'];
   let workPref = null;
@@ -323,6 +319,7 @@ function prepareRowData(systemId, normalized, jobId = null) {
   
   // CRITICAL: Extract color from CANDIDATE NAME column ONLY
   // Common name column headers: "Name", "Candidate Name", "Full Name", "Candidate", etc.
+  // Also handles lowercase and mixed-case variants.
   const nameCellColor = cellColors['Name'] || 
                         cellColors['Candidate Name'] || 
                         cellColors['Full Name'] ||
@@ -331,6 +328,8 @@ function prepareRowData(systemId, normalized, jobId = null) {
                         cellColors['candidate name'] ||
                         cellColors['full name'] ||
                         cellColors['candidate'] ||
+                        cellColors['CANDIDATE NAME'] ||
+                        cellColors['NAME'] ||
                         null;
 
   // Call stage detection service with NAME cell color
@@ -384,6 +383,8 @@ function prepareRowData(systemId, normalized, jobId = null) {
     in_house_assignment_status: ihaStatus,
     assignment_location: normalized.assignment_location || null,
     resume_location: normalized.resume_location || normalized.resume || null,
+    // Track who uploaded this candidate to the portal
+    uploaded_by: uploadedBy || null,
     // Store stage detection metadata for debugging/logging
     __stageConfidence: stageConfidence,
     __detectionMethod: detectionMethod,
@@ -399,26 +400,17 @@ function prepareRowData(systemId, normalized, jobId = null) {
  * @param {Array<{candidateId: string, stage: string, noteText: string}>} notesData
  * @returns {Promise<void>}
  */
-async function insertBulkNotes(notesData) {
+async function insertBulkNotes(notesData, authorId) {
   if (!notesData || notesData.length === 0) return;
 
   for (const note of notesData) {
-    try {
-      await db.query(
-        `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
-        [
-          note.candidateId,
-          note.stage || 'Applied',
-          note.noteText,
-          'Bulk Import',
-          note.authorId || BULK_IMPORT_AUTHOR_ID,
-        ]
-      );
-    } catch (err) {
-      // Log but don't fail the entire import if a note insert fails
-      console.error(`[bulkInsertService] Failed to insert hr_note for candidate ${note.candidateId}:`, err.message);
-    }
+    await insertHrNote({
+      candidateId: note.candidateId,
+      noteText: note.noteText,
+      stage: note.stage || 'Applied',
+      authorId: note.authorId ?? authorId,
+      interactionType: 'General Note',
+    });
   }
 }
 

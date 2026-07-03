@@ -1,0 +1,79 @@
+{
+  "fixedCardTitleToCategoryKey": {
+    "Sales and Marketing": "SALES_AND_MARKETING",
+    "Animators": "ANIMATORS",
+    "Graphic Designer": "GRAPHIC_DESIGN",
+    "Full Stack Developer": "FULL_STACK_DEVELOPER",
+    "Content Writers": "CONTENT_WRITERS",
+    "Instructional Designers": "INSTRUCTIONAL_DESIGNERS",
+    "Digital Marketing": "DIGITAL_MARKETING",
+    "Human Resource": "HUMAN_RESOURCE",
+    "IT": "IT",
+    "Project Coordinators": "PROJECT_COORDINATORS"
+  },
+  "categories": {
+    "SALES_AND_MARKETING": [
+      "Sales and Marketing",
+      "Sales & Marketing",
+      "Sales",
+      "Business Development Executive",
+      "International sales",
+      "LinkedIn Profile Sales",
+      "Intern & Fresher Sales/Marketing",
+      "Sales Executive",
+      "Business Development",
+      "Marketing Executive",
+      "Inside Sales",
+      "B2B Sales"
+    ],
+    "ANIMATORS": ["Animator", "Animators"],
+    "GRAPHIC_DESIGN": ["Graphic Designer", "Visualizer"],
+    "FULL_STACK_DEVELOPER": [
+      "Full Stack Developer",
+      "Senior - Full Stack Developer",
+      "Senior Full Stack Developer"
+    ],
+    "CONTENT_WRITERS": [
+      "Content Writer",
+      "Content Writers",
+      "Content Writter"
+    ],
+    "INSTRUCTIONAL_DESIGNERS": [
+      "Instructional Designer",
+      "Instructional Designers",
+      "Instructional Content Writer",
+      "Instructional Content Writers",
+      "Instructional Content Writter"
+    ],
+    "DIGITAL_MARKETING": [
+      "Digital Marketing Executive",
+      "Digital Marketing"
+    ],
+    "HUMAN_RESOURCE": [
+      "HR Executive",
+      "HR Executive & Operations",
+      "Human Resource",
+      "Human Resources",
+      "HR",
+      "Recruiter",
+      "Talent Acquisition",
+      "People Operations"
+    ],
+    "IT": [
+      "Full Stack Developer",
+      "Senior - Full Stack Developer",
+      "Senior Full Stack Developer",
+      "Senior IT",
+      "IT",
+      "Intern/Fresher",
+      "Intern & Fresher",
+      "E-Learning Developer",
+      "LinkedIn Profiles IT",
+      "Linkedin Profiles IT"
+    ],
+    "PROJECT_COORDINATORS": [
+      "Project Coordinator",
+      "Project Manager/Coordinator"
+    ]
+  }
+}

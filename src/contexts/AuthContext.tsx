@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { authAPI, User as ApiUser } from '../services/api';
-import { requestPermission, subscribeToPush } from '../services/notificationService';
+import { requestPermission, subscribeToPush, listenForResubscription } from '../services/notificationService';
 
 interface AuthContextType {
   user: User | null;
@@ -35,6 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Failed to check service worker registrations:', err);
       });
     }
+
+    // Listen for push key-rotation messages from SW (fire-and-forget)
+    const cleanup = listenForResubscription();
+    return cleanup;
   }, []);
 
   // Request notification permission and subscribe to push when user is authenticated

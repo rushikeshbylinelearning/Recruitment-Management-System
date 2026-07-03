@@ -1,13 +1,61 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background-color: #fafafa; color-scheme: light;">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>Recruitment Management System</title>
+    <!-- Prevent white flash on page load by setting background color early -->
+    <script>
+      // Check for dark mode preference BEFORE page renders (body may not exist yet — script runs in head)
+      (function () {
+        const isDarkMode = localStorage.getItem('darkMode') === 'true' ||
+          (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        const bg = isDarkMode ? '#0a0a0a' : '#fafafa';
+        const root = document.documentElement;
+        root.style.backgroundColor = bg;
+        root.style.colorScheme = isDarkMode ? 'dark' : 'light';
+        if (isDarkMode) root.classList.add('dark');
+        function applyBodyBg() {
+          if (document.body) document.body.style.backgroundColor = bg;
+        }
+        applyBodyBg();
+        if (!document.body) {
+          document.addEventListener('DOMContentLoaded', applyBodyBg);
+        }
+      })();
+    </script>
+    <style>
+      /* Ensure body background is set before any content renders */
+      html {
+        background-color: #fafafa;
+        color-scheme: light;
+      }
+      html.dark {
+        background-color: #0a0a0a;
+        color-scheme: dark;
+      }
+      body {
+        background-color: #fafafa;
+        margin: 0;
+        padding: 0;
+      }
+      html.dark body {
+        background-color: #0a0a0a;
+      }
+      #root {
+        background-color: #fafafa;
+      }
+      html.dark #root {
+        background-color: #0a0a0a;
+      }
+    </style>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background-color: #fafafa; margin: 0; padding: 0;">
+    <div id="root" style="background-color: #fafafa;"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

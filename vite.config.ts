@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ['lucide-react'],
+    // Pre-bundle lucide-react so dev does not fetch one HTTP request per icon module.
+    include: ['lucide-react'],
   },
   server: {
     proxy: {

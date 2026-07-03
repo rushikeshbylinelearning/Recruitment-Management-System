@@ -1,4 +1,5 @@
 import express from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { query, transaction } from '../config/database.js';
 import { authenticateToken, checkPermission } from '../middleware/auth.js';
 import { validateCandidate, validateCandidatePartial, validateId, validateUUID, validatePagination, handleValidationErrors } from '../middleware/validation.js';
@@ -8,8 +9,144 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
 import { createNotification } from '../services/inAppNotifications.js';
+import {
+  loadJobCardCategoryMapping,
+  filterDistinctPositionsForFixedCard,
+  getAllowedFixedCardTitles,
+} from '../services/jobCardCategoryAggregation.js';
+import {
+  ensureCandidateNotesSynced,
+  buildNotesMapForCandidates,
+  fetchHrNotesForCandidate,
+  normalizeInteractionType,
+  normalizeNoteStage,
+} from '../services/hrNotesSyncService.js';
+import { toISTYMD, isISTDateInInclusiveRange, todayISTYMD } from '../utils/istDate.js';
+import { normalizeStageForDb } from '../utils/candidateStage.js';
+import { mapCandidateCardViewFields } from '../utils/candidateCardView.js';
+import { ensureCandidateViewSchema } from '../services/ensureCandidateViewSchema.js';
+import {
+  mapCandidateDuplicateFields,
+  ensureCandidateDuplicateColumns,
+} from '../services/duplicateCandidateService.js';
+import {
+  previewMerge,
+  executeMerge,
+  getMergeHistory,
+  getResumeHistory,
+  getCandidateTimeline,
+  getCandidatePositions,
+} from '../services/candidateMergeService.js';
+import { MERGE_STRATEGIES } from '../services/candidateReconciliationEngine.js';
+import { normalizePhone } from '../utils/contactNormalizer.js';
+import { pickPrimaryForDuplicate } from '../services/candidateMatchService.js';
+
+const CANDIDATE_DUPLICATE_JOIN = `
+  LEFT JOIN candidates dup_primary ON c.duplicate_of_candidate_id = dup_primary.id`;
+
+const CANDIDATE_DUPLICATE_SELECT = `,
+  dup_primary.name AS duplicate_primary_name,
+  dup_primary.email AS duplicate_primary_email,
+  dup_primary.stage AS duplicate_primary_stage`;
 
 const router = express.Router();
+
+router.use(asyncHandler(async (req, res, next) => {
+  await ensureCandidateViewSchema();
+  next();
+}));
+
+async function findDuplicateCandidates({ name, email, phone, excludeId = null }) {
+  const seen = new Set();
+  const matches = [];
+
+  const pushRows = (rows) => {
+    for (const row of rows) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        matches.push(row);
+      }
+    }
+  };
+
+  const trimmedName = name ? String(name).trim() : '';
+  if (trimmedName) {
+    const nameRows = await query(
+      `SELECT id, name, email, phone, position, stage, created_at, is_flagged_duplicate
+       FROM candidates
+       WHERE id IS NOT NULL AND TRIM(id) != ''
+         AND LOWER(TRIM(name)) = LOWER(TRIM(?))
+       ${excludeId ? 'AND id != ?' : ''}
+       ORDER BY created_at ASC
+       LIMIT 10`,
+      excludeId ? [trimmedName, excludeId] : [trimmedName]
+    );
+    pushRows(nameRows);
+  }
+
+  const firstEmail = email
+    ? String(email).split(',')[0].trim().toLowerCase()
+    : '';
+  if (firstEmail) {
+    const emailRows = await query(
+      `SELECT id, name, email, phone, position, stage, created_at, is_flagged_duplicate
+       FROM candidates
+       WHERE id IS NOT NULL AND TRIM(id) != ''
+         AND email IS NOT NULL
+         AND TRIM(email) != ''
+         AND LOWER(TRIM(SUBSTRING_INDEX(email, ',', 1))) = ?
+       ${excludeId ? 'AND id != ?' : ''}
+       ORDER BY created_at ASC
+       LIMIT 10`,
+      excludeId ? [firstEmail, excludeId] : [firstEmail]
+    );
+    pushRows(emailRows);
+  }
+
+  const normalizedPhone = phone ? normalizePhone(phone) : null;
+  if (normalizedPhone) {
+    const phoneRows = await query(
+      `SELECT id, name, email, phone, position, stage, created_at, is_flagged_duplicate
+       FROM candidates
+       WHERE id IS NOT NULL AND TRIM(id) != ''
+         AND phone IS NOT NULL
+         AND TRIM(phone) != ''
+         AND RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', ''), 10) = ?
+       ${excludeId ? 'AND id != ?' : ''}
+       ORDER BY created_at ASC
+       LIMIT 10`,
+      excludeId ? [normalizedPhone, excludeId] : [normalizedPhone]
+    );
+    pushRows(phoneRows);
+  }
+
+  matches.sort(
+    (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+  );
+
+  return matches;
+}
+
+async function loadCandidateForResponse(candidateId) {
+  const rows = await query(
+    `SELECT c.*, u.name as assigned_to_name, uploader.name as uploaded_by_name
+     FROM candidates c
+     LEFT JOIN users u ON c.assigned_to = u.id
+     LEFT JOIN users uploader ON c.uploaded_by = uploader.id
+     WHERE c.id = ?`,
+    [candidateId]
+  );
+  if (!rows.length) return null;
+
+  const candidate = rows[0];
+  await ensureCandidateNotesSynced(candidateId, {
+    authorId: null,
+    stage: candidate.stage,
+  });
+  const notesMap = await buildNotesMapForCandidates([candidateId]);
+  finalizeCandidateList([candidate], notesMap);
+  return candidate;
+}
 
 const EXPORT_HEADERS = [
   'Name',
@@ -33,13 +170,9 @@ const parseNumber = (value) => {
   return Number.isNaN(num) ? null : num;
 };
 
-const getDateStamp = () => new Date().toISOString().slice(0, 10);
+const getDateStamp = () => todayISTYMD();
 
-const formatDate = (dateLike) => {
-  if (!dateLike) return '';
-  const d = new Date(dateLike);
-  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
-};
+const formatDate = (dateLike) => toISTYMD(dateLike);
 
 const normalizeDateInput = (value) => {
   if (!value) return '';
@@ -60,7 +193,7 @@ const normalizeDateInput = (value) => {
 
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 10);
+  return toISTYMD(parsed);
 };
 
 const buildFilterSummary = (filters) => {
@@ -122,27 +255,120 @@ const applyExportFilters = (candidates, filters) => {
     if (minCTC !== null && (expectedCtc === null || expectedCtc < minCTC)) return false;
     if (maxCTC !== null && (expectedCtc === null || expectedCtc > maxCTC)) return false;
 
-    const appliedDate = formatDate(candidate.applied_date);
-    if (filters.startDate) {
-      if (!appliedDate) return false;
-      const candidateDate = new Date(`${appliedDate}T00:00:00`);
-      const startDate = new Date(`${filters.startDate}T00:00:00`);
-      if (Number.isNaN(candidateDate.getTime()) || Number.isNaN(startDate.getTime()) || candidateDate < startDate) {
-        return false;
-      }
-    }
-    if (filters.endDate) {
-      if (!appliedDate) return false;
-      const candidateDate = new Date(`${appliedDate}T00:00:00`);
-      const endDate = new Date(`${filters.endDate}T23:59:59`);
-      if (Number.isNaN(candidateDate.getTime()) || Number.isNaN(endDate.getTime()) || candidateDate > endDate) {
-        return false;
-      }
+    if (!isISTDateInInclusiveRange(candidate.applied_date, filters.startDate, filters.endDate)) {
+      return false;
     }
 
     return true;
   });
 };
+
+/** Mutates each row in place for REST list/modal responses (camelCase + nested objects). */
+function finalizeCandidateList(candidates, notesMap) {
+  for (let candidate of candidates) {
+    try {
+      candidate.skills = JSON.parse(candidate.skills || '[]');
+    } catch (e) {
+      candidate.skills = [];
+    }
+
+    candidate.notes = notesMap[candidate.id] || [];
+
+    candidate.resumeFileId = candidate.resume_file_id;
+    candidate.resume = candidate.resume_path;
+    candidate.appliedDate = candidate.applied_date;
+    candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
+    candidate.assignedToId = candidate.assigned_to || null;
+    candidate.uploadedBy = candidate.uploaded_by_name || null;
+
+    candidate.salary = {
+      expected: candidate.salary_expected || '',
+      offered: candidate.salary_offered || '',
+      negotiable: Boolean(candidate.salary_negotiable)
+    };
+
+    candidate.availability = {
+      joiningTime: candidate.joining_time || '',
+      noticePeriod: candidate.notice_period || '',
+      immediateJoiner: Boolean(candidate.immediate_joiner)
+    };
+
+    candidate.workPreferences = {
+      workPreference: candidate.work_preference || null,
+      willingAlternateSaturday: candidate.willing_alternate_saturday === null ? null : Boolean(candidate.willing_alternate_saturday),
+      currentCtc: candidate.current_ctc || null,
+      ctcFrequency: candidate.ctc_frequency || 'Annual'
+    };
+
+    candidate.assignmentDetails = {
+      inHouseAssignmentStatus: candidate.in_house_assignment_status || 'Pending',
+      interviewDate: candidate.interview_date || null,
+      interviewerId: candidate.interviewer_id || null,
+      inOfficeAssignment: candidate.in_office_assignment || null
+    };
+
+    candidate.stage = normalizeStageForDb(candidate.stage);
+    candidate.latestInterviewDate = candidate.latest_interview_date || null;
+    candidate.mainStage = candidate.main_stage || null;
+    candidate.subStage = candidate.sub_stage || null;
+
+    candidate.assignmentLocation = candidate.assignment_location || null;
+    candidate.resumeLocation = candidate.resume_location || null;
+
+    candidate.communications = [];
+    candidate.interviews = [];
+
+    candidate.communicationsCount = candidate.communications_count || 0;
+    candidate.interviewsCount = candidate.interviews_count || 0;
+
+    candidate.createdAt = candidate.created_at || null;
+    candidate.stageUpdatedAt =
+      candidate.stage_updated_at || candidate.updated_at || candidate.created_at || null;
+    Object.assign(candidate, mapCandidateCardViewFields(candidate));
+    Object.assign(candidate, mapCandidateDuplicateFields(candidate));
+
+    delete candidate.resume_file_id;
+    delete candidate.resume_path;
+    delete candidate.applied_date;
+    delete candidate.assigned_to_name;
+    delete candidate.uploaded_by_name;
+    delete candidate.salary_expected;
+    delete candidate.salary_offered;
+    delete candidate.salary_negotiable;
+    delete candidate.joining_time;
+    delete candidate.notice_period;
+    delete candidate.immediate_joiner;
+    delete candidate.work_preference;
+    delete candidate.willing_alternate_saturday;
+    delete candidate.current_ctc;
+    delete candidate.ctc_frequency;
+    delete candidate.in_house_assignment_status;
+    delete candidate.interview_date;
+    delete candidate.interviewer_id;
+    delete candidate.in_office_assignment;
+    delete candidate.assignment_location;
+    delete candidate.resume_location;
+    delete candidate.communications_count;
+    delete candidate.interviews_count;
+    delete candidate.main_stage;
+    delete candidate.sub_stage;
+    delete candidate.created_at;
+    delete candidate.stage_updated_at;
+    delete candidate.updated_at;
+    delete candidate.card_viewed_at;
+    delete candidate.last_viewed_by;
+    delete candidate.last_viewed_at;
+    delete candidate.last_viewed_by_name;
+    delete candidate.requires_card_view;
+    delete candidate.is_flagged_duplicate;
+    delete candidate.duplicate_of_candidate_id;
+    delete candidate.duplicate_detected_at;
+    delete candidate.duplicate_primary_name;
+    delete candidate.duplicate_primary_email;
+    delete candidate.duplicate_primary_stage;
+    delete candidate.has_merged_applications;
+  }
+}
 
 // Get all candidates
 router.get('/', authenticateToken, checkPermission('candidates', 'view'), asyncHandler(async (req, res) => {
@@ -170,136 +396,29 @@ router.get('/', authenticateToken, checkPermission('candidates', 'view'), asyncH
 
   // Optimized query: Get candidates with all related data in a single query
   const candidates = await query(
-    `SELECT c.*, u.name as assigned_to_name,
-       (SELECT MAX(i.scheduled_date) 
-        FROM interviews i 
-        WHERE i.candidate_id = c.id 
+    `SELECT c.*, u.name as assigned_to_name, vu.name as last_viewed_by_name, uploader.name as uploaded_by_name
+       ${CANDIDATE_DUPLICATE_SELECT},
+       (SELECT MAX(i.scheduled_date)
+        FROM interviews i
+        WHERE i.candidate_id = c.id
         AND i.status = 'Completed') as latest_interview_date,
        (SELECT COUNT(*) FROM communications WHERE candidate_id = c.id) as communications_count,
        (SELECT COUNT(*) FROM interviews WHERE candidate_id = c.id) as interviews_count
      FROM candidates c
      LEFT JOIN users u ON c.assigned_to = u.id
+     LEFT JOIN users vu ON c.last_viewed_by = vu.id
+     LEFT JOIN users uploader ON c.uploaded_by = uploader.id
+     ${CANDIDATE_DUPLICATE_JOIN}
      ${whereClause}
-     ORDER BY 
-       CASE 
-         WHEN c.stage = 'Interview' AND latest_interview_date IS NOT NULL 
-         THEN latest_interview_date 
-         ELSE c.applied_date 
-       END DESC`,
+     ORDER BY COALESCE(c.stage_updated_at, c.updated_at, c.created_at) DESC,
+       c.created_at DESC`,
     params
   );
 
-  // Get all candidate IDs for bulk note fetching
   const candidateIds = candidates.map(c => c.id);
-  
-  // Fetch all notes in a single query if there are candidates
-  let notesMap = {};
-  if (candidateIds.length > 0) {
-    const allNotes = await query(
-      `SELECT cnr.*, u.name as user_name, u.role as user_role 
-       FROM candidate_notes_ratings cnr
-       LEFT JOIN users u ON cnr.user_id = u.id
-       WHERE cnr.candidate_id IN (${candidateIds.map(() => '?').join(',')})
-       ORDER BY cnr.created_at DESC`,
-      candidateIds
-    );
-    
-    // Group notes by candidate_id
-    allNotes.forEach(note => {
-      if (!notesMap[note.candidate_id]) {
-        notesMap[note.candidate_id] = [];
-      }
-      notesMap[note.candidate_id].push(note);
-    });
-  }
+  const notesMap = await buildNotesMapForCandidates(candidateIds);
 
-  // Parse JSON fields and add additional data
-  for (let candidate of candidates) {
-    try {
-      candidate.skills = JSON.parse(candidate.skills || '[]');
-    } catch (e) {
-      candidate.skills = [];
-    }
-
-    // Add notes from the map
-    candidate.notes = notesMap[candidate.id] || [];
-
-    // Convert snake_case to camelCase for frontend compatibility
-    candidate.resumeFileId = candidate.resume_file_id;
-    candidate.resume = candidate.resume_path; // Add resume path for frontend
-    candidate.appliedDate = candidate.applied_date;
-    candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
-    candidate.assignedToId = candidate.assigned_to || null; // Add user ID for form submission
-    
-    // Structure salary object
-    candidate.salary = {
-      expected: candidate.salary_expected || '',
-      offered: candidate.salary_offered || '',
-      negotiable: Boolean(candidate.salary_negotiable)
-    };
-
-    // Structure availability object
-    candidate.availability = {
-      joiningTime: candidate.joining_time || '',
-      noticePeriod: candidate.notice_period || '',
-      immediateJoiner: Boolean(candidate.immediate_joiner)
-    };
-
-    // Structure work preferences
-    candidate.workPreferences = {
-      workPreference: candidate.work_preference || null,
-      willingAlternateSaturday: candidate.willing_alternate_saturday === null ? null : Boolean(candidate.willing_alternate_saturday),
-      currentCtc: candidate.current_ctc || null,
-      ctcFrequency: candidate.ctc_frequency || 'Annual'
-    };
-
-    // Structure assignment details
-    candidate.assignmentDetails = {
-      inHouseAssignmentStatus: candidate.in_house_assignment_status || 'Pending',
-      interviewDate: candidate.interview_date || null,
-      interviewerId: candidate.interviewer_id || null,
-      inOfficeAssignment: candidate.in_office_assignment || null
-    };
-
-    // Add latest interview date for Interview stage candidates
-    candidate.latestInterviewDate = candidate.latest_interview_date || null;
-
-    // Add location fields
-    candidate.assignmentLocation = candidate.assignment_location || null;
-    candidate.resumeLocation = candidate.resume_location || null;
-
-    // Initialize empty arrays for frontend compatibility
-    candidate.communications = [];
-    candidate.interviews = [];
-    
-    // Add counts from the optimized query
-    candidate.communicationsCount = candidate.communications_count || 0;
-    candidate.interviewsCount = candidate.interviews_count || 0;
-    
-    // Remove snake_case fields
-    delete candidate.resume_file_id;
-    delete candidate.resume_path;
-    delete candidate.applied_date;
-    delete candidate.assigned_to_name;
-    delete candidate.salary_expected;
-    delete candidate.salary_offered;
-    delete candidate.salary_negotiable;
-    delete candidate.joining_time;
-    delete candidate.notice_period;
-    delete candidate.immediate_joiner;
-    delete candidate.work_preference;
-    delete candidate.willing_alternate_saturday;
-    delete candidate.current_ctc;
-    delete candidate.ctc_frequency;
-    delete candidate.in_house_assignment_status;
-    delete candidate.interview_date;
-    delete candidate.interviewer_id;
-    delete candidate.in_office_assignment;
-    delete candidate.assignment_location;
-    delete candidate.resume_location;
-    delete candidate.communications_count;
-    delete candidate.interviews_count;
-  }
+  finalizeCandidateList(candidates, notesMap);
 
   res.json({
     success: true,
@@ -350,21 +469,13 @@ router.get('/export', authenticateToken, checkPermission('candidates', 'view'), 
   }
 
   const candidateIds = filteredCandidates.map((c) => c.id);
-  let notesMap = {};
-  if (candidateIds.length > 0) {
-    const notes = await query(
-      `SELECT candidate_id, notes
-       FROM candidate_notes_ratings
-       WHERE candidate_id IN (${candidateIds.map(() => '?').join(',')})
-       ORDER BY created_at DESC`,
-      candidateIds
-    );
-    notesMap = notes.reduce((acc, row) => {
-      if (!acc[row.candidate_id]) acc[row.candidate_id] = [];
-      if (row.notes) acc[row.candidate_id].push(row.notes);
-      return acc;
-    }, {});
-  }
+  const notesByCandidate = await buildNotesMapForCandidates(candidateIds);
+  const notesMap = Object.fromEntries(
+    Object.entries(notesByCandidate).map(([id, rows]) => [
+      id,
+      rows.map((n) => n.notes || n.note_text).filter(Boolean),
+    ])
+  );
 
   const exportRows = filteredCandidates.map((candidate) => mapCandidateForExport(candidate, notesMap));
   const summaryLines = buildFilterSummary(filters);
@@ -473,14 +584,254 @@ router.get('/export', authenticateToken, checkPermission('candidates', 'view'), 
   doc.end();
 }));
 
+// Dashboard job cards: all candidates whose position maps to a fixed card category
+router.get('/by-job-card', authenticateToken, checkPermission('candidates', 'view'), asyncHandler(async (req, res) => {
+  const title = String(req.query.title || '').trim();
+  const allowed = getAllowedFixedCardTitles();
+  if (!title || !allowed.has(title)) {
+    throw new ValidationError('Invalid or unsupported job card title');
+  }
+  const mapping = loadJobCardCategoryMapping();
+  const distinct = await query(
+    `SELECT DISTINCT TRIM(\`position\`) AS position FROM candidates WHERE \`position\` IS NOT NULL AND TRIM(\`position\`) != ''`
+  );
+  const originals = filterDistinctPositionsForFixedCard(distinct, mapping, title);
+  if (originals.length === 0) {
+    return res.json({ success: true, data: { candidates: [] } });
+  }
+
+  const CHUNK = 120;
+  const candidates = [];
+  for (let i = 0; i < originals.length; i += CHUNK) {
+    const chunk = originals.slice(i, i + CHUNK);
+    const ph = chunk.map(() => '?').join(',');
+    const rows = await query(
+      `SELECT c.*, u.name as assigned_to_name, uploader.name as uploaded_by_name,
+       (SELECT MAX(i.scheduled_date) 
+        FROM interviews i 
+        WHERE i.candidate_id = c.id 
+        AND i.status = 'Completed') as latest_interview_date,
+       (SELECT COUNT(*) FROM communications WHERE candidate_id = c.id) as communications_count,
+       (SELECT COUNT(*) FROM interviews WHERE candidate_id = c.id) as interviews_count
+     FROM candidates c
+     LEFT JOIN users u ON c.assigned_to = u.id
+     LEFT JOIN users uploader ON c.uploaded_by = uploader.id
+     WHERE TRIM(c.position) IN (${ph})
+     ORDER BY c.applied_date DESC`,
+      chunk
+    );
+    candidates.push(...rows);
+  }
+
+  const candidateIds = candidates.map((c) => c.id);
+  const notesMap = await buildNotesMapForCandidates(candidateIds);
+
+  finalizeCandidateList(candidates, notesMap);
+
+  res.json({
+    success: true,
+    data: { candidates }
+  });
+}));
+
+// Check for duplicate candidates by name or email (must be before /:id)
+router.get('/check-duplicates', authenticateToken, checkPermission('candidates', 'view'), asyncHandler(async (req, res) => {
+  const name = String(req.query.name || '');
+  const email = String(req.query.email || '');
+  const phone = String(req.query.phone || '');
+  const excludeId = req.query.excludeId ? String(req.query.excludeId) : null;
+
+  if (!name.trim() && !email.trim() && !phone.trim()) {
+    return res.json({
+      success: true,
+      data: { matches: [], suggestedPrimaryId: null, duplicateIds: [] },
+    });
+  }
+
+  const matches = await findDuplicateCandidates({ name, email, phone, excludeId });
+  const normalizedMatches = matches.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    position: row.position,
+    stage: normalizeStageForDb(row.stage),
+    isFlaggedDuplicate: Boolean(row.is_flagged_duplicate),
+    createdAt: row.created_at,
+  }));
+
+  const primary = matches.length >= 2 ? pickPrimaryForDuplicate(matches) : null;
+  const duplicateIds = primary
+    ? matches.filter((m) => m.id !== primary.id).map((m) => m.id)
+    : [];
+
+  res.json({
+    success: true,
+    data: {
+      matches: normalizedMatches,
+      suggestedPrimaryId: primary?.id || null,
+      duplicateIds,
+    },
+  });
+}));
+
+/** Legacy merge endpoint — returns preview unless decisions provided */
+router.post(
+  '/:id/merge-duplicate',
+  authenticateToken,
+  checkPermission('candidates', 'edit'),
+  validateUUID('id'),
+  handleValidationErrors,
+  asyncHandler(async (req, res) => {
+    let duplicateId = req.params.id;
+    let primaryId = req.body?.primaryCandidateId || null;
+
+    if (req.body?.duplicateCandidateId) {
+      primaryId = req.params.id;
+      duplicateId = req.body.duplicateCandidateId;
+    } else if (!primaryId) {
+      primaryId = (
+        await query('SELECT duplicate_of_candidate_id FROM candidates WHERE id = ?', [duplicateId])
+      )[0]?.duplicate_of_candidate_id;
+    }
+
+    if (!primaryId) {
+      throw new ValidationError('No primary candidate linked for this duplicate.');
+    }
+
+    if (req.body?.decisions || req.body?.execute === true) {
+      const result = await executeMerge({
+        primaryId,
+        duplicateId,
+        strategy: req.body?.strategy || MERGE_STRATEGIES.HR_REVIEW_REQUIRED,
+        decisions: req.body?.decisions || {},
+        mergedBy: req.user?.id || null,
+      });
+      return res.json({
+        success: true,
+        message: 'Candidates merged with intelligent reconciliation.',
+        data: { primaryCandidateId: primaryId, ...result },
+      });
+    }
+
+    const preview = await previewMerge(
+      primaryId,
+      duplicateId,
+      req.body?.strategy || MERGE_STRATEGIES.HR_REVIEW_REQUIRED
+    );
+    res.json({
+      success: true,
+      message: 'Merge preview ready. Submit decisions to /api/candidates/merge/execute.',
+      data: preview,
+      requiresReview: preview.summary?.requiresReview,
+    });
+  })
+);
+
+router.get(
+  '/:id/merge-history',
+  authenticateToken,
+  checkPermission('candidates', 'view'),
+  validateUUID('id'),
+  handleValidationErrors,
+  asyncHandler(async (req, res) => {
+    const history = await getMergeHistory(req.params.id);
+    res.json({ success: true, data: { history } });
+  })
+);
+
+router.get(
+  '/:id/resume-history',
+  authenticateToken,
+  checkPermission('candidates', 'view'),
+  validateUUID('id'),
+  handleValidationErrors,
+  asyncHandler(async (req, res) => {
+    const resumes = await getResumeHistory(req.params.id);
+    res.json({ success: true, data: { resumes } });
+  })
+);
+
+router.get(
+  '/:id/timeline',
+  authenticateToken,
+  checkPermission('candidates', 'view'),
+  validateUUID('id'),
+  handleValidationErrors,
+  asyncHandler(async (req, res) => {
+    const [timeline, positions] = await Promise.all([
+      getCandidateTimeline(req.params.id),
+      getCandidatePositions(req.params.id),
+    ]);
+    res.json({ success: true, data: { timeline, positions } });
+  })
+);
+
+// Mark candidate card as viewed (Applied section highlight + last-opened tracking)
+router.post('/:id/mark-viewed', authenticateToken, checkPermission('candidates', 'view'), validateUUID('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const viewerId = req.user?.id;
+
+  if (!viewerId) {
+    throw new ValidationError('Authenticated user required');
+  }
+
+  const existing = await query(
+    'SELECT id, requires_card_view FROM candidates WHERE id = ?',
+    [candidateId]
+  );
+  if (existing.length === 0) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  if (!existing[0].requires_card_view) {
+    return res.json({
+      success: true,
+      data: {
+        tracksCardView: false,
+        isViewed: true,
+        lastViewedBy: null,
+        lastViewedAt: null,
+      },
+    });
+  }
+
+  await query(
+    `UPDATE candidates
+     SET card_viewed_at = COALESCE(card_viewed_at, NOW()),
+         last_viewed_by = ?,
+         last_viewed_at = NOW()
+     WHERE id = ? AND requires_card_view = 1`,
+    [viewerId, candidateId]
+  );
+
+  const [row] = await query(
+    `SELECT c.requires_card_view, c.card_viewed_at, c.last_viewed_at, u.name AS last_viewed_by_name
+     FROM candidates c
+     LEFT JOIN users u ON c.last_viewed_by = u.id
+     WHERE c.id = ?`,
+    [candidateId]
+  );
+
+  const viewFields = mapCandidateCardViewFields(row || {});
+
+  res.json({
+    success: true,
+    data: viewFields,
+  });
+}));
+
 // Get candidate by ID
 router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), validateUUID('id'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.id;
 
   const candidates = await query(
-    `SELECT c.*, u.name as assigned_to_name 
+    `SELECT c.*, u.name as assigned_to_name, vu.name as last_viewed_by_name
+       ${CANDIDATE_DUPLICATE_SELECT}
      FROM candidates c
      LEFT JOIN users u ON c.assigned_to = u.id
+     LEFT JOIN users vu ON c.last_viewed_by = vu.id
+     ${CANDIDATE_DUPLICATE_JOIN}
      WHERE c.id = ?`,
     [candidateId]
   );
@@ -491,18 +842,13 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
 
   const candidate = candidates[0];
 
-  // Get notes for this candidate from hr_notes table (single source of truth)
-  const notes = await query(
-    `SELECT hn.id, hn.candidate_id, hn.stage, hn.note_text as notes, hn.interaction_type, 
-            hn.author_id as user_id, hn.created_at, hn.updated_at,
-            u.name as user_name, u.role as user_role 
-     FROM hr_notes hn
-     LEFT JOIN users u ON hn.author_id = u.id
-     WHERE hn.candidate_id = ?
-     ORDER BY hn.created_at DESC`,
-    [candidateId]
-  );
-  candidate.notes = notes;
+  await ensureCandidateNotesSynced(candidateId, {
+    authorId: req.user?.id,
+    stage: candidate.stage,
+  });
+
+  const notesMap = await buildNotesMapForCandidates([candidateId]);
+  candidate.notes = notesMap[candidateId] || [];
 
   // Parse JSON fields and structure data
   try {
@@ -551,12 +897,33 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   // Add location fields
   candidate.assignmentLocation = candidate.assignment_location || null;
   candidate.resumeLocation = candidate.resume_location || null;
+
+  candidate.createdAt = candidate.created_at || null;
+  candidate.stageUpdatedAt =
+    candidate.stage_updated_at || candidate.updated_at || candidate.created_at || null;
+  Object.assign(candidate, mapCandidateCardViewFields(candidate));
+  Object.assign(candidate, mapCandidateDuplicateFields(candidate));
   
   // Remove snake_case fields
   delete candidate.resume_file_id;
   delete candidate.resume_path;
   delete candidate.applied_date;
   delete candidate.assigned_to_name;
+  delete candidate.created_at;
+  delete candidate.stage_updated_at;
+  delete candidate.updated_at;
+  delete candidate.card_viewed_at;
+  delete candidate.last_viewed_by;
+  delete candidate.last_viewed_at;
+  delete candidate.last_viewed_by_name;
+  delete candidate.requires_card_view;
+  delete candidate.is_flagged_duplicate;
+  delete candidate.duplicate_of_candidate_id;
+  delete candidate.duplicate_detected_at;
+  delete candidate.duplicate_primary_name;
+  delete candidate.duplicate_primary_email;
+  delete candidate.duplicate_primary_stage;
+  delete candidate.has_merged_applications;
   delete candidate.salary_expected;
   delete candidate.salary_offered;
   delete candidate.salary_negotiable;
@@ -644,27 +1011,42 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     inOfficeAssignment,
     // New location fields
     assignmentLocation,
-    resumeLocation
+    resumeLocation,
+    forceDuplicate
   } = req.body;
+
+  const normalizedStage = normalizeStageForDb(stage);
 
   // Validate assigned user exists (only if assignedTo is a valid user ID)
   let assignedUserId = null;
   if (assignedTo && assignedTo !== 'Unassigned') {
-    const users = await query('SELECT id FROM users WHERE id = ?', [assignedTo]);
-    if (users.length === 0) {
-      throw new ValidationError('Assigned user not found');
+    const numericId = Number(assignedTo);
+    if (Number.isInteger(numericId) && numericId >= 1) {
+      const users = await query('SELECT id FROM users WHERE id = ?', [numericId]);
+      if (users.length === 0) {
+        throw new ValidationError('Assigned user not found');
+      }
+      assignedUserId = numericId;
     }
-    assignedUserId = assignedTo;
   }
 
-  // Check if candidate already exists with same email and position
-  const existingCandidates = await query(
-    'SELECT id FROM candidates WHERE email = ? AND position = ?',
-    [email, position]
-  );
-
-  if (existingCandidates.length > 0) {
-    throw new ConflictError('Candidate already exists for this position');
+  const duplicateMatches = await findDuplicateCandidates({ name, email });
+  if (duplicateMatches.length > 0 && !forceDuplicate) {
+    return res.status(409).json({
+      success: false,
+      code: 'DUPLICATE_CANDIDATE',
+      message: 'A candidate with the same name or email already exists.',
+      data: {
+        matches: duplicateMatches.map((row) => ({
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          phone: row.phone,
+          position: row.position,
+          stage: normalizeStageForDb(row.stage),
+        })),
+      },
+    });
   }
 
   // Normalize appliedDate: strip time component if full ISO string was sent
@@ -679,7 +1061,7 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     email ?? null,
     phone ?? null,
     position ?? null,
-    stage ?? null,
+    normalizedStage,
     source ?? null,
     normalizedAppliedDate,
     resumePath ?? null,
@@ -727,14 +1109,17 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     interviewDate, interviewerId, assignmentLocation, resumeLocation
   });
 
+  const candidateId = uuidv4();
+
   // Create candidate (without notes field)
-  const result = await query(
-    `INSERT INTO candidates (job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, score, 
-     assigned_to, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
+  // uploaded_by tracks which user (recruiter/intern) added this candidate to the portal
+  await query(
+    `INSERT INTO candidates (id, job_id, name, email, phone, position, stage, source, applied_date, resume_path, resume_file_id, score, 
+     assigned_to, uploaded_by, skills, experience, salary_expected, salary_offered, salary_negotiable, joining_time, notice_period, immediate_joiner,
      location, expertise, willing_alternate_saturday, work_preference, current_ctc, ctc_frequency, in_house_assignment_status, 
      interview_date, interviewer_id, in_office_assignment, assignment_location, resume_location) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    insertValues
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [candidateId, ...insertValues.slice(0, 12), req.user.id, ...insertValues.slice(12)]
   );
 
   // If notes are provided, add them to hr_notes table (single source of truth)
@@ -742,9 +1127,11 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     await query(
       `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
-      [result.insertId, stage || 'Applied', notes.trim(), 'General Note', req.user.id]
+      [candidateId, normalizedStage, notes.trim(), 'General Note', req.user.id]
     );
   }
+
+  const createdCandidate = await loadCandidateForResponse(candidateId);
 
   // Sync assignment status: Update assignments table if inHouseAssignmentStatus is set
   if (inHouseAssignmentStatus && inHouseAssignmentStatus !== 'Draft') {
@@ -763,7 +1150,7 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
       // Update all assignments for this candidate to the new status
       await query(
         `UPDATE assignments SET status = ?, updated_at = NOW() WHERE candidate_id = ?`,
-        [assignmentStatus, result.insertId]
+        [assignmentStatus, candidateId]
       );
     }
   }
@@ -772,12 +1159,14 @@ router.post('/', authenticateToken, checkPermission('candidates', 'create'), val
     success: true,
     message: 'Candidate created successfully',
     data: {
-      candidateId: result.insertId
+      candidateId,
+      candidate: createdCandidate,
+      duplicateWarning: duplicateMatches.length > 0,
     }
   });
 
   // Trigger workflow engine for candidate creation (non-blocking, after response)
-  const newCandidateId = result.insertId;
+  const newCandidateId = candidateId;
   const creatingUserId = req.user.id;
   setImmediate(async () => {
     try {
@@ -884,6 +1273,7 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
   // New location fields safe values
   const safeAssignmentLocation = assignmentLocation === undefined ? null : assignmentLocation;
   const safeResumeLocation = resumeLocation === undefined ? null : resumeLocation;
+  const safeStage = normalizeStageForDb(stage);
 
   // Update candidate (without notes field)
   await query(
@@ -894,7 +1284,7 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
      ctc_frequency = ?, in_house_assignment_status = ?, interview_date = ?, interviewer_id = ?, 
      in_office_assignment = ?, assignment_location = ?, resume_location = ?, updated_at = NOW() 
      WHERE id = ?`,
-    [name, email, phone, position, stage, source, safeAppliedDate, safeResumePath, safeScore, assignedUserId,
+    [name, email, phone, position, safeStage, source, safeAppliedDate, safeResumePath, safeScore, assignedUserId,
      JSON.stringify(skills), safeExperience, safeSalaryExpected, safeSalaryOffered, safeSalaryNegotiable, safeJoiningTime, safeNoticePeriod, safeImmediateJoiner,
      safeLocation, safeExpertise, safeWillingAlternateSaturday, safeWorkPreference, safeCurrentCtc, safeCtcFrequency, 
      safeInHouseAssignmentStatus, safeInterviewDate, safeInterviewerId, safeInOfficeAssignment, 
@@ -906,7 +1296,7 @@ router.put('/:id', authenticateToken, checkPermission('candidates', 'edit'), val
     await query(
       `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
-      [candidateId, stage, notes.trim(), 'General Note', req.user.id]
+      [candidateId, safeStage, notes.trim(), 'General Note', req.user.id]
     );
   }
 
@@ -1125,10 +1515,130 @@ router.delete('/', authenticateToken, checkPermission('candidates', 'delete'), a
   });
 }));
 
+const VALID_MAIN_STAGES = ['applied', 'follow-up', 'screening', 'interview', 'selected', 'offer', 'hired', 'rejected'];
+const VALID_SUB_STAGES = {
+  interview: ['follow-up-interview', 'came-down', 'no-show', 'selected-interview', 'rejected-interview'],
+  rejected: ['rejected', 'on-hold', 'profile-not-matched', 'last-minute-back-out'],
+  'follow-up': ['no-response'],
+};
+
+async function applyCandidateSubStageUpdate(candidateId, mainStage, subStage, userId) {
+  if (!mainStage || !subStage) {
+    throw new ValidationError('mainStage and subStage are required');
+  }
+
+  if (!VALID_MAIN_STAGES.includes(mainStage)) {
+    throw new ValidationError('Invalid mainStage');
+  }
+
+  const allowedSubStages = VALID_SUB_STAGES[mainStage];
+  if (!allowedSubStages || !allowedSubStages.includes(subStage)) {
+    throw new ValidationError('Invalid subStage for the given mainStage');
+  }
+
+  const rows = await query(
+    'SELECT id, name, stage, main_stage, sub_stage FROM candidates WHERE id = ?',
+    [candidateId]
+  );
+  const candidate = rows[0];
+  if (!candidate) {
+    throw new NotFoundError('Candidate not found');
+  }
+
+  if (candidate.main_stage === mainStage && candidate.sub_stage === subStage) {
+    return {
+      unchanged: true,
+      candidate: {
+        id: candidateId,
+        name: candidate.name,
+        mainStage,
+        subStage,
+        stage: candidate.stage,
+        previousStage: candidate.stage,
+      },
+    };
+  }
+
+  const previousStage = candidate.stage;
+  const candidateName = candidate.name;
+
+  await query(
+    `UPDATE candidates
+     SET main_stage = ?, sub_stage = ?, previous_stage = ?, stage_updated_at = NOW(), updated_at = NOW()
+     WHERE id = ?`,
+    [mainStage, subStage, previousStage, candidateId]
+  );
+
+  const updatedRows = await query(
+    'SELECT stage, main_stage, sub_stage, stage_updated_at FROM candidates WHERE id = ?',
+    [candidateId]
+  );
+  const updated = updatedRows[0];
+  const newStage = updated?.stage || previousStage;
+  const stageUpdatedAt = updated?.stage_updated_at || null;
+
+  const activityLogger = (await import('../services/activityLogger.js')).default;
+  const subStageLabel = subStage.replace(/-/g, ' ');
+  await activityLogger.logStageChange({
+    candidateId,
+    previousStage,
+    newStage: `${newStage} (${subStageLabel})`,
+    userId,
+    candidateName,
+  });
+
+  await query(
+    `INSERT INTO hr_notes (candidate_id, stage, note_text, interaction_type, author_id) VALUES (?, ?, ?, ?, ?)`,
+    [
+      candidateId,
+      newStage,
+      `Sub-stage changed to ${subStageLabel} within ${mainStage}`,
+      'Stage Change',
+      userId,
+    ]
+  );
+
+  return {
+    unchanged: false,
+    candidate: {
+      id: candidateId,
+      name: candidateName,
+      stage: newStage,
+      mainStage: updated?.main_stage ?? mainStage,
+      subStage: updated?.sub_stage ?? subStage,
+      previousStage,
+      stageUpdatedAt,
+    },
+  };
+}
+
+// Update candidate sub-stage within an umbrella stage (main legacy stage may stay the same)
+router.patch('/:id/sub-stage', authenticateToken, checkPermission('candidates', 'edit'), validateUUID('id'), handleValidationErrors, asyncHandler(async (req, res) => {
+  const candidateId = req.params.id;
+  const { mainStage, subStage } = req.body;
+  const result = await applyCandidateSubStageUpdate(candidateId, mainStage, subStage, req.user.id);
+
+  res.json({
+    success: true,
+    message: result.unchanged ? 'Candidate sub-stage unchanged' : 'Candidate sub-stage updated successfully',
+    data: { candidate: result.candidate },
+  });
+}));
+
 // Update candidate stage (with automation)
 router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edit'), validateUUID('id'), handleValidationErrors, asyncHandler(async (req, res) => {
   const candidateId = req.params.id;
-  const { stage, notes } = req.body;
+  const { stage, notes, mainStage, subStage } = req.body;
+
+  // Umbrella sub-stage move (e.g. Interview: came-down → no-show) — legacy stage may stay the same
+  if (mainStage && subStage) {
+    const result = await applyCandidateSubStageUpdate(candidateId, mainStage, subStage, req.user.id);
+    return res.json({
+      success: true,
+      message: result.unchanged ? 'Candidate sub-stage unchanged' : 'Candidate sub-stage updated successfully',
+      data: { candidate: result.candidate },
+    });
+  }
 
   if (!stage) {
     throw new ValidationError('Stage is required');
@@ -1208,10 +1718,10 @@ router.patch('/:id/stage', authenticateToken, checkPermission('candidates', 'edi
       });
     }
     
-    // Also notify admins and HR managers for Hired/Rejected
+    // Also notify admins for Hired/Rejected
     if (['Hired', 'Rejected'].includes(stage)) {
       const admins = await query(
-        'SELECT id FROM users WHERE role IN ("Admin", "HR Manager")'
+        'SELECT id FROM users WHERE role = "Admin"'
       );
       for (const admin of admins) {
         if (admin.id !== req.user.id) { // Don't notify the person who made the change
@@ -1646,8 +2156,8 @@ router.delete('/:id/notes/:noteId', authenticateToken, checkPermission('candidat
 
   const note = existingNotes[0];
 
-  // Only allow the note owner, Admin, or HR Manager to delete the note
-  if (note.user_id !== req.user.id && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  // Only allow the note owner or Admin to delete the note
+  if (note.user_id !== req.user.id && req.user.role !== 'Admin') {
     throw new ValidationError('You can only delete your own notes');
   }
 
@@ -1779,36 +2289,25 @@ router.get('/:id/hr-notes', authenticateToken, checkPermission('candidates', 'vi
   const candidateId = req.params.id;
 
   // Check if candidate exists
-  const existingCandidates = await query('SELECT id FROM candidates WHERE id = ?', [candidateId]);
+  const existingCandidates = await query(
+    'SELECT id, stage FROM candidates WHERE id = ?',
+    [candidateId]
+  );
   if (existingCandidates.length === 0) {
     throw new NotFoundError('Candidate not found');
   }
 
-  // Fetch all HR notes for this candidate with author information
-  const hrNotes = await query(
-    `SELECT 
-      hn.id,
-      hn.candidate_id,
-      hn.stage,
-      hn.note_text,
-      hn.interaction_type,
-      hn.author_id,
-      hn.created_at,
-      hn.updated_at,
-      u.name as author_name,
-      u.role as author_role
-     FROM hr_notes hn
-     LEFT JOIN users u ON hn.author_id = u.id
-     WHERE hn.candidate_id = ?
-     ORDER BY hn.created_at DESC`,
-    [candidateId]
-  );
+  const hrNotes = await fetchHrNotesForCandidate(candidateId, {
+    authorId: req.user?.id,
+    stage: existingCandidates[0].stage,
+  });
 
   // Group notes by stage
   const notesByStage = {};
   
   for (const note of hrNotes) {
-    const stage = note.stage;
+    const stage = normalizeNoteStage(note.stage);
+    const interaction_type = normalizeInteractionType(note.interaction_type);
     
     if (!notesByStage[stage]) {
       notesByStage[stage] = [];
@@ -1817,7 +2316,7 @@ router.get('/:id/hr-notes', authenticateToken, checkPermission('candidates', 'vi
     notesByStage[stage].push({
       id: note.id,
       note_text: note.note_text,
-      interaction_type: note.interaction_type,
+      interaction_type,
       author_name: note.author_name || 'Unknown',
       author_role: note.author_role || null,
       created_at: note.created_at,

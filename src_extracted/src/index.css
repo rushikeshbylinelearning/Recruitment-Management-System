@@ -1,0 +1,754 @@
+@import './styles/design-system.css';
+@import './styles/umbrellaStage.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Brand Theme — Red (20%) · White (70%) · Black (10%)
+   ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --brand-red:          #dc2626;
+  --brand-red-dark:     #b91c1c;
+  --brand-red-darker:   #991b1b;
+  --brand-red-light:    #fee2e2;
+  --brand-red-glow:     rgba(220, 38, 38, 0.22);
+  --brand-white:        #ffffff;
+  --brand-white-soft:   #fafafa;
+  --brand-white-muted:  #f5f5f5;
+  --brand-black:        #0a0a0a;
+  --brand-black-soft:   #171717;
+  --brand-black-muted:  #262626;
+  --brand-border:       #e5e5e5;
+  --brand-border-dark:  #333333;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Prevent White Flash on Page Load (FOUC Fix)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+html {
+  background-color: var(--brand-white-soft);
+  color-scheme: light;
+}
+
+html.dark {
+  background-color: var(--brand-black);
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--brand-white-soft);
+  margin: 0;
+  padding: 0;
+  color: var(--brand-black);
+  font-family: var(--ds-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html.dark body {
+  background-color: var(--brand-black);
+  color: #fafafa;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Kanban Column Scroll & Containment Fixes
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Ensure all kanban columns have proper scroll containment */
+.kanban-column {
+  /* Prevent scroll chaining to parent */
+  overscroll-behavior: contain;
+  /* Ensure column takes full height */
+  height: 100%;
+  /* Prevent horizontal overflow */
+  overflow-x: hidden;
+}
+
+/* Ensure candidate cards stay within column boundaries */
+.kanban-column [data-card-id] {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure virtualized content container doesn't overflow */
+.kanban-column > div[style*="position: relative"] {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Prevent sidebar label flash on initial load */
+.sidebar-nav-label {
+  opacity: 1;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.sidebar-not-hydrated .sidebar-nav-label {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* ── Dark mode: Black + Red accents ── */
+:root {
+  --dm-bg:          var(--brand-black);
+  --dm-surface:     var(--brand-black-soft);
+  --dm-surface-2:   var(--brand-black-muted);
+  --dm-surface-3:   #333333;
+  --dm-border:      var(--brand-border-dark);
+  --dm-border-2:    #404040;
+  --dm-accent:      var(--brand-red);
+  --dm-accent-2:    var(--brand-red-dark);
+  --dm-accent-glow: var(--brand-red-glow);
+  --dm-text:        #fafafa;
+  --dm-text-muted:  #a3a3a3;
+  --dm-text-dim:    #737373;
+}
+
+@layer base {
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.dark body {
+    background-color: var(--dm-bg);
+    color: var(--dm-text);
+  }
+
+  /* Force visible scrollbar */
+  .force-scrollbar {
+    overflow-y: scroll !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar {
+    width: 12px !important;
+    background-color: var(--brand-white-muted) !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar-track {
+    background: var(--brand-white-muted) !important;
+    border-radius: 6px !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--brand-red) !important;
+    border-radius: 6px !important;
+    border: 2px solid var(--brand-white-muted) !important;
+  }
+
+  .force-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--brand-red-dark) !important;
+  }
+
+  /* Scrollbars - Light Mode */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--brand-white-muted);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d4d4d4;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--brand-red);
+  }
+
+  /* Scrollbars - Dark Mode */
+  html.dark ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  html.dark ::-webkit-scrollbar-track {
+    background: var(--dm-surface);
+  }
+  html.dark ::-webkit-scrollbar-thumb {
+    background: var(--dm-border-2);
+    border-radius: 3px;
+  }
+  html.dark ::-webkit-scrollbar-thumb:hover {
+    background: var(--dm-accent);
+  }
+}
+
+/* ── Dark mode utility overrides ── */
+@layer utilities {
+
+  /* Layout shells */
+  html.dark .dm-bg        { background-color: var(--dm-bg) !important; }
+  html.dark .dm-surface   { background-color: var(--dm-surface) !important; }
+  html.dark .dm-surface-2 { background-color: var(--dm-surface-2) !important; }
+  html.dark .dm-border    { border-color: var(--dm-border) !important; }
+
+  /* Kanban board area */
+  html.dark .kanban-board-bg {
+    background-color: var(--dm-bg) !important;
+  }
+
+  /* Kanban columns */
+  html.dark .kanban-column-bg {
+    background-color: var(--dm-surface) !important;
+    border-color: var(--dm-border) !important;
+  }
+
+  /* Kanban cards */
+  html.dark .candidate-card {
+    background-color: var(--dm-surface-2) !important;
+    border-color: var(--dm-border) !important;
+    color: var(--dm-text) !important;
+  }
+  html.dark .candidate-card:hover {
+    border-color: var(--dm-accent) !important;
+    box-shadow: 0 0 0 1px var(--dm-accent-glow), 0 4px 16px rgba(0,0,0,0.4) !important;
+  }
+
+  /* Column headers */
+  html.dark .kanban-col-header {
+    background-color: var(--dm-surface-2) !important;
+    border-color: var(--dm-border) !important;
+  }
+
+  /* Generic card / panel surfaces */
+  html.dark .bg-white {
+    background-color: var(--dm-surface-2) !important;
+  }
+  html.dark .bg-gray-50 {
+    background-color: var(--dm-surface) !important;
+  }
+  html.dark .bg-gray-100 {
+    background-color: var(--dm-surface-3) !important;
+  }
+
+  /* Borders */
+  html.dark .border-gray-100,
+  html.dark .border-gray-200 {
+    border-color: var(--dm-border) !important;
+  }
+
+  /* Text */
+  html.dark .text-gray-900 { color: var(--dm-text) !important; }
+  html.dark .text-gray-800 { color: #e5e5e5 !important; }
+  html.dark .text-gray-700 { color: #d4d4d4 !important; }
+  html.dark .text-gray-600 { color: #a3a3a3 !important; }
+  html.dark .text-gray-500 { color: #737373 !important; }
+  html.dark .text-gray-400 { color: #525252 !important; }
+
+  /* Inputs */
+  html.dark input,
+  html.dark textarea,
+  html.dark select {
+    background-color: var(--dm-surface-2) !important;
+    border-color: var(--dm-border) !important;
+    color: var(--dm-text) !important;
+  }
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: var(--dm-text-muted) !important;
+  }
+  html.dark input:focus,
+  html.dark textarea:focus {
+    border-color: var(--dm-accent) !important;
+    box-shadow: 0 0 0 3px var(--dm-accent-glow) !important;
+    outline: none !important;
+  }
+
+  /* Modals / dialogs */
+  html.dark .modal-surface {
+    background-color: var(--dm-surface) !important;
+    border-color: var(--dm-border) !important;
+  }
+
+  /* Dropdowns / menus */
+  html.dark .dropdown-menu {
+    background-color: var(--dm-surface-2) !important;
+    border-color: var(--dm-border) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+  }
+  html.dark .dropdown-item:hover {
+    background-color: var(--dm-surface-3) !important;
+    color: var(--dm-text) !important;
+  }
+
+  /* Shadows */
+  html.dark .shadow-sm  { box-shadow: 0 1px 4px rgba(0,0,0,0.5) !important; }
+  html.dark .shadow     { box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important; }
+  html.dark .shadow-xl  { box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important; }
+  html.dark .shadow-2xl { box-shadow: 0 16px 48px rgba(0,0,0,0.7) !important; }
+}
+
+
+/* GPU-accelerated Kanban optimizations */
+@layer utilities {
+  .transform-gpu {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+  
+  .kanban-card {
+    will-change: transform;
+    transform: translateZ(0);
+  }
+  
+  .kanban-column {
+    contain: layout style paint;
+    /* Columns must fill board height — the board itself is h-full */
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Fade-in animation for dropdowns */
+  .animate-fade-in {
+    animation: fadeIn 0.15s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom scrollbar for dropdown menus */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.6);
+}
+
+/* ── Kanban board horizontal scrollbar — polished & easy to grab ── */
+.kanban-board-scroll {
+  /* Firefox */
+  scrollbar-width: auto;
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+  /* Leave space at bottom for the scrollbar without dead whitespace */
+  padding-bottom: 14px;
+}
+
+.kanban-board-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+  border-radius: 999px;
+  margin: 0 6px;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.75);
+  background-clip: padding-box;
+}
+
+.kanban-board-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Dark mode scrollbar for kanban */
+html.dark .kanban-board-scroll {
+  scrollbar-color: rgba(71, 85, 105, 0.6) transparent;
+}
+
+html.dark .kanban-board-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 31, 61, 0.4);
+}
+
+html.dark .kanban-board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  background-clip: padding-box;
+}
+
+html.dark .kanban-board-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 38, 38, 0.65);
+  background-clip: padding-box;
+}
+
+/* ── Nested Kanban Overlay horizontal scrollbar — smooth & premium ── */
+.nested-kanban-scroll {
+  /* Firefox */
+  scrollbar-width: thin;
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+  /* Prevent scroll chaining */
+  overscroll-behavior-x: contain;
+  /* Leave space at bottom for the scrollbar */
+  padding-bottom: 12px;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.6);
+  border-radius: 999px;
+  margin: 0 8px;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+  background-clip: padding-box;
+}
+
+.nested-kanban-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Dark mode scrollbar for nested kanban */
+html.dark .nested-kanban-scroll {
+  scrollbar-color: rgba(71, 85, 105, 0.5) transparent;
+}
+
+html.dark .nested-kanban-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 31, 61, 0.3);
+}
+
+html.dark .nested-kanban-scroll::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.5);
+  background-clip: padding-box;
+}
+
+html.dark .nested-kanban-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 38, 38, 0.55);
+  background-clip: padding-box;
+}
+
+
+/* Toast animations */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 300ms ease-out;
+}
+
+/* Fade-in animation for placeholders */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 150ms ease-out;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .candidate-card {
+    border: 2px solid currentColor;
+  }
+  
+  .drop-zone-highlight {
+    outline: 3px solid currentColor;
+  }
+}
+
+/* ── Layout Stability - Prevent Flickering ── */
+@layer utilities {
+  /* Dashboard layout stability */
+  .dashboard-container {
+    min-height: 100vh;
+    contain: layout style;
+  }
+
+  /* Fixed heights for dashboard widgets to prevent layout shift */
+  .dashboard-widget {
+    min-height: 140px;
+    contain: layout style paint;
+  }
+
+  /* Pipeline chart stable height */
+  .pipeline-chart {
+    min-height: 300px;
+    contain: layout style;
+  }
+
+  /* Metrics timeline stable height */
+  .metrics-timeline {
+    min-height: 300px;
+    contain: layout style;
+  }
+
+  /* Task board stable layout */
+  .task-board-container {
+    min-height: calc(100vh - 180px);
+    contain: layout;
+  }
+
+  /* Task column stable height */
+  .task-column {
+    min-height: 400px;
+    contain: layout style;
+  }
+
+  /* Prevent content jump during loading */
+  .loading-stable {
+    min-height: inherit;
+    contain: layout;
+  }
+
+  /* Skeleton loaders match final layout */
+  .skeleton-card {
+    min-height: 120px;
+    contain: layout style paint;
+  }
+
+  /* Prevent flash of unstyled content */
+  .prevent-fouc {
+    opacity: 0;
+    animation: fade-in-stable 150ms ease-out forwards;
+  }
+
+  @keyframes fade-in-stable {
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Stable grid layouts */
+  .stable-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    contain: layout;
+  }
+
+  /* Prevent layout shift from images/icons */
+  .icon-stable {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  /* Smooth transitions without flicker */
+  .smooth-transition {
+    transition: opacity 200ms ease-in-out, transform 200ms ease-in-out;
+    will-change: opacity, transform;
+  }
+
+  /* Loading overlay that preserves layout */
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fade-in-stable 150ms ease-out;
+  }
+
+  html.dark .loading-overlay {
+    background: rgba(10, 10, 10, 0.92);
+  }
+}
+
+/* ── Premium sidebar & dashboard chrome ── */
+@layer components {
+  .sidebar-glass {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(17, 24, 39, 0.98) 50%, rgba(15, 23, 42, 0.95) 100%);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-right: 1px solid rgba(148, 163, 184, 0.08);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .sidebar-logo {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.35);
+  }
+
+  /* Collapse toggle — lives inside sidebar brand row (never overlaps main topbar) */
+  .sidebar-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.25rem 0.75rem 1.25rem 1.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .sidebar-brand-row--collapsed {
+    flex-direction: column;
+    padding: 1rem 0.5rem;
+    gap: 0.625rem;
+  }
+
+  /* Floating collapse — on sidebar edge, below header band (avoids nav overlap) */
+  .sidebar-collapse-btn {
+    position: fixed;
+    left: calc(var(--sidebar-width, 16rem) - 0.75rem);
+    top: 4.75rem;
+    transform: translateY(-50%);
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    border: 2px solid #0f172a;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), 0 0 0 2px #f8fafc;
+    cursor: pointer;
+    transition: left 0.3s ease, top 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    pointer-events: auto;
+  }
+
+  .sidebar-collapse-btn--collapsed {
+    top: 3.5rem;
+  }
+
+  html.dark .sidebar-collapse-btn {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5), 0 0 0 2px #0f172a;
+  }
+
+  .sidebar-collapse-btn:hover {
+    transform: translateY(-50%) scale(1.08);
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.45), 0 0 0 2px #f8fafc;
+  }
+
+  .sidebar-collapse-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.45), 0 0 0 2px #f8fafc;
+  }
+
+  .dashboard-topbar-premium {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 4px 16px rgba(15, 23, 42, 0.04);
+  }
+
+  html.dark .dashboard-topbar-premium {
+    background: rgba(15, 23, 42, 0.88) !important;
+    border-bottom-color: rgba(148, 163, 184, 0.08) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  }
+
+  .topbar-search {
+    border-radius: 999px;
+    padding-left: 2.25rem;
+    padding-right: 1rem;
+    height: 2.25rem;
+    font-size: 0.8125rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(248, 250, 252, 0.8);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .topbar-search:focus {
+    outline: none;
+    border-color: rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+  }
+
+  html.dark .topbar-search {
+    background: rgba(30, 41, 59, 0.6);
+    border-color: rgba(148, 163, 184, 0.12);
+    color: #f8fafc;
+  }
+
+  .scrollbar-premium::-webkit-scrollbar {
+    width: 5px;
+  }
+  .scrollbar-premium::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+  }
+  .scrollbar-premium::-webkit-scrollbar-thumb:hover {
+    background: rgba(239, 68, 68, 0.5);
+  }
+
+  /* Fluid desktop main area — no max-width cap */
+  @media (min-width: 1024px) {
+    .dashboard-main-shell {
+      max-width: none;
+      margin-left: 0;
+      margin-right: 0;
+    }
+  }
+}
+
+/* ── Brand utility helpers ── */
+@layer utilities {
+  .bg-brand-white { background-color: var(--brand-white) !important; }
+  .bg-brand-white-soft { background-color: var(--brand-white-soft) !important; }
+  .bg-brand-red { background-color: var(--brand-red) !important; }
+  .bg-brand-black { background-color: var(--brand-black) !important; }
+  .text-brand-red { color: var(--brand-red) !important; }
+  .text-brand-black { color: var(--brand-black) !important; }
+  .border-brand-red { border-color: var(--brand-red) !important; }
+  .ring-brand-red { --tw-ring-color: var(--brand-red) !important; }
+}

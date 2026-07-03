@@ -15,7 +15,13 @@ import { validateToken } from '../middleware/tokenValidator.js';
 import { formSubmissionLimiter } from '../middleware/rateLimiter.js';
 import { triggerAssessmentPortalWebhook } from './rmsWebhook.js';
 import validationService from '../services/validationService.js';
-import formSubmissionProcessor from '../services/formSubmissionProcessor.js';
+import { normalizeFormData } from '../utils/formDataNormalizer.js';
+import {
+  checkDuplicateSubmission,
+  processPublicSubmission,
+} from '../services/publicSubmissionService.js';
+import { ensurePublicApplicationSchema } from '../services/ensurePublicApplicationSchema.js';
+import { apiLimiter } from '../middleware/rateLimiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -112,184 +118,127 @@ router.get('/forms/:slug', validateToken, async (req, res) => {
  * Submit form with rate limiting and validation
  * Requirements: 2.1-2.5, 3.1-3.5, 5.2-5.5, 16.1-16.5, 18.1-18.3
  */
+/**
+ * Build a map of field_key → multer file from any uploaded parts.
+ */
+function collectUploadedFiles(req) {
+  const map = {};
+  const list = req.files?.length
+    ? req.files
+    : req.file
+      ? [req.file]
+      : [];
+  for (const file of list) {
+    if (file?.fieldname) {
+      map[file.fieldname] = file;
+    }
+  }
+  return map;
+}
+
+/**
+ * Pick the resume/CV file for candidate storage (any file-type form field).
+ */
+function resolveResumeUpload(filesByFieldKey, fields) {
+  if (filesByFieldKey.resume) {
+    return filesByFieldKey.resume;
+  }
+  const fileFieldKeys = fields
+    .filter((f) => f.field_type === 'file')
+    .map((f) => f.field_key);
+  for (const key of fileFieldKeys) {
+    if (filesByFieldKey[key]) {
+      return filesByFieldKey[key];
+    }
+  }
+  const first = Object.values(filesByFieldKey)[0];
+  return first || null;
+}
+
+/** POST /api/public/forms/:slug/check — duplicate detection (legacy URLs) */
+router.post('/forms/:slug/check', validateToken, apiLimiter, async (req, res) => {
+  try {
+    await ensurePublicApplicationSchema();
+    const form = req.form;
+    const existing = await checkDuplicateSubmission(form.id, req.body?.fields || req.body || {});
+    if (!existing.exists) {
+      return res.json({ success: true, exists: false });
+    }
+    return res.json({
+      success: true,
+      exists: true,
+      applicationRef: existing.applicationRef,
+      status: existing.status,
+      lastUpdated: existing.lastUpdated,
+      resumeAvailable: existing.resumeAvailable,
+    });
+  } catch (error) {
+    console.error('[PublicForms] check:', error);
+    res.status(500).json({ success: false, message: 'Unable to verify application status.' });
+  }
+});
+
 router.post('/forms/:slug/submit',
   validateToken,
   formSubmissionLimiter,
-  upload.single('resume'),
+  upload.any(),
   async (req, res) => {
     try {
-      const form = req.form; // Attached by validateToken middleware
+      await ensurePublicApplicationSchema();
+      const form = req.form;
       const formData = req.body;
+      const action = (req.body?.action || 'new').toLowerCase();
+      const filesByFieldKey = collectUploadedFiles(req);
 
-      console.log('[PublicForms] Received submission for form:', form.slug);
-      console.log('[PublicForms] Form data keys:', Object.keys(formData));
-
-      // Get form fields for validation
       const fields = await query(
         `SELECT id, label, field_key, field_type, is_required, options
-         FROM form_fields
-         WHERE form_id = ? AND is_active = TRUE`,
+         FROM form_fields WHERE form_id = ? AND is_active = TRUE`,
         [form.id]
       );
 
-      console.log('[PublicForms] Found', fields.length, 'active fields');
+      const outcome = await processPublicSubmission({
+        formId: form.id,
+        formData,
+        fields,
+        filesByFieldKey,
+        resolveResumeUpload,
+        action,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
 
-      // Normalize submitted field keys to canonical system names.
-      // The form may use custom field_key values (e.g. "email_id", "full_name",
-      // "postion") that differ from the DB column names the rest of the pipeline
-      // expects ("email", "name", "position").  Build a lookup from each form
-      // field's field_key → canonical name, then produce a merged data object
-      // that contains BOTH the original keys AND the canonical aliases so every
-      // downstream consumer can find what it needs.
-      const FIELD_KEY_ALIASES = {
-        // name variants
-        full_name: 'name', candidate_name: 'name', applicant_name: 'name',
-        // email variants
-        email_id: 'email', email_address: 'email', emailid: 'email',
-        // phone variants
-        phone_number: 'phone', mobile_number: 'phone', contact_number: 'phone',
-        mobile: 'phone', contact: 'phone',
-        // position variants — including the common "postion" typo
-        postion: 'position', job_title: 'position', role: 'position',
-        designation: 'position', job_role: 'position', profile: 'position',
-        // experience variants
-        years_of_experience: 'experience', years_experience: 'experience',
-        exp: 'experience', work_experience: 'experience', total_experience: 'experience',
-        // notice period variants
-        notice_period_days: 'notice_period', notice_period_in_days: 'notice_period',
-        // salary variants
-        expected_salary: 'expected_ctc', expected_ctc: 'expected_ctc',
-        // source variants
-        referral_source: 'source', application_source: 'source',
-        // location variants
-        current_location: 'location', city: 'location', current_city: 'location',
-      };
-
-      const normalizedFormData = { ...formData };
-      for (const [key, value] of Object.entries(formData)) {
-        const canonical = FIELD_KEY_ALIASES[key.toLowerCase()];
-        if (canonical && normalizedFormData[canonical] === undefined) {
-          normalizedFormData[canonical] = value;
-          console.log(`[PublicForms] Normalized field key: "${key}" → "${canonical}"`);
-        }
+      if (!outcome.ok) {
+        return res.status(outcome.status).json(outcome.body);
       }
 
-      // Validate form submission using ValidationService (Requirements: 2.1-2.5)
-      const validation = validationService.validateFormSubmission(fields, normalizedFormData);
-      
-      if (!validation.isValid) {
-        console.log('[PublicForms] Validation failed:', validation.errors);
-        return res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: validation.errors
-        });
-      }
-
-      // Check for duplicate email — use normalized key so "email_id" is resolved
-      const submittedEmail = normalizedFormData.email ?? null;
-      const existingCandidates = await query(
-        'SELECT id FROM candidates WHERE email = ?',
-        [submittedEmail]
-      );
-
-      if (existingCandidates.length > 0) {
-        console.log('[PublicForms] Duplicate email detected:', submittedEmail);
-        return res.status(409).json({
-          success: false,
-          message: 'A candidate with this email already exists'
-        });
-      }
-
-      // Sanitize all text inputs (Requirements: 5.4, 5.5, 13.2, 13.3)
-      const sanitizedData = {};
-      for (const [key, value] of Object.entries(normalizedFormData)) {
-        if (typeof value === 'string') {
-          sanitizedData[key] = validationService.sanitizeText(value);
-        } else {
-          sanitizedData[key] = value;
-        }
-      }
-
-      console.log('[PublicForms] Processing submission...');
-
-      // Process submission using FormSubmissionProcessor (Requirements: 3.1-3.5)
-      const result = await formSubmissionProcessor.processSubmission(
-        form.id,
-        sanitizedData,
-        req.file,
-        req.ip,
-        req.get('user-agent')
-      );
-
-      if (!result.success) {
-        console.error('[PublicForms] Submission processing failed:', result.error);
-        
-        // Log error analytics
+      if (outcome.candidateId && outcome.sanitizedData) {
         await query(
           `INSERT INTO form_analytics (form_id, event_type, ip_address, metadata)
-           VALUES (?, 'error', ?, ?)`,
-          [form.id, req.ip, JSON.stringify({ error: result.error })]
-        ).catch(err => console.error('[PublicForms] Failed to log error analytics:', err));
+           VALUES (?, 'submission', ?, ?)`,
+          [form.id, req.ip, JSON.stringify({ application_ref: outcome.body.data?.applicationRef })]
+        ).catch(() => {});
 
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to submit application. Please try again later.',
-          error: process.env.NODE_ENV === 'development' ? result.error : undefined
-        });
+        setImmediate(() =>
+          triggerAssessmentPortalWebhook({
+            id: outcome.candidateId,
+            name: outcome.sanitizedData.name,
+            email: outcome.sanitizedData.email,
+            phone: outcome.sanitizedData.phone,
+            position: outcome.sanitizedData.position || outcome.sanitizedData.job_profile || '',
+            stage: 'Applied',
+            experience: outcome.sanitizedData.experience || '',
+            source: 'Public Form',
+          })
+        );
       }
 
-      console.log('[PublicForms] Submission successful, candidate ID:', result.candidateId);
-
-      // Log successful submission analytics
-      await query(
-        `INSERT INTO form_analytics (form_id, event_type, ip_address, metadata)
-         VALUES (?, 'submission', ?, ?)`,
-        [form.id, req.ip, JSON.stringify({ candidate_id: result.candidateId })]
-      ).catch(err => console.error('[PublicForms] Failed to log submission analytics:', err));
-      
-      // ✅ ADD THIS — fire webhook to Assessment Portal (non-blocking)
-      setImmediate(() => triggerAssessmentPortalWebhook({
-        id: result.candidateId,
-        name: sanitizedData.name,
-        email: sanitizedData.email,
-        phone: sanitizedData.phone,
-        position: sanitizedData.position || sanitizedData.job_profile || '',
-        stage: 'Applied',
-        experience: sanitizedData.experience || '',
-        source: 'Public Form',
-      })); 
-
-      res.status(201).json({
-        success: true,
-        message: 'Application submitted successfully',
-        data: {
-          candidate_id: result.candidateId,
-          submission_id: result.submissionId
-        }
-      });
+      return res.status(outcome.status).json(outcome.body);
     } catch (error) {
       console.error('[PublicForms] Error submitting form:', error);
-      console.error('[PublicForms] Error stack:', error.stack);
-
-      // Log error analytics
-      try {
-        const form = req.form;
-        if (form) {
-          await query(
-            `INSERT INTO form_analytics (form_id, event_type, ip_address, metadata)
-             VALUES (?, 'error', ?, ?)`,
-            [form.id, req.ip, JSON.stringify({ error: error.message, stack: error.stack })]
-          );
-        }
-      } catch (logError) {
-        console.error('[PublicForms] Failed to log error analytics:', logError);
-      }
-
       res.status(500).json({
         success: false,
         message: 'Failed to submit application. Please try again later.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   }

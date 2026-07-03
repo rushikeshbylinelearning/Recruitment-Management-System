@@ -4,6 +4,7 @@ import {
   Plus, Search, Calendar, User, AlertCircle, CheckCircle,
   X, Save, Edit, Trash2, ChevronLeft, ChevronRight,
   MessageSquare, Settings, MoreHorizontal, Phone, ExternalLink, UserPlus,
+  ClipboardList,
 } from 'lucide-react';
 import { Task } from '../types';
 import { tasksAPI, usersAPI, jobsAPI, candidatesAPI, interactionAPI, InteractionCandidate } from '../services/api';
@@ -11,10 +12,28 @@ import ProtectedComponent from './ProtectedComponent';
 import { useAuth } from '../contexts/AuthContext';
 import { useDrawer } from '../contexts/DrawerContext';
 import { TimelineDrawer, STATUS_COLORS } from './InteractionMemory';
+import WorkUpdateModal from './WorkUpdateModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const TODAY = () => new Date().toISOString().slice(0, 10);
+/** Local calendar YYYY-MM-DD (avoids UTC off-by-one vs date inputs). */
+function formatLocalYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+const TODAY = () => formatLocalYMD(new Date());
+
+/** Normalize task.dueDate for comparisons (date-only or ISO string). */
+function taskDueYmd(task: Task): string {
+  const raw = task.dueDate;
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(raw).trim())) return String(raw).trim().slice(0, 10);
+  const t = new Date(raw);
+  return Number.isNaN(t.getTime()) ? '' : formatLocalYMD(t);
+}
 
 function friendlyDate(iso: string) {
   const today = TODAY();
@@ -76,7 +95,7 @@ const COLUMNS = [
     id: 'candidate-interactions' as const,
     label: 'Candidate Interactions',
     icon: MessageSquare,
-    accent: '#6366f1',
+    accent: '#dc2626',
     tint: 'rgba(99,102,241,0.07)',
     border: 'rgba(99,102,241,0.12)',
   },
@@ -108,10 +127,28 @@ const COLUMNS = [
 
 type ColId = typeof COLUMNS[number]['id'];
 
+const TASK_CATEGORY_IDS = ['hr-operations', 'admin-operations', 'misc'] as const;
+
 function inferColumn(task: Task): Exclude<ColId, 'candidate-interactions'> {
+  const raw = task.category?.toString().trim().toLowerCase();
+  if (raw && TASK_CATEGORY_IDS.includes(raw as (typeof TASK_CATEGORY_IDS)[number])) {
+    return raw as Exclude<ColId, 'candidate-interactions'>;
+  }
+  
+  // Otherwise, infer from title and description
   const t = (task.title + ' ' + (task.description || '')).toLowerCase();
-  if (/hr|recruit|onboard|offer|hire|payroll|leave|policy/i.test(t)) return 'hr-operations';
-  if (/admin|report|document|compliance|legal|finance|budget/i.test(t)) return 'admin-operations';
+  
+  // HR Operations keywords - expanded list
+  if (/hr|recruit|recruiter|onboard|offer|hire|hiring|payroll|leave|policy|policies|employee|staff|interview|candidate|application|resume|cv|job posting|talent|workforce|performance review|appraisal|training|induction/i.test(t)) {
+    return 'hr-operations';
+  }
+  
+  // Admin Operations keywords - expanded list
+  if (/admin|report|reporting|document|documentation|compliance|legal|finance|financial|budget|accounting|invoice|expense|procurement|purchase|vendor|contract|audit|regulatory|tax|insurance/i.test(t)) {
+    return 'admin-operations';
+  }
+  
+  // Default to misc for everything else
   return 'misc';
 }
 
@@ -140,65 +177,95 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onEdit, onDelete, onComplete, hasEdit, hasDelete }: TaskCardProps) {
-  const overdue = new Date(task.dueDate) < new Date() && task.status !== 'Completed';
+  const todayStr = TODAY();
+  const due = taskDueYmd(task);
+
+  let cardBorder: React.CSSProperties = {
+    border: '1px solid rgba(226, 232, 240, 0.9)',
+  };
+
+  if (task.status === 'Completed') {
+    cardBorder = { border: '2px solid #10b981' };
+  } else if (due) {
+    if (due < todayStr) {
+      cardBorder = { border: '1px solid #cbd5e1' };
+    } else if (due === todayStr) {
+      cardBorder = { border: '2px solid #ef4444' };
+    } else {
+      cardBorder = { border: '2px solid #3b82f6' };
+    }
+  }
+
   const pStyle = PRIORITY_STYLE[task.priority] || PRIORITY_STYLE.Low;
 
   return (
     <div
-      className="group relative bg-white rounded-2xl p-4 transition-all duration-200"
-      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04)' }}
+      className="group relative bg-white rounded-xl px-3 py-2.5 transition-all duration-200"
+      style={{
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.04)',
+        ...cardBorder,
+      }}
       onMouseEnter={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.06)';
-        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.05)';
+        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)';
       }}
       onMouseLeave={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.04)';
         (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
       }}
     >
-      {overdue && <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-red-400" title="Overdue" />}
-      <p className="text-sm font-medium text-gray-800 leading-snug mb-3 pr-4">{task.title}</p>
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-        <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${pStyle.bg}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`} />
+      <p className="text-xs font-semibold text-gray-800 leading-tight mb-1.5 line-clamp-2">{task.title}</p>
+      <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+        <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${pStyle.bg}`}>
+          <span className={`w-1 h-1 rounded-full ${pStyle.dot}`} />
           {task.priority}
         </span>
-        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[task.status] || STATUS_STYLE.Pending}`}>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_STYLE[task.status] || STATUS_STYLE.Pending}`}>
           {task.status}
         </span>
+        {task.status !== 'Completed' && due && due < todayStr && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800">
+            Overdue
+          </span>
+        )}
+        {task.status !== 'Completed' && due === todayStr && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-600">
+            Due Today
+          </span>
+        )}
       </div>
-      <div className="flex items-center justify-between text-[11px] text-slate-400">
-        <span className="flex items-center gap-1">
-          <Calendar size={10} />
+      <div className="flex items-center justify-between text-[10px] text-slate-400 leading-none">
+        <span className="flex items-center gap-0.5">
+          <Calendar size={9} className="shrink-0" />
           {new Date(task.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
         </span>
         {task.assignedToName && (
-          <span className="flex items-center gap-1">
-            <div className="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center text-[9px] font-semibold text-indigo-600">
+          <span className="flex items-center gap-1 min-w-0">
+            <div className="w-3.5 h-3.5 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] font-semibold text-indigo-600 shrink-0">
               {task.assignedToName.charAt(0).toUpperCase()}
             </div>
-            {task.assignedToName.split(' ')[0]}
+            <span className="truncate max-w-[4.5rem]">{task.assignedToName.split(' ')[0]}</span>
           </span>
         )}
       </div>
       {(hasEdit || hasDelete) && (
-        <div className="flex gap-1 mt-3 pt-3 border-t border-gray-50 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <div className="hidden group-hover:flex gap-1 mt-2 pt-2 border-t border-gray-100">
           {hasEdit && task.status !== 'Completed' && (
             <button onClick={() => onComplete(task.id)}
-              className="flex-1 text-[11px] py-1.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors font-medium">
+              className="flex-1 text-[10px] py-1 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors font-medium">
               ✓ Done
             </button>
           )}
           {hasEdit && (
             <button onClick={() => onEdit(task)}
-              className="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-xl transition-colors">
-              <Edit size={12} />
+              className="p-1 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors">
+              <Edit size={11} />
             </button>
           )}
           {hasDelete && (
             <button onClick={() => onDelete(task.id)}
-              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-              <Trash2 size={12} />
+              className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+              <Trash2 size={11} />
             </button>
           )}
         </div>
@@ -306,9 +373,9 @@ function CandidateCard({ c, onClick, onAddToPipeline, onViewCandidate }: Candida
 
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-2xl p-4 animate-pulse" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-      <div className="h-3 bg-slate-100 rounded-full w-3/4 mb-3" />
-      <div className="h-2.5 bg-slate-100 rounded-full w-1/2 mb-3" />
+    <div className="bg-white rounded-xl px-3 py-2.5 animate-pulse" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <div className="h-2.5 bg-slate-100 rounded-full w-3/4 mb-2" />
+      <div className="h-2 bg-slate-100 rounded-full w-2/5 mb-2" />
       <div className="h-2 bg-slate-100 rounded-full w-1/3" />
     </div>
   );
@@ -541,47 +608,112 @@ interface TaskColProps {
   onComplete: (id: number) => void;
   hasEdit: boolean;
   hasDelete: boolean;
-  onAdd: () => void;
+  onAdd: (columnCategory: Exclude<ColId, 'candidate-interactions'>) => void;
   hasCreate: boolean;
   disableCreate: boolean;
 }
 
 function TaskColumn({ colId, tasks, loading, onEdit, onDelete, onComplete, hasEdit, hasDelete, onAdd, hasCreate, disableCreate }: TaskColProps) {
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
   const colTasks = tasks.filter(t => inferColumn(t) === colId);
+  
+  // Filter tasks based on completion status
+  const filteredTasks = showCompleted 
+    ? colTasks.filter(t => t.status === 'Completed')
+    : colTasks;
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
-      {/* Add button */}
-      {hasCreate && (
-        <button
-          onClick={onAdd}
-          disabled={disableCreate}
-          title={disableCreate ? 'Creating tasks is disabled for past dates' : 'New Task'}
-          className="flex items-center justify-center gap-1.5 w-full py-2 mb-4 bg-slate-100 text-slate-600 rounded-xl text-xs font-medium hover:bg-slate-200 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
-        >
-          <Plus size={12} /> New Task
-        </button>
-      )}
+      {/* Add button and filter dropdown */}
+      <div className="flex gap-2 mb-4">
+        {hasCreate && (
+          <button
+            onClick={() => onAdd(colId)}
+            disabled={disableCreate}
+            title={disableCreate ? 'Creating tasks is disabled for past dates' : 'New Task'}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-medium hover:bg-slate-200 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+          >
+            <Plus size={12} /> New Task
+          </button>
+        )}
+        
+        {/* Filter dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            className={`p-2 rounded-xl text-xs font-medium transition-colors ${
+              showCompleted 
+                ? 'bg-indigo-100 text-indigo-600' 
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+            title="Filter tasks"
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          
+          {showDropdown && (
+            <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-10 min-w-[140px]">
+              <button
+                onClick={() => {
+                  setShowCompleted(false);
+                  setShowDropdown(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-xs hover:bg-slate-50 transition-colors ${
+                  !showCompleted ? 'text-indigo-600 font-semibold' : 'text-slate-600'
+                }`}
+              >
+                All Tasks
+              </button>
+              <button
+                onClick={() => {
+                  setShowCompleted(true);
+                  setShowDropdown(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-xs hover:bg-slate-50 transition-colors ${
+                  showCompleted ? 'text-indigo-600 font-semibold' : 'text-slate-600'
+                }`}
+              >
+                Completed
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Count */}
       <p className="text-[11px] text-slate-400 mb-3">
-        {colTasks.length} task{colTasks.length !== 1 ? 's' : ''} on this day
+        {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''} 
+        {showCompleted ? ' (completed)' : ''}
       </p>
 
       {/* Cards */}
-      <div className="flex-1 space-y-2.5 overflow-y-auto">
+      <div className="flex-1 space-y-2 overflow-y-auto">
         {loading ? (
           <>
             <SkeletonCard /><SkeletonCard />
           </>
-        ) : colTasks.length === 0 ? (
+        ) : filteredTasks.length === 0 ? (
           <EmptyState
-            label="No records for this day"
-            onAdd={hasCreate && !disableCreate ? onAdd : undefined}
+            label={showCompleted ? "No completed tasks" : "No tasks"}
+            onAdd={hasCreate && !disableCreate && !showCompleted ? () => onAdd(colId) : undefined}
             addLabel={disableCreate ? 'Task creation disabled for past dates' : '+ New task'}
           />
         ) : (
-          colTasks.map(task => (
+          filteredTasks.map(task => (
             <TaskCard
               key={task.id}
               task={task}
@@ -617,11 +749,13 @@ function TaskFormModal({ mode, formData, errors, users, jobs, candidates, onChan
   const inputBase = 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-gray-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all';
   const inputError = 'border-red-300 bg-red-50 focus:ring-red-400';
 
-  // Determine if user is a recruiter (can only assign to themselves)
+  // Determine if user is a recruiter (can assign to self OR to HR Interns)
   const isRecruiter = user?.role === 'Recruiter';
 
-  // Filter users based on role
-  const availableUsers = isRecruiter ? users.filter(u => u.id === user?.id) : users;
+  // Filter users based on role: recruiter sees self + HR Interns; others see all
+  const availableUsers = isRecruiter
+    ? users.filter(u => u.id === user?.id || u.role === 'HR Intern')
+    : users;
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -659,6 +793,17 @@ function TaskFormModal({ mode, formData, errors, users, jobs, candidates, onChan
                 {errors.assignedTo && <p className="text-red-500 text-xs mt-1">{errors.assignedTo}</p>}
               </div>
             )}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Category *</label>
+              <select 
+                value={formData.category || 'hr-operations'} 
+                onChange={e => onChange('category', e.target.value)}
+                className={inputBase}>
+                <option value="hr-operations">HR Operations</option>
+                <option value="admin-operations">Admin Operations</option>
+                <option value="misc">Misc</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Due Date *</label>
               <input type="date" value={formData.dueDate} onChange={e => onChange('dueDate', e.target.value)}
@@ -738,9 +883,9 @@ function FilterModal({ recruiters, selectedRecruiterId, onSelect, onClose }: Fil
           <div>
             <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
               <User size={20} className="text-indigo-500" />
-              Filter by Recruiter
+              Filter by Recruiter / Intern
             </h2>
-            <p className="text-sm text-slate-400 mt-0.5">View tasks and interactions for specific recruiter</p>
+            <p className="text-sm text-slate-400 mt-0.5">View tasks and interactions for specific recruiter or intern</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors">
             <X size={16} className="text-slate-500" />
@@ -762,7 +907,7 @@ function FilterModal({ recruiters, selectedRecruiterId, onSelect, onClose }: Fil
                 All
               </div>
               <div className="text-left">
-                <p className="font-semibold text-gray-800">All Recruiters</p>
+                <p className="font-semibold text-gray-800">All Recruiters / Interns</p>
                 <p className="text-xs text-slate-400">View all tasks and interactions</p>
               </div>
             </div>
@@ -788,7 +933,7 @@ function FilterModal({ recruiters, selectedRecruiterId, onSelect, onClose }: Fil
                 </div>
                 <div className="text-left">
                   <p className="font-semibold text-gray-800">{recruiter.name}</p>
-                  <p className="text-xs text-slate-400">@{recruiter.username}</p>
+                  <p className="text-xs text-slate-400">@{recruiter.username} · {recruiter.role}</p>
                 </div>
               </div>
               {selectedRecruiterId === recruiter.id && (
@@ -819,9 +964,11 @@ interface DateNavProps {
   onFilterClick?: () => void;
   hasActiveFilter?: boolean;
   filterLabel?: string;
+  onWorkUpdate?: () => void;
+  showWorkUpdateFAB?: boolean;
 }
 
-function DateNavigator({ viewDate, onChange, onFilterClick, hasActiveFilter, filterLabel }: DateNavProps) {
+function DateNavigator({ viewDate, onChange, onFilterClick, hasActiveFilter, filterLabel, onWorkUpdate, showWorkUpdateFAB }: DateNavProps) {
   const isToday = viewDate === TODAY();
   const [showPicker, setShowPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -837,86 +984,105 @@ function DateNavigator({ viewDate, onChange, onFilterClick, hasActiveFilter, fil
   }, []);
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2" ref={pickerRef}>
-      {/* Filter Button (only show if onFilterClick provided) */}
+    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-center gap-3" ref={pickerRef}>
+
+      {/* ── Submit Work Update FAB — stacked above date pill ─────────────── */}
+      {showWorkUpdateFAB && onWorkUpdate && (
+        <button
+          onClick={onWorkUpdate}
+          title="Submit Work Update (EOD)"
+          aria-label="Submit EOD Work Update"
+          className="w-12 h-12 flex items-center justify-center rounded-full text-white transition-all duration-200 hover:scale-110 active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            boxShadow: '0 4px 20px rgba(99,102,241,0.45)',
+          }}
+        >
+          <ClipboardList size={20} />
+        </button>
+      )}
+
+      {/* ── Recruiter filter button ───────────────────────────────────────── */}
       {onFilterClick && (
         <button
           onClick={onFilterClick}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl transition-all duration-200"
+          className="w-12 h-12 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
           style={{
-            background: hasActiveFilter 
-              ? 'linear-gradient(135deg, #6366f1, #4f46e5)' 
+            background: hasActiveFilter
+              ? 'linear-gradient(135deg, #dc2626, #b91c1c)'
               : 'rgba(255,255,255,0.95)',
             backdropFilter: 'blur(12px)',
             boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)',
-            border: hasActiveFilter ? 'none' : '1px solid rgba(255,255,255,0.8)',
-            color: hasActiveFilter ? 'white' : '#64748b'
+            border: hasActiveFilter ? 'none' : '1px solid rgba(226,232,240,0.9)',
+            color: hasActiveFilter ? 'white' : '#64748b',
           }}
           title={hasActiveFilter ? `Filtered by: ${filterLabel}` : 'Filter by recruiter'}
         >
-          <User size={16} />
-          {hasActiveFilter && (
-            <span className="text-xs font-medium">{filterLabel}</span>
-          )}
+          <User size={18} />
         </button>
       )}
 
-      {/* Calendar picker popup */}
-      {showPicker && (
-        <div className="absolute bottom-full right-0 mb-2 bg-white rounded-2xl shadow-xl p-3 border border-slate-100"
-          style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
-          <input
-            type="date"
-            value={viewDate}
-            onChange={e => { onChange(e.target.value); setShowPicker(false); }}
-            className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
-          />
-        </div>
-      )}
-
-      {/* Pill navigator */}
-      <div
-        className="flex items-center gap-1 px-3 py-2 rounded-2xl"
-        style={{
-          background: 'rgba(255,255,255,0.95)',
-          backdropFilter: 'blur(12px)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)',
-          border: '1px solid rgba(255,255,255,0.8)',
-        }}
-      >
-        <button
-          onClick={() => onChange(shiftDateStr(viewDate, -1))}
-          className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors"
-        >
-          <ChevronLeft size={14} className="text-slate-500" />
-        </button>
-
-        <button
-          onClick={() => setShowPicker(p => !p)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-xl hover:bg-slate-50 transition-colors"
-        >
-          <Calendar size={12} className="text-indigo-400" />
-          <span className={`text-xs font-semibold ${isToday ? 'text-indigo-600' : 'text-gray-700'}`}>
-            {friendlyDate(viewDate)}
-          </span>
-        </button>
-
-        {!isToday && (
-          <button
-            onClick={() => onChange(TODAY())}
-            className="text-[11px] text-indigo-500 hover:text-indigo-600 font-medium px-1.5 py-1 rounded-lg hover:bg-indigo-50 transition-colors"
+      {/* ── Date pill + calendar popup (popup anchored to pill, not column) ─ */}
+      <div className="relative">
+        {/* Calendar picker popup — always opens above the pill */}
+        {showPicker && (
+          <div
+            className="absolute bottom-full right-0 mb-2 bg-white rounded-2xl shadow-xl p-3 border border-slate-100"
+            style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
           >
-            Today
-          </button>
+            <input
+              type="date"
+              value={viewDate}
+              onChange={e => { onChange(e.target.value); setShowPicker(false); }}
+              className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+            />
+          </div>
         )}
 
-        <button
-          onClick={() => onChange(shiftDateStr(viewDate, 1))}
-          disabled={isToday}
-          className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        {/* Pill navigator */}
+        <div
+          className="flex items-center gap-1 px-3 py-2 rounded-2xl"
+          style={{
+            background: 'rgba(255,255,255,0.95)',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)',
+            border: '1px solid rgba(255,255,255,0.8)',
+          }}
         >
-          <ChevronRight size={14} className="text-slate-500" />
-        </button>
+          <button
+            onClick={() => onChange(shiftDateStr(viewDate, -1))}
+            className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors"
+          >
+            <ChevronLeft size={14} className="text-slate-500" />
+          </button>
+
+          <button
+            onClick={() => setShowPicker(p => !p)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-xl hover:bg-slate-50 transition-colors"
+          >
+            <Calendar size={12} className="text-indigo-400" />
+            <span className={`text-xs font-semibold ${isToday ? 'text-indigo-600' : 'text-gray-700'}`}>
+              {friendlyDate(viewDate)}
+            </span>
+          </button>
+
+          {!isToday && (
+            <button
+              onClick={() => onChange(TODAY())}
+              className="text-[11px] text-indigo-500 hover:text-indigo-600 font-medium px-1.5 py-1 rounded-lg hover:bg-indigo-50 transition-colors"
+            >
+              Today
+            </button>
+          )}
+
+          <button
+            onClick={() => onChange(shiftDateStr(viewDate, 1))}
+            disabled={isToday}
+            className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={14} className="text-slate-500" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -957,6 +1123,7 @@ export default function Tasks({}: TasksProps) {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showWorkUpdateModal, setShowWorkUpdateModal] = useState(false);
 
   // Metrics state - initialize with stable defaults to prevent flicker
   const [metrics, setMetrics] = useState({
@@ -977,6 +1144,7 @@ export default function Tasks({}: TasksProps) {
     title: '', description: '', assignedTo: 0,
     jobId: null as number | null, candidateId: null as number | null,
     priority: 'Medium', status: 'Pending', dueDate: viewDate,
+    category: 'hr-operations' as 'hr-operations' | 'admin-operations' | 'misc',
   };
   const [taskFormData, setTaskFormData] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -1147,15 +1315,13 @@ export default function Tasks({}: TasksProps) {
 
   // Filter tasks by selected date (match dueDate)
   // Note: Recruiter filtering is now done at the API level
-  const tasksForDate = tasks.filter(t => {
-    if (!t.dueDate) return false;
-    return t.dueDate.slice(0, 10) === viewDate;
-  });
+  // UPDATED: Show ALL tasks, not just tasks for the selected date
+  const tasksForDate = tasks;
 
-  // Get list of recruiters for the filter dropdown
-  const recruiters = users.filter(u => u.role === 'Recruiter');
+  // Get list of recruiters + HR Interns for the filter dropdown
+  const recruiters = users.filter(u => u.role === 'Recruiter' || u.role === 'HR Intern');
 
-  function openCreate() {
+  function openCreate(defaultCategory: Exclude<ColId, 'candidate-interactions'> = 'hr-operations') {
     if (viewDate < TODAY()) {
       setError('You cannot create tasks for past dates. Please switch to today.');
       return;
@@ -1163,17 +1329,28 @@ export default function Tasks({}: TasksProps) {
     setEditingTask(null);
     // For recruiters, automatically set assignedTo to themselves
     const initialAssignedTo = user?.role === 'Recruiter' ? user.id : 0;
-    setTaskFormData({ ...emptyForm, dueDate: viewDate, assignedTo: initialAssignedTo });
+    setTaskFormData({
+      ...emptyForm,
+      dueDate: viewDate,
+      assignedTo: initialAssignedTo,
+      category: defaultCategory,
+    });
     setFormErrors({});
     setShowTaskModal(true);
   }
 
   function openEdit(task: Task) {
     setEditingTask(task);
+    const raw = task.category?.toString().trim().toLowerCase();
+    const saved =
+      raw && TASK_CATEGORY_IDS.includes(raw as (typeof TASK_CATEGORY_IDS)[number])
+        ? (raw as (typeof TASK_CATEGORY_IDS)[number])
+        : inferColumn(task);
     setTaskFormData({
       title: task.title, description: task.description, assignedTo: task.assignedTo,
       jobId: task.jobId || null, candidateId: task.candidateId || null,
       priority: task.priority, status: task.status, dueDate: task.dueDate,
+      category: saved,
     });
     setFormErrors({});
     setShowTaskModal(true);
@@ -1296,7 +1473,7 @@ export default function Tasks({}: TasksProps) {
                   label="Total Interactions"
                   value={metrics.totalInteractions}
                   icon={MessageSquare}
-                  color="#6366f1"
+                  color="#dc2626"
                   bgColor="rgba(99,102,241,0.1)"
                   subMetrics={[
                     { label: 'Interested', value: metrics.interactionsByStatus.Interested, color: '#10b981' },
@@ -1422,7 +1599,12 @@ export default function Tasks({}: TasksProps) {
             filterLabel={selectedRecruiterId ? recruiters.find(r => r.id === selectedRecruiterId)?.name : undefined}
           />
         ) : (
-          <DateNavigator viewDate={viewDate} onChange={setViewDate} />
+          <DateNavigator
+            viewDate={viewDate}
+            onChange={setViewDate}
+            showWorkUpdateFAB={user?.role === 'Recruiter' || user?.role === 'HR Intern'}
+            onWorkUpdate={() => setShowWorkUpdateModal(true)}
+          />
         )}
 
         {/* Filter Modal */}
@@ -1447,6 +1629,16 @@ export default function Tasks({}: TasksProps) {
             onChange={changeForm}
             onSubmit={handleSubmit}
             onClose={() => setShowTaskModal(false)}
+          />
+        )}
+
+        {/* Work Update Modal */}
+        {showWorkUpdateModal && (
+          <WorkUpdateModal
+            onClose={() => {
+              setShowWorkUpdateModal(false);
+              // Show success toast after close if submitted
+            }}
           />
         )}
       </div>

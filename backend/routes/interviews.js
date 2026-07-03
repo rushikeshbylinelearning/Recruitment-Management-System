@@ -7,8 +7,20 @@ import { asyncHandler, NotFoundError, ValidationError } from '../middleware/erro
 import { checkConflict } from '../services/conflictDetector.js';
 import { sendScheduledEmails, sendRescheduledEmails } from '../services/interviewEmailService.js';
 import { createNotification } from '../services/inAppNotifications.js';
+import {
+  mapInterviewRow,
+  mapCandidateInterviewRow,
+} from '../utils/interviewListMapper.js';
 
 const router = express.Router();
+
+const LIST_ATTENDANCE_FILTER = new Set([
+  'Scheduled',
+  'Came',
+  'Did Not Come',
+  'Cancelled',
+  'Follow Up',
+]);
 
 // Get all interviews
 router.get('/', authenticateToken, checkPermission('interviews', 'view'), validatePagination, handleValidationErrors, asyncHandler(async (req, res) => {
@@ -79,6 +91,149 @@ router.get('/', authenticateToken, checkPermission('interviews', 'view'), valida
       limit,
       totalPages: Math.ceil(total / limit)
     }
+  });
+}));
+
+// Full list for Interviews page (date-wise, attendance from candidate kanban + interviews table)
+router.get('/list', authenticateToken, checkPermission('interviews', 'view'), asyncHandler(async (req, res) => {
+  const {
+    dateFrom = '',
+    dateTo = '',
+    type = '',
+    status = '',
+    attendance = '',
+    interviewerId = '',
+    mode = '',
+  } = req.query;
+
+  const interviewWhere = [];
+  const interviewParams = [];
+
+  if (dateFrom) {
+    interviewWhere.push('COALESCE(i.date, DATE(i.scheduled_date)) >= ?');
+    interviewParams.push(dateFrom);
+  }
+  if (dateTo) {
+    interviewWhere.push('COALESCE(i.date, DATE(i.scheduled_date)) <= ?');
+    interviewParams.push(dateTo);
+  }
+  if (type) {
+    interviewWhere.push('i.type = ?');
+    interviewParams.push(type);
+  }
+  if (status) {
+    interviewWhere.push('i.status = ?');
+    interviewParams.push(status);
+  }
+  if (interviewerId) {
+    interviewWhere.push('i.interviewer_id = ?');
+    interviewParams.push(interviewerId);
+  }
+  if (mode) {
+    interviewWhere.push('i.mode = ?');
+    interviewParams.push(mode);
+  }
+
+  const interviewWhereClause =
+    interviewWhere.length > 0 ? `WHERE ${interviewWhere.join(' AND ')}` : '';
+
+  const interviewRows = await query(
+    `SELECT
+       i.*,
+       c.name AS candidate_name,
+       c.position AS candidate_position,
+       c.email AS candidate_email,
+       c.main_stage,
+       c.sub_stage,
+       u.name AS interviewer_name,
+       u.email AS interviewer_email
+     FROM interviews i
+     LEFT JOIN candidates c ON i.candidate_id = c.id
+     LEFT JOIN users u ON i.interviewer_id = u.id
+     ${interviewWhereClause}
+     ORDER BY COALESCE(i.date, DATE(i.scheduled_date)) DESC, i.time DESC`,
+    interviewParams
+  );
+
+  let items = interviewRows.map(mapInterviewRow).filter((row) => row.date);
+
+  const candidateWhere = [
+    "(c.main_stage = 'interview' OR c.stage = 'Interview')",
+    'c.interview_date IS NOT NULL',
+    `NOT EXISTS (
+       SELECT 1 FROM interviews ix
+       WHERE ix.candidate_id = c.id
+         AND COALESCE(ix.date, DATE(ix.scheduled_date)) = DATE(c.interview_date)
+     )`,
+  ];
+  const candidateParams = [];
+
+  if (dateFrom) {
+    candidateWhere.push('DATE(c.interview_date) >= ?');
+    candidateParams.push(dateFrom);
+  }
+  if (dateTo) {
+    candidateWhere.push('DATE(c.interview_date) <= ?');
+    candidateParams.push(dateTo);
+  }
+  if (interviewerId) {
+    candidateWhere.push('c.interviewer_id = ?');
+    candidateParams.push(interviewerId);
+  }
+
+  const candidateRows = await query(
+    `SELECT
+       c.id AS candidate_id,
+       c.name AS candidate_name,
+       c.position AS candidate_position,
+       c.email AS candidate_email,
+       c.interview_date,
+       c.interviewer_id,
+       c.main_stage,
+       c.sub_stage,
+       c.created_at,
+       c.updated_at,
+       u.name AS interviewer_name
+     FROM candidates c
+     LEFT JOIN users u ON c.interviewer_id = u.id
+     WHERE ${candidateWhere.join(' AND ')}
+     ORDER BY c.interview_date DESC`,
+    candidateParams
+  );
+
+  for (const row of candidateRows) {
+    const mapped = mapCandidateInterviewRow(row);
+    if (mapped) items.push(mapped);
+  }
+
+  if (type) {
+    items = items.filter((item) => item.type === type);
+  }
+  if (mode) {
+    items = items.filter((item) => item.mode === mode);
+  }
+  if (attendance && LIST_ATTENDANCE_FILTER.has(String(attendance))) {
+    items = items.filter((item) => item.attendance === attendance);
+  }
+
+  items.sort((a, b) => {
+    const da = `${a.date}T${a.time}`;
+    const db = `${b.date}T${b.time}`;
+    return da < db ? 1 : da > db ? -1 : 0;
+  });
+
+  const stats = {
+    total: items.length,
+    scheduled: items.filter((i) => i.attendance === 'Scheduled').length,
+    came: items.filter((i) => i.attendance === 'Came').length,
+    didNotCome: items.filter((i) => i.attendance === 'Did Not Come').length,
+    cancelled: items.filter((i) => i.attendance === 'Cancelled').length,
+    followUp: items.filter((i) => i.attendance === 'Follow Up').length,
+  };
+
+  res.json({
+    success: true,
+    data: { interviews: items, stats },
   });
 }));
 
@@ -414,7 +569,7 @@ router.get('/interviewer/:interviewerId', authenticateToken, checkPermission('in
   const interviewerId = req.params.interviewerId;
 
   // Check if user can access this data
-  if (req.user.id !== interviewerId && req.user.role !== 'Admin' && req.user.role !== 'HR Manager') {
+  if (req.user.id !== interviewerId && req.user.role !== 'Admin') {
     throw new ValidationError('Access denied');
   }
 
