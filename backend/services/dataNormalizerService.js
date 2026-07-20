@@ -8,6 +8,7 @@
  */
 
 import { canonicalizePositionForStorage } from './jobCardCategoryAggregation.js';
+import { parseAppliedDateIST } from '../utils/istDate.js';
 
 /**
  * Normalize a candidate row
@@ -36,7 +37,12 @@ function normalize(row) {
       case 'notes':
       case 'source':
       case 'resume':
+      case 'hr_comment':
         normalized[key] = normalizeText(value);
+        break;
+
+      case 'applied_date':
+        normalized[key] = parseAppliedDateIST(value);
         break;
 
       case 'email':
@@ -95,6 +101,27 @@ function normalize(row) {
         } else {
           normalized[key] = typeof value === 'string' ? normalizeText(value) : value;
         }
+    }
+  }
+
+  // Merge HR Comment into notes (Book1.xlsx has separate Remarks + HR Comment columns)
+  if (normalized.hr_comment) {
+    const hrPart = normalized.hr_comment.trim();
+    if (normalized.notes) {
+      normalized.notes = `${normalized.notes} | HR Comment: ${hrPart}`;
+    } else {
+      normalized.notes = `HR Comment: ${hrPart}`;
+    }
+  }
+
+  // Infer position from remarks/status when Position cell is empty (Book1-style)
+  if (!normalized.position) {
+    const inferred = inferPositionFromContext(
+      normalized.notes,
+      normalized.stage
+    );
+    if (inferred) {
+      normalized.position = canonicalizePositionForStorage(inferred);
     }
   }
 
@@ -257,6 +284,33 @@ function parseBoolean(value) {
   return false;
 }
 
+/**
+ * @deprecated Use parseAppliedDateIST from utils/istDate.js
+ */
+function parseAppliedDate(value) {
+  return parseAppliedDateIST(value);
+}
+
+/**
+ * Infer job position from remarks/status text when Position column is blank.
+ * @param {string|null} remarksText
+ * @param {string|null} statusText
+ * @returns {string|null}
+ */
+function inferPositionFromContext(remarksText, statusText) {
+  const combined = `${remarksText || ''} ${statusText || ''}`.toLowerCase();
+  if (!combined.trim()) return null;
+
+  if (combined.includes('project manager') || combined.includes('project coordinator')) {
+    return 'Project Coordinator';
+  }
+  if (combined.includes('sales') || combined.includes('marketing')) {
+    return 'Sales and Marketing';
+  }
+
+  return null;
+}
+
 export {
   normalize,
   normalizeText,
@@ -264,5 +318,7 @@ export {
   normalizePhone,
   parseExperience,
   parseSkills,
-  parseBoolean
+  parseBoolean,
+  parseAppliedDate,
+  inferPositionFromContext,
 };

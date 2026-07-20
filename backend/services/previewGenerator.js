@@ -8,6 +8,8 @@
  */
 
 import * as dataNormalizerService from './dataNormalizerService.js';
+import { resolveStageFromRow } from './rowColorResolver.js';
+import { getKanbanColumnForImport } from './kanbanColumnResolver.js';
 
 // Configuration
 const DEFAULT_PREVIEW_ROWS = 10;
@@ -53,56 +55,45 @@ async function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
     mappingMap.set(m.sourceColumn, m.targetField);
   });
 
-  // Import stage detection service
-  let detectStage = null;
-  try {
-    const stageMappingModule = await import('./stageMappingService.js');
-    detectStage = stageMappingModule.detectStage;
-  } catch (err) {
-    console.warn('Stage mapping service not available:', err.message);
-  }
-
   // Process rows for preview
   const rowsToPreview = rows.slice(0, maxRows);
 
   rowsToPreview.forEach((row, index) => {
-    // Map data according to field mappings
     const mappedData = {};
     for (const [sourceColumn, value] of Object.entries(row)) {
+      if (sourceColumn.startsWith('__')) continue;
       const targetField = mappingMap.get(sourceColumn);
       if (targetField) {
         mappedData[targetField] = value;
       }
     }
 
-    // Normalize the mapped data (pass flat object directly)
+    // Preserve color metadata from parser
+    if (row.__cellColors) mappedData.__cellColors = row.__cellColors;
+    if (row.__rowColors) mappedData.__rowColors = row.__rowColors;
+
     const normalized = dataNormalizerService.normalize(mappedData);
 
-    // Detect stage if stage mapping service is available
     let stageDetection = null;
-    if (detectStage && (normalized.normalized.stage || row.__cellColors)) {
-      const cellColors = row.__cellColors || {};
-
-      // CRITICAL: Read color from CANDIDATE NAME column ONLY.
-      // This mirrors the logic in bulkInsertService.js prepareRowData().
-      // Common name-column header variations are checked in priority order.
-      const nameCellColor =
-        cellColors['Name'] ||
-        cellColors['Candidate Name'] ||
-        cellColors['Full Name'] ||
-        cellColors['Candidate'] ||
-        cellColors['name'] ||
-        cellColors['candidate name'] ||
-        cellColors['full name'] ||
-        cellColors['candidate'] ||
-        null;
-
-      stageDetection = detectStage({
-        cellValue: normalized.normalized.stage || '',
-        cellColor: nameCellColor,   // Name cell color — NOT stage/status column
+    if (normalized.normalized.stage || row.__cellColors || row.__rowColors) {
+      const result = resolveStageFromRow({
+        stageText: normalized.normalized.stage || '',
+        cellColors: row.__cellColors || {},
+        rowColors: row.__rowColors || [],
+        remarks: normalized.normalized.notes || '',
         allowFuzzyMatch: true,
-        confidenceThreshold: 0.7
       });
+
+      stageDetection = {
+        detectedStage: result.legacyStage,
+        mainStage: result.mainStage,
+        subStage: result.subStage,
+        confidence: result.confidence,
+        matchMethod: result.matchMethod,
+        colorSource: result.colorSource,
+        detectedColor: result.detectedColor || null,
+        kanbanColumn: getKanbanColumnForImport(result.mainStage, result.subStage, result.legacyStage),
+      };
     }
 
     // Identify missing fields
@@ -124,11 +115,13 @@ async function generatePreview(rows, mappings, maxRows = DEFAULT_PREVIEW_ROWS) {
       missingOptional,
       validationIssues,
       stageDetection: stageDetection ? {
-        detectedStage: stageDetection.legacyStage,
+        detectedStage: stageDetection.detectedStage,
         mainStage: stageDetection.mainStage,
         subStage: stageDetection.subStage,
         confidence: stageDetection.confidence,
-        matchMethod: stageDetection.matchMethod
+        matchMethod: stageDetection.matchMethod,
+        colorSource: stageDetection.colorSource,
+        detectedColor: stageDetection.detectedColor,
       } : null
     });
 

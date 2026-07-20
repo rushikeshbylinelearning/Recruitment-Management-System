@@ -5,6 +5,7 @@ import { validateJobPosting, validateId, validatePagination, handleValidationErr
 import { asyncHandler, NotFoundError, ConflictError, ValidationError } from '../middleware/errorHandler.js';
 import { computeJobCardApplicantTotals } from '../services/jobCardCategoryAggregation.js';
 import { buildNotesMapForCandidates } from '../services/hrNotesSyncService.js';
+import { toISTYMD } from '../utils/istDate.js';
 
 const router = express.Router();
 
@@ -416,7 +417,7 @@ router.get('/:id/candidates', authenticateToken, checkPermission('candidates', '
     candidate.communicationsCount = commCount[0].count;
 
     // Convert snake_case to camelCase for frontend compatibility
-    candidate.appliedDate = candidate.applied_date;
+    candidate.appliedDate = toISTYMD(candidate.applied_date) || candidate.applied_date;
     candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
     candidate.assignedToId = candidate.assigned_to || null;
     candidate.uploadedBy = candidate.uploaded_by_name || null;

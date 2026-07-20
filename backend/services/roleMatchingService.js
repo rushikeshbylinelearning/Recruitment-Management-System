@@ -48,6 +48,24 @@ const DEFAULT_MANUAL_MAPPINGS = {
   'instructional content writer':  'Instructional Content Writer',
   'instructional designer':        'Instructional Designer',
   'content writter':               'Content Writer',
+  // Book1.xlsx / tracker abbreviations
+  'id':                            'Instructional Designer',
+  'bde':                           'Business Development Executive',
+  'content':                       'Content Writer',
+  'dm':                            'Digital Marketing Executive',
+  'gd':                            'Graphic Designer',
+  'pc':                            'Project Manager/Coordinator',
+  'icw':                           'Instructional Content Writer',
+  'intern':                        'Intern',
+  'eld':                           'E-Learning Developer',
+  'senior fsd':                    'Full Stack Developer',
+  'fsc':                           'Full Stack Developer',
+  'ui/ux':                         'Graphic Designer',
+  'visualizer':                    'Visualizer',
+  'markering':                     'Marketing Executive',
+  'marketing executive':           'Marketing Executive',
+  'sales and marketing':           'Sales and Marketing',
+  'intern sales and marketing':    'Intern & Fresher Sales/Marketing',
 };
 
 // Skill → job title keyword mapping for skill-based fallback

@@ -109,6 +109,14 @@ export function getKanbanColumnForCandidate(candidate: {
     return 'Interview';
   }
 
+  if (candidate.mainStage === 'selected') {
+    return 'Selected';
+  }
+
+  if (candidate.mainStage === 'hired') {
+    return 'Hired';
+  }
+
   if (candidate.mainStage === 'rejected' && candidate.subStage) {
     return REJECTED_SUB_STAGE_TO_COLUMN[candidate.subStage] || 'Rejected';
   }
@@ -120,8 +128,11 @@ export function getKanbanColumnForCandidate(candidate: {
   }
 
   const normalized = normalizeStageForDisplay(candidate.stage);
-  if (normalized === 'Interview' || normalized === 'Selected') {
+  if (normalized === 'Interview') {
     return 'Interview';
+  }
+  if (normalized === 'Selected') {
+    return 'Selected';
   }
 
   return normalized;

@@ -61,6 +61,13 @@ export default function StageDetectionPreview({
       fuzzy: { color: 'bg-purple-100 text-purple-800', label: 'Fuzzy' },
       alias: { color: 'bg-indigo-100 text-indigo-800', label: 'Alias' },
       color: { color: 'bg-orange-100 text-orange-800', label: 'Color' },
+      'color-exact': { color: 'bg-orange-100 text-orange-800', label: 'Color' },
+      'color-tolerance': { color: 'bg-orange-100 text-orange-800', label: 'Color' },
+      'remarks-keyword': { color: 'bg-amber-100 text-amber-800', label: 'Remarks' },
+      row: { color: 'bg-orange-100 text-orange-800', label: 'Row Color' },
+      name: { color: 'bg-orange-100 text-orange-800', label: 'Name Cell' },
+      text: { color: 'bg-blue-100 text-blue-800', label: 'Text' },
+      remarks: { color: 'bg-amber-100 text-amber-800', label: 'Remarks' },
       fallback: { color: 'bg-gray-100 text-gray-800', label: 'Fallback' },
     };
 

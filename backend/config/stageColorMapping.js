@@ -187,7 +187,8 @@ export const STAGE_COLOR_MAP = {
     subStage: null,
     legacyStage: 'Hired',
     description: 'Candidate has been hired',
-    toleranceShades: [],
+    // Book1.xlsx and legacy Excel trackers use light blue for hired rows
+    toleranceShades: ['#9BC2E6', '#8DB4E2', '#B4C7E7', '#A9C4EB'],
   },
 
   'on-hold': {

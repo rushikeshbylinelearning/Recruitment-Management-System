@@ -42,6 +42,8 @@ const SYSTEM_FIELDS = [
   { value: 'notes', label: 'Notes', required: false },
   { value: 'resume', label: 'Resume', required: false },
   { value: 'stage', label: 'Stage', required: false },
+  { value: 'applied_date', label: 'Applied Date', required: false },
+  { value: 'hr_comment', label: 'HR Comment', required: false },
 ];
 
 export default function PreviewTableComponent({
@@ -71,8 +73,10 @@ export default function PreviewTableComponent({
     mappedCount: number;
     unmappedCount: number;
     byJob: Array<{ jobId: number; jobTitle: string; count: number; matchMethod: string }>;
+    unmappedCandidates?: Array<{ rowNumber: number; name: string; position: string; reason: string }>;
   } | null>(null);
   const [loadingSegPreview, setLoadingSegPreview] = useState(false);
+  const [showUnassignedList, setShowUnassignedList] = useState(false);
 
   const preview = uploadData.preview;
   const duplicates = uploadData.duplicates;
@@ -183,6 +187,9 @@ export default function PreviewTableComponent({
     if (quality === 'medium') return 'text-yellow-600 bg-yellow-50';
     return 'text-orange-600 bg-orange-50';
   };
+
+  /** Hide raw stage column — import uses smart detection shown in Kanban Column */
+  const displayMappings = mappings.filter(m => m.targetField !== 'stage');
 
   return (
     <div className="space-y-6">
@@ -339,17 +346,57 @@ export default function PreviewTableComponent({
                     </div>
                   ))}
                   {jobSegPreview.unmappedCount > 0 && (
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <AlertTriangle size={13} className="text-amber-600" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-amber-700">Unassigned Pool</span>
-                          <span className="text-sm text-amber-600 ml-2">{jobSegPreview.unmappedCount} candidates</span>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setShowUnassignedList(v => !v)}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-amber-50 transition-colors text-left"
+                      >
+                        <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle size={13} className="text-amber-600" />
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">Can be manually assigned after import</p>
-                      </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-amber-800">Unassigned Pool</span>
+                            <span className="text-sm text-amber-700 ml-2 flex-shrink-0">
+                              {jobSegPreview.unmappedCount} candidates
+                            </span>
+                          </div>
+                          <p className="text-xs text-amber-700/80 mt-0.5">
+                            No matching job card — click to preview who and why
+                          </p>
+                        </div>
+                        {showUnassignedList ? <ChevronUp size={18} className="text-amber-600" /> : <ChevronDown size={18} className="text-amber-600" />}
+                      </button>
+                      {showUnassignedList && jobSegPreview.unmappedCandidates && jobSegPreview.unmappedCandidates.length > 0 && (
+                        <div className="border-t border-amber-200 max-h-64 overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-amber-100/60 sticky top-0">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-amber-900">Row</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-amber-900">Name</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-amber-900">Position</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-amber-900">Reason</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-amber-100">
+                              {jobSegPreview.unmappedCandidates.map((c, i) => (
+                                <tr key={i} className="bg-white/80">
+                                  <td className="px-3 py-2 text-gray-600">{c.rowNumber}</td>
+                                  <td className="px-3 py-2 font-medium text-gray-900">{c.name}</td>
+                                  <td className="px-3 py-2 text-gray-700">{c.position}</td>
+                                  <td className="px-3 py-2 text-amber-800 text-xs">{c.reason}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {jobSegPreview.unmappedCount > (jobSegPreview.unmappedCandidates?.length ?? 0) && (
+                            <p className="px-3 py-2 text-xs text-amber-700 border-t border-amber-200">
+                              Showing first {jobSegPreview.unmappedCandidates.length} of {jobSegPreview.unmappedCount} unassigned
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -519,13 +566,18 @@ export default function PreviewTableComponent({
         
         {expandedSections.preview && (
           <div className="overflow-x-auto">
+            <p className="px-4 py-2 text-xs text-gray-600 bg-blue-50 border-b border-blue-100">
+              <strong>Kanban Column</strong> = workflow stage after import (from color + status + remarks).
+              Job card assignment is shown in <strong>Auto Job Segregation Preview</strong> above.
+              Sheet &quot;Selected&quot; → <strong>Selected</strong> column (shortlisted), not Offer.
+            </p>
             <table className="w-full">
               <thead className="bg-gray-50 border-t border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Row
                   </th>
-                  {mappings.map((mapping, index) => (
+                  {displayMappings.map((mapping, index) => (
                     <th
                       key={index}
                       className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -534,7 +586,7 @@ export default function PreviewTableComponent({
                     </th>
                   ))}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Detected Stage
+                    Kanban Column
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -567,7 +619,7 @@ export default function PreviewTableComponent({
                           <span>{row.rowNumber}</span>
                         </label>
                       </td>
-                      {mappings.map((mapping, colIndex) => {
+                      {displayMappings.map((mapping, colIndex) => {
                         const value = row.mappedData[mapping.targetField];
                         const isMissingRequired = row.missingRequired.includes(mapping.targetField);
                         const isMissingOptional = row.missingOptional.includes(mapping.targetField);
@@ -593,21 +645,36 @@ export default function PreviewTableComponent({
                       })}
                       <td className="px-4 py-3 whitespace-nowrap text-sm">
                         {stageDetection ? (
-                          <div className="flex items-center space-x-2">
-                            <span className={`font-medium ${
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`font-semibold ${
                               stageDetection.confidence >= 0.9 ? 'text-green-700' :
                               stageDetection.confidence >= 0.6 ? 'text-blue-700' :
                               'text-amber-700'
                             }`}>
-                              {stageDetection.detectedStage}
+                              {(stageDetection as any).kanbanColumn || stageDetection.detectedStage}
                             </span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              stageDetection.confidence >= 0.9 ? 'bg-green-100 text-green-600' :
-                              stageDetection.confidence >= 0.6 ? 'bg-blue-100 text-blue-600' :
-                              'bg-amber-100 text-amber-600'
-                            }`}>
-                              {Math.round(stageDetection.confidence * 100)}%
-                            </span>
+                            <div className="flex items-center flex-wrap gap-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                stageDetection.confidence >= 0.9 ? 'bg-green-100 text-green-600' :
+                                stageDetection.confidence >= 0.6 ? 'bg-blue-100 text-blue-600' :
+                                'bg-amber-100 text-amber-600'
+                              }`}>
+                                {Math.round(stageDetection.confidence * 100)}%
+                              </span>
+                              {stageDetection.colorSource && stageDetection.colorSource !== 'fallback' && (
+                                <span className="text-xs text-gray-500">
+                                  via {stageDetection.colorSource === 'row' ? 'row color' :
+                                    stageDetection.colorSource === 'name' ? 'name cell' :
+                                    stageDetection.colorSource === 'remarks' ? 'remarks' :
+                                    stageDetection.colorSource}
+                                </span>
+                              )}
+                            </div>
+                            {stageDetection.detectedStage !== (stageDetection as any).kanbanColumn && (
+                              <span className="text-xs text-gray-400">
+                                stage: {stageDetection.detectedStage}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className="text-gray-400 text-xs">Applied (default)</span>

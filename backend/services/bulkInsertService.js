@@ -14,7 +14,7 @@ import {
   buildJobSegregationMap,
   getCandidateKey,
 } from './roleMatchingService.js';
-import { detectStage, getLegacyStage } from './stageMappingService.js';
+import { resolveStageFromRow, extractNameCellColor } from './rowColorResolver.js';
 import { insertHrNote, resolveHrNoteAuthorId } from './hrNotesSyncService.js';
 
 // Configuration
@@ -303,54 +303,42 @@ function prepareRowData(systemId, normalized, jobId = null, uploadedBy = null) {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // STAGE DETECTION INTEGRATION - COLOR-DRIVEN WORKFLOW SYSTEM
+  // STAGE DETECTION — multi-signal (text + name color + row color + remarks)
   // ═══════════════════════════════════════════════════════════════
-  // IMPORTANT: Uses CANDIDATE NAME CELL COLOR as primary workflow identifier
-  // Detect stage from Excel data (text + NAME cell color)
   let mainStage = 'applied';
   let subStage = null;
   let legacyStage = 'Applied';
   let stageConfidence = 0.3;
   let detectionMethod = 'fallback';
+  let colorSource = 'fallback';
 
-  // Extract stage text and colors from normalized data
   const stageText = normalized.stage || '';
   const cellColors = normalized.__cellColors || {};
-  
-  // CRITICAL: Extract color from CANDIDATE NAME column ONLY
-  // Common name column headers: "Name", "Candidate Name", "Full Name", "Candidate", etc.
-  // Also handles lowercase and mixed-case variants.
-  const nameCellColor = cellColors['Name'] || 
-                        cellColors['Candidate Name'] || 
-                        cellColors['Full Name'] ||
-                        cellColors['Candidate'] ||
-                        cellColors['name'] ||
-                        cellColors['candidate name'] ||
-                        cellColors['full name'] ||
-                        cellColors['candidate'] ||
-                        cellColors['CANDIDATE NAME'] ||
-                        cellColors['NAME'] ||
-                        null;
+  const rowColors = normalized.__rowColors || [];
+  const remarksText = normalized.notes || '';
 
-  // Call stage detection service with NAME cell color
-  if (stageText || nameCellColor) {
-    const detectionResult = detectStage({
-      cellValue: stageText,
-      cellColor: nameCellColor,  // Use NAME cell color, not stage column color
-      allowFuzzyMatch: true,
-      confidenceThreshold: 0.7
-    });
+  const detectionResult = resolveStageFromRow({
+    stageText,
+    cellColors,
+    rowColors,
+    remarks: remarksText,
+    allowFuzzyMatch: true,
+  });
 
-    // Use detected stage if confidence is acceptable
-    if (detectionResult.confidence >= 0.4) {
-      mainStage = detectionResult.mainStage;
-      subStage = detectionResult.subStage;
-      legacyStage = detectionResult.legacyStage;
-      stageConfidence = detectionResult.confidence;
-      detectionMethod = detectionResult.matchMethod;
-    }
+  if (detectionResult.confidence >= 0.4) {
+    mainStage = detectionResult.mainStage;
+    subStage = detectionResult.subStage;
+    legacyStage = detectionResult.legacyStage;
+    stageConfidence = detectionResult.confidence;
+    detectionMethod = detectionResult.matchMethod;
+    colorSource = detectionResult.colorSource || 'fallback';
   }
+
+  const nameCellColor = extractNameCellColor(cellColors);
   // ═══════════════════════════════════════════════════════════════
+
+  // Parse applied date for Book1-style Date column
+  const appliedDate = normalized.applied_date || null;
 
   return {
     id: systemId,
@@ -360,10 +348,10 @@ function prepareRowData(systemId, normalized, jobId = null, uploadedBy = null) {
     position: normalized.position || null,
     experience: normalized.experience != null ? String(normalized.experience) : null,
     location: normalized.location || null,
-    source: normalized.source || null,
-    stage: legacyStage,  // Legacy column (synced by database trigger)
-    main_stage: mainStage,  // Umbrella stage architecture
-    sub_stage: subStage,    // Micro-stage within umbrella
+    source: normalized.source || 'Bulk Upload',
+    stage: legacyStage,
+    main_stage: mainStage,
+    sub_stage: subStage,
     notes: normalized.notes || null,
     score: null,
     job_id: jobId || normalized.job_id || null,
@@ -383,12 +371,13 @@ function prepareRowData(systemId, normalized, jobId = null, uploadedBy = null) {
     in_house_assignment_status: ihaStatus,
     assignment_location: normalized.assignment_location || null,
     resume_location: normalized.resume_location || normalized.resume || null,
-    // Track who uploaded this candidate to the portal
+    applied_date: appliedDate,
     uploaded_by: uploadedBy || null,
-    // Store stage detection metadata for debugging/logging
     __stageConfidence: stageConfidence,
     __detectionMethod: detectionMethod,
-    __nameCellColor: nameCellColor
+    __colorSource: colorSource,
+    __nameCellColor: nameCellColor,
+    __detectedColor: detectionResult.detectedColor || null,
   };
 }
 

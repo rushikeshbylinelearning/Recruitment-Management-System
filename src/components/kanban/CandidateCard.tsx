@@ -10,6 +10,7 @@ import {
   INTERVIEW_KANBAN_SUB_STAGES,
   isInterviewKanbanSubStage,
 } from '../../utils/candidateStage';
+import { formatISTDateMDY, formatISTDateShort } from '../../utils/istDate';
 
 const formatViewedTime = (value?: string | null): string => {
   if (!value) return '';
@@ -502,16 +503,13 @@ const CandidateCard = memo(
             </span>
           ) : (
             <span className="text-xs text-gray-400 flex-shrink-0">
-              {new Date(candidate.appliedDate).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-              })}
+              {formatISTDateMDY(candidate.appliedDate)}
             </span>
           )}
           <div className="flex items-center gap-2">
             {assignmentDeadline && (
               <span className="text-xs text-amber-600 font-medium">
-                Due {new Date(assignmentDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                Due {formatISTDateShort(assignmentDeadline)}
               </span>
             )}
             {Number.isFinite(score) && score > 0 && (

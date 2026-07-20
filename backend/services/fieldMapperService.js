@@ -39,7 +39,9 @@ const SYSTEM_FIELDS = [
   'in_house_assignment',
   'assignment_location',
   'resume_location',
-  'stage'  // Stage/workflow detection for bulk import
+  'stage',  // Stage/workflow detection for bulk import
+  'applied_date',
+  'hr_comment',
 ];
 
 // Synonym dictionary for common field variations
@@ -177,7 +179,17 @@ const FIELD_SYNONYMS = {
     'status', 'candidate stage', 'workflow', 'workflow stage',
     'candidate status', 'application status', 'current stage',
     'hiring stage', 'recruitment stage', 'pipeline stage'
-  ]
+  ],
+  applied_date: [
+    'date', 'applied date', 'application date', 'apply date',
+    'date applied', 'applied on', 'application_date', 'applied_date',
+    'submission date', 'received date',
+  ],
+  hr_comment: [
+    'hr comment', 'hr comments', 'hr note', 'hr notes',
+    'recruiter comment', 'recruiter comments', 'interviewer comment',
+    'manager comment', 'comment', 'additional comment',
+  ],
 };
 
 class FieldMapperService {

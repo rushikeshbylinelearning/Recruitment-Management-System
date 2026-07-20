@@ -12,7 +12,9 @@ const dbConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  charset: 'utf8mb4'
+  charset: 'utf8mb4',
+  // Return MySQL DATE as YYYY-MM-DD strings — avoids UTC midnight shift in JSON/API
+  dateStrings: ['DATE'],
 };
 
 // Create connection pool

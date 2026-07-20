@@ -42,6 +42,11 @@ export interface TaskCard {
   status: 'pending' | 'in_progress' | 'completed';
   assigned_to: number | null;
   due_date: string | null;
+  due_time?: string | null;
+  recurrence_type?: 'none' | 'daily';
+  last_completed_at?: string | null;
+  timer_elapsed_seconds?: number;
+  timer_started_at?: string | null;
   completion_percentage: number;
   position: number;
   assignee_name: string | null;
@@ -51,6 +56,12 @@ export interface TaskCard {
   checklist_checked: number;
   created_by: number;
   created_by_name: string | null;
+}
+
+export interface TimerState {
+  timer_elapsed_seconds: number;
+  timer_started_at: string | null;
+  timer_running: boolean;
 }
 
 export interface TaskDetail extends TaskCard {
@@ -170,6 +181,21 @@ export const plannerService = {
 
   reorderTasks: (items: Array<{ id: number; position: number; bucket_id: number }>) =>
     axios.put(`${API_BASE}/planner/tasks/reorder`, items, { headers: getHeaders() }),
+
+  startTimer: (taskId: number) =>
+    axios
+      .post(`${API_BASE}/planner/tasks/${taskId}/timer/start`, {}, { headers: getHeaders() })
+      .then((r) => r.data.data as TimerState),
+
+  pauseTimer: (taskId: number) =>
+    axios
+      .post(`${API_BASE}/planner/tasks/${taskId}/timer/pause`, {}, { headers: getHeaders() })
+      .then((r) => r.data.data as TimerState),
+
+  resetTimer: (taskId: number) =>
+    axios
+      .post(`${API_BASE}/planner/tasks/${taskId}/timer/reset`, {}, { headers: getHeaders() })
+      .then((r) => r.data.data as TimerState),
 
   // Search
   searchTasks: (params: SearchParams) =>

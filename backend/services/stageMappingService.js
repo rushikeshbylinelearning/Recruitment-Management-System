@@ -123,6 +123,16 @@ const STAGE_ALIASES = {
   'unreachable': { mainStage: 'follow-up', subStage: 'no-response', legacyStage: 'Follow Up' },
 };
 
+/** Keywords in remarks that imply rejection (Book1.xlsx tracker style) */
+const REJECT_REMARK_KEYWORDS = [
+  'reject', 'not selected', 'not a relevant', 'not relevant',
+  'lack of', 'ditched', 'did not show', "didn't show",
+  'did not attend', "didn't attend", 'did not come', "didn't come",
+  'no show', 'fake experience', 'out of budget', 'language issue',
+  'attitude issue', 'not a graduate', 'not an id', 'not core id',
+  'profile not matched',
+];
+
 /**
  * Color-based stage hints
  *
@@ -297,6 +307,110 @@ function findBestColorMatch(cellColor, fontColor) {
 }
 
 /**
+ * Detect stage from Stage/Status text only.
+ * @param {string} cellValue
+ * @param {Object} [options]
+ * @returns {Object|null}
+ */
+function detectStageFromText(cellValue, options = {}) {
+  const {
+    allowFuzzyMatch = true,
+    confidenceThreshold = 0.7,
+  } = options;
+
+  if (!cellValue || typeof cellValue !== 'string' || !cellValue.trim()) {
+    return null;
+  }
+
+  const normalized = normalizeText(cellValue);
+
+  if (STAGE_ALIASES[normalized]) {
+    const mapping = STAGE_ALIASES[normalized];
+    return {
+      mainStage: mapping.mainStage,
+      subStage: mapping.subStage || null,
+      confidence: 1.0,
+      matchMethod: 'exact',
+      originalValue: cellValue,
+      legacyStage: mapping.legacyStage,
+    };
+  }
+
+  // Sheet "Selected" = shortlisted candidate → Selected Kanban column, NOT Offer
+  if (/\b(selected|shortlisted|cleared|approved)\b/i.test(normalized)
+      && !/\b(not selected|unselected|deselected|rejected)\b/i.test(normalized)) {
+    return {
+      mainStage: 'selected',
+      subStage: null,
+      confidence: 0.95,
+      matchMethod: 'exact',
+      originalValue: cellValue,
+      legacyStage: 'Selected',
+    };
+  }
+
+  if (allowFuzzyMatch) {
+    let bestMatch = null;
+
+    for (const [alias, mapping] of Object.entries(STAGE_ALIASES)) {
+      const similarity = calculateSimilarity(normalized, alias);
+      if (similarity >= confidenceThreshold && (!bestMatch || similarity > bestMatch.similarity)) {
+        bestMatch = { alias, similarity, mapping };
+      }
+    }
+
+    if (bestMatch) {
+      return {
+        mainStage: bestMatch.mapping.mainStage,
+        subStage: bestMatch.mapping.subStage || null,
+        confidence: bestMatch.similarity,
+        matchMethod: 'fuzzy',
+        originalValue: cellValue,
+        legacyStage: bestMatch.mapping.legacyStage,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Infer stage from free-text remarks (Book1-style trackers).
+ * @param {string} remarks
+ * @returns {Object|null}
+ */
+function detectStageFromRemarks(remarks) {
+  if (!remarks || typeof remarks !== 'string') return null;
+
+  const remarksNorm = remarks.trim().toLowerCase();
+  if (!remarksNorm) return null;
+
+  if (REJECT_REMARK_KEYWORDS.some(kw => remarksNorm.includes(kw))) {
+    return {
+      mainStage: 'rejected',
+      subStage: 'rejected',
+      legacyStage: 'Rejected',
+      confidence: 0.65,
+      matchMethod: 'remarks-keyword',
+      originalValue: remarks,
+    };
+  }
+
+  if (remarksNorm.includes('on hold') && !remarksNorm.includes('reject')) {
+    return {
+      mainStage: 'rejected',
+      subStage: 'on-hold',
+      legacyStage: 'On Hold',
+      confidence: 0.65,
+      matchMethod: 'remarks-keyword',
+      originalValue: remarks,
+    };
+  }
+
+  return null;
+}
+
+/**
  * Main stage detection function
  * @param {Object} options - Detection options
  * @param {string} options.cellValue - Text value from Excel cell
@@ -448,7 +562,7 @@ function mapInteractionStatusToStage(interactionStatus) {
     'screening': 'Screening',
     'interview': 'Interview',
     'scheduled': 'Interview',
-    'selected': 'Offer',
+    'selected': 'Selected',
     'offer': 'Offer',
     'joined': 'Hired',
     'hired': 'Hired',
@@ -462,6 +576,8 @@ function mapInteractionStatusToStage(interactionStatus) {
 
 export {
   detectStage,
+  detectStageFromText,
+  detectStageFromRemarks,
   getLegacyStage,
   mapInteractionStatusToStage,
   normalizeText,

@@ -54,12 +54,16 @@ export default function DashboardLayout() {
     else if (path.startsWith('/jobs'))               setActiveSection('jobs');
     else if (path.startsWith('/candidates'))         setActiveSection('candidates');
     else if (path.startsWith('/interviews'))         setActiveSection('interviews');
+    else if (path.startsWith('/planner'))            setActiveSection('planner');
+    else if (path.startsWith('/calendar'))           setActiveSection('calendar');
     else if (path.startsWith('/analytics'))          setActiveSection('analytics');
     else if (path.startsWith('/team'))               setActiveSection('team');
     else if (path.startsWith('/communications'))     setActiveSection('communications');
     else if (path.startsWith('/assignments'))        setActiveSection('assignments');
     else if (path.startsWith('/tasks'))              setActiveSection('tasks');
     else if (path.startsWith('/form-builder'))       setActiveSection('form-builder');
+    else if (path.startsWith('/workflows'))          setActiveSection('workflows');
+    else if (path.startsWith('/recruiter-monitor'))  setActiveSection('recruiter-monitor');
     else if (path.startsWith('/settings'))           setActiveSection('settings');
     else                                              setActiveSection('dashboard');
 
@@ -144,6 +148,8 @@ export default function DashboardLayout() {
                 {activeSection === 'candidates'        && 'Manage and track all candidates'}
                 {activeSection === 'jobs'              && 'Active job postings and positions'}
                 {activeSection === 'interviews'        && 'Schedule and manage interviews'}
+                {activeSection === 'planner'           && 'Organize plans, buckets, and tasks'}
+                {activeSection === 'calendar'          && 'View tasks, events, and notes on a calendar'}
                 {activeSection === 'analytics'         && 'Insights and performance metrics'}
                 {activeSection === 'team'              && 'Manage your hiring team members and their performance'}
                 {activeSection === 'communications'    && 'Track all candidate communications and follow-ups'}

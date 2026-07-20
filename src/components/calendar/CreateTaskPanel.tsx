@@ -15,6 +15,8 @@ export default function CreateTaskPanel({ isOpen, date, onClose, onCreated }: Cr
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [repeatsDaily, setRepeatsDaily] = useState(false);
+  const [dueTime, setDueTime] = useState('');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [planId, setPlanId] = useState<number | null>(null);
@@ -28,6 +30,8 @@ export default function CreateTaskPanel({ isOpen, date, onClose, onCreated }: Cr
     setDescription('');
     setDueDate(date ? toDateKey(date) : toDateKey(new Date()));
     setPriority('medium');
+    setRepeatsDaily(false);
+    setDueTime('');
     setError('');
     plannerService.getPlans().then((p) => {
       setPlans(p);
@@ -57,6 +61,8 @@ export default function CreateTaskPanel({ isOpen, date, onClose, onCreated }: Cr
         description,
         due_date: dueDate,
         priority,
+        recurrence_type: repeatsDaily ? 'daily' : 'none',
+        due_time: dueTime || null,
       });
       onCreated(taskId);
       onClose();
@@ -107,12 +113,29 @@ export default function CreateTaskPanel({ isOpen, date, onClose, onCreated }: Cr
               <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800" />
             </div>
             <div>
+              <label className="text-xs font-medium text-gray-500">Due Time</label>
+              <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="text-xs font-medium text-gray-500">Priority</label>
               <select value={priority} onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high')} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
               </select>
+            </div>
+            <div className="flex items-end pb-1">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={repeatsDaily}
+                  onChange={(e) => setRepeatsDaily(e.target.checked)}
+                  className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                Repeats daily
+              </label>
             </div>
           </div>
         </div>

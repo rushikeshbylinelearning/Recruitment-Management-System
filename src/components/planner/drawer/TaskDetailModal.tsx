@@ -432,10 +432,10 @@ export default function TaskDetailModal({
                 </div>
               ) : (
                 <>
-                  {/* § Task Information */}
+                  {/* § Details */}
                   <Section
                     id="info"
-                    title="Task Information"
+                    title="Details"
                     icon={<AlignLeft className="w-3.5 h-3.5" />}
                     isOpen={sections.info}
                     onToggle={() => toggleSection('info')}

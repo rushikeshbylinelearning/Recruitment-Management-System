@@ -56,6 +56,28 @@ export default function BoardView({ planId, onTaskClick, refreshKey }: BoardView
     );
   }, []);
 
+  const handleToggleComplete = useCallback(async (taskId: number, completed: boolean) => {
+    await plannerService.updateTask(taskId, {
+      status: completed ? 'completed' : 'pending',
+      ...(completed ? {} : { completion_percentage: 0 }),
+    });
+    setColumns((prev) =>
+      prev.map((col) => ({
+        ...col,
+        tasks: col.tasks.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: completed ? 'completed' : 'pending',
+                completion_percentage: completed ? 100 : 0,
+                timer_started_at: completed ? null : t.timer_started_at,
+              }
+            : t
+        ),
+      }))
+    );
+  }, []);
+
   const handleToggleCollapse = useCallback(async (bucketId: number) => {
     await plannerService.toggleBucketCollapse(bucketId);
     setColumns((prev) =>
@@ -145,6 +167,7 @@ export default function BoardView({ planId, onTaskClick, refreshKey }: BoardView
           tasks={tasks}
           onTaskClick={onTaskClick}
           onAddTask={handleAddTask}
+          onToggleComplete={handleToggleComplete}
           onToggleCollapse={handleToggleCollapse}
           onRenameBucket={handleRenameBucket}
           onDeleteBucket={handleDeleteBucket}

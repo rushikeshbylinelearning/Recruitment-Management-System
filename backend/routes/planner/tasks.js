@@ -23,15 +23,29 @@ import {
   ValidationError,
   ForbiddenError,
 } from '../../middleware/errorHandler.js';
-import { validateTaskTitle } from '../../utils/plannerValidation.js';
+import {
+  validateTaskTitle,
+  validateRecurrenceType,
+  validateDueTime,
+} from '../../utils/plannerValidation.js';
 import { calculateChecklistProgress } from '../../utils/progressCalculator.js';
 import {
   checkAssignmentPermission,
   checkCrossPlanMove,
   logActivity,
   checkTaskOwnership,
+  resetStaleDailyTasks,
+  getTimerState,
 } from '../../services/plannerService.js';
 import { sendTaskAssignmentNotification } from '../../services/notificationService.js';
+
+/** Normalize TIME for MySQL (HH:mm → HH:mm:00) or null to clear. */
+function normalizeDueTime(value) {
+  if (value === null || value === '') return null;
+  const trimmed = String(value).trim();
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  return trimmed;
+}
 
 const router = express.Router();
 
@@ -86,6 +100,18 @@ router.get(
       throw new NotFoundError('Bucket not found');
     }
 
+    // Lazy-reset stale daily tasks in this bucket before listing
+    const staleIds = await query(
+      `SELECT id FROM planner_tasks
+        WHERE bucket_id = ? AND is_deleted = 0
+          AND recurrence_type = 'daily' AND status = 'completed'
+          AND (last_completed_at IS NULL OR DATE(last_completed_at) < CURDATE())`,
+      [bucketId]
+    );
+    if (staleIds.length > 0) {
+      await resetStaleDailyTasks(staleIds.map((r) => r.id));
+    }
+
     const tasks = await query(
       `SELECT
          t.id,
@@ -94,6 +120,11 @@ router.get(
          t.status,
          t.assigned_to,
          t.due_date,
+         t.due_time,
+         t.recurrence_type,
+         t.last_completed_at,
+         t.timer_elapsed_seconds,
+         t.timer_started_at,
          t.completion_percentage,
          t.position,
          t.created_by,
@@ -128,7 +159,7 @@ router.get(
       let labels = [];
       if (task.labels_json) {
         try {
-          // GROUP_CONCAT produces comma-separated JSON objects â€” wrap in array
+          // GROUP_CONCAT produces comma-separated JSON objects — wrap in array
           labels = JSON.parse(`[${task.labels_json}]`);
         } catch {
           labels = [];
@@ -143,6 +174,8 @@ router.get(
             .join('')
         : null;
 
+      const timer = getTimerState(task);
+
       return {
         id: task.id,
         title: task.title,
@@ -150,6 +183,11 @@ router.get(
         status: task.status,
         assigned_to: task.assigned_to,
         due_date: task.due_date,
+        due_time: task.due_time,
+        recurrence_type: task.recurrence_type || 'none',
+        last_completed_at: task.last_completed_at,
+        timer_elapsed_seconds: timer.timer_elapsed_seconds,
+        timer_started_at: timer.timer_started_at,
         completion_percentage: task.completion_percentage,
         position: task.position,
         created_by: task.created_by,
@@ -254,6 +292,8 @@ router.post(
       completion_percentage,
       job_id,
       candidate_id,
+      recurrence_type,
+      due_time,
     } = req.body;
 
     const userId = req.user.id;
@@ -264,6 +304,12 @@ router.post(
     }
     if (!validateTaskTitle(title)) {
       throw new ValidationError('Task title must be between 1 and 255 characters');
+    }
+    if (recurrence_type !== undefined && !validateRecurrenceType(recurrence_type)) {
+      throw new ValidationError("recurrence_type must be 'none' or 'daily'");
+    }
+    if (due_time !== undefined && !validateDueTime(due_time)) {
+      throw new ValidationError('due_time must be HH:mm or HH:mm:ss');
     }
 
     const bucketId = parseInt(bucket_id, 10);
@@ -298,13 +344,17 @@ router.post(
     const taskStatus = status || 'pending';
     const taskPriority = priority || null;
     const taskCompletionPct = completion_percentage != null ? completion_percentage : 0;
+    const taskRecurrence = recurrence_type || 'none';
+    const taskDueTime = due_time !== undefined ? normalizeDueTime(due_time) : null;
+    const lastCompletedAt = taskStatus === 'completed' ? new Date() : null;
 
     const result = await query(
       `INSERT INTO planner_tasks
          (bucket_id, title, description, priority, assigned_to, due_date, reminder_date,
           status, estimated_time, completion_percentage, job_id, candidate_id,
+          recurrence_type, last_completed_at, due_time,
           position, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         bucketId,
         title.trim(),
@@ -318,6 +368,9 @@ router.post(
         taskCompletionPct,
         job_id || null,
         candidate_id || null,
+        taskRecurrence,
+        lastCompletedAt,
+        taskDueTime,
         nextPosition,
         userId,
         userId,
@@ -382,6 +435,9 @@ router.get(
     // Ownership / access check
     await assertTaskAccess(taskId, req.user.id, req.user.role);
 
+    // Lazy-reset this task if it is a stale daily completion
+    await resetStaleDailyTasks([taskId]);
+
     // Fetch full task row + assignee name + assigner name
     const tasks = await query(
       `SELECT
@@ -400,6 +456,7 @@ router.get(
     }
 
     const task = tasks[0];
+    Object.assign(task, getTimerState(task));
 
     // Fetch labels
     const labels = await query(
@@ -480,6 +537,14 @@ router.put(
     const task = await assertTaskAccess(taskId, req.user.id, req.user.role);
     const userId = req.user.id;
 
+    // Load current status / timer fields for completion side effects
+    const currentRows = await query(
+      `SELECT status, recurrence_type, timer_started_at, completion_percentage
+         FROM planner_tasks WHERE id = ? AND is_deleted = 0`,
+      [taskId]
+    );
+    const current = currentRows[0] || {};
+
     const {
       title,
       description,
@@ -492,11 +557,19 @@ router.put(
       completion_percentage,
       job_id,
       candidate_id,
+      recurrence_type,
+      due_time,
     } = req.body;
 
     // Validate title if provided
     if (title !== undefined && !validateTaskTitle(title)) {
       throw new ValidationError('Task title must be between 1 and 255 characters');
+    }
+    if (recurrence_type !== undefined && !validateRecurrenceType(recurrence_type)) {
+      throw new ValidationError("recurrence_type must be 'none' or 'daily'");
+    }
+    if (due_time !== undefined && !validateDueTime(due_time)) {
+      throw new ValidationError('due_time must be HH:mm or HH:mm:ss');
     }
 
     // Check assignment permission if assigned_to is changing
@@ -569,6 +642,38 @@ router.put(
       params.push(candidate_id);
       changedFields.candidate_id = candidate_id;
     }
+    if (recurrence_type !== undefined) {
+      updates.push('recurrence_type = ?');
+      params.push(recurrence_type);
+      changedFields.recurrence_type = recurrence_type;
+    }
+    if (due_time !== undefined) {
+      const normalized = normalizeDueTime(due_time);
+      updates.push('due_time = ?');
+      params.push(normalized);
+      changedFields.due_time = normalized;
+    }
+
+    // Completion side effects
+    if (status !== undefined && status === 'completed' && current.status !== 'completed') {
+      updates.push('last_completed_at = NOW()');
+      changedFields.last_completed_at = 'NOW()';
+      if (completion_percentage === undefined) {
+        updates.push('completion_percentage = 100');
+        changedFields.completion_percentage = 100;
+      }
+      // Pause running timer into elapsed
+      if (current.timer_started_at) {
+        updates.push(
+          `timer_elapsed_seconds = timer_elapsed_seconds + GREATEST(0, TIMESTAMPDIFF(SECOND, timer_started_at, NOW()))`
+        );
+        updates.push('timer_started_at = NULL');
+        changedFields.timer_paused_on_complete = true;
+      }
+    } else if (status !== undefined && status !== 'completed' && current.status === 'completed') {
+      updates.push('last_completed_at = NULL');
+      changedFields.last_completed_at = null;
+    }
 
     if (updates.length === 0) {
       throw new ValidationError('No fields to update');
@@ -583,7 +688,11 @@ router.put(
       params
     );
 
-    await logActivity(taskId, userId, 'task_edited', { changed_fields: changedFields });
+    const activityType =
+      status === 'completed' && current.status !== 'completed'
+        ? 'task_completed'
+        : 'task_edited';
+    await logActivity(taskId, userId, activityType, { changed_fields: changedFields });
 
     res.json({ success: true, message: 'Task updated successfully' });
   })
@@ -659,6 +768,90 @@ router.post(
     await logActivity(taskId, userId, 'task_moved', { target_bucket_id: targetId });
 
     res.json({ success: true, message: 'Task moved successfully' });
+  })
+);
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Timer endpoints — stopwatch start / pause / reset
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+async function fetchTimerRow(taskId) {
+  const rows = await query(
+    `SELECT timer_elapsed_seconds, timer_started_at
+       FROM planner_tasks WHERE id = ? AND is_deleted = 0`,
+    [taskId]
+  );
+  if (!rows.length) throw new NotFoundError('Task not found');
+  return rows[0];
+}
+
+router.post(
+  '/tasks/:id/timer/start',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const taskId = parseInt(req.params.id, 10);
+    if (isNaN(taskId)) throw new ValidationError('Invalid task ID');
+    await assertTaskAccess(taskId, req.user.id, req.user.role);
+
+    const row = await fetchTimerRow(taskId);
+    if (!row.timer_started_at) {
+      await query(
+        `UPDATE planner_tasks
+            SET timer_started_at = NOW(), updated_by = ?, updated_at = NOW()
+          WHERE id = ? AND is_deleted = 0`,
+        [req.user.id, taskId]
+      );
+    }
+
+    const updated = await fetchTimerRow(taskId);
+    res.json({ success: true, data: getTimerState(updated) });
+  })
+);
+
+router.post(
+  '/tasks/:id/timer/pause',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const taskId = parseInt(req.params.id, 10);
+    if (isNaN(taskId)) throw new ValidationError('Invalid task ID');
+    await assertTaskAccess(taskId, req.user.id, req.user.role);
+
+    await query(
+      `UPDATE planner_tasks
+          SET timer_elapsed_seconds = timer_elapsed_seconds
+              + GREATEST(0, TIMESTAMPDIFF(SECOND, timer_started_at, NOW())),
+              timer_started_at = NULL,
+              updated_by = ?,
+              updated_at = NOW()
+        WHERE id = ? AND timer_started_at IS NOT NULL AND is_deleted = 0`,
+      [req.user.id, taskId]
+    );
+
+    const updated = await fetchTimerRow(taskId);
+    res.json({ success: true, data: getTimerState(updated) });
+  })
+);
+
+router.post(
+  '/tasks/:id/timer/reset',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const taskId = parseInt(req.params.id, 10);
+    if (isNaN(taskId)) throw new ValidationError('Invalid task ID');
+    await assertTaskAccess(taskId, req.user.id, req.user.role);
+
+    await query(
+      `UPDATE planner_tasks
+          SET timer_elapsed_seconds = 0,
+              timer_started_at = NULL,
+              updated_by = ?,
+              updated_at = NOW()
+        WHERE id = ? AND is_deleted = 0`,
+      [req.user.id, taskId]
+    );
+
+    const updated = await fetchTimerRow(taskId);
+    res.json({ success: true, data: getTimerState(updated) });
   })
 );
 

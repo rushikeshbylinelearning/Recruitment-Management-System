@@ -5,19 +5,20 @@
 -- ============================================================
 -- Table: plans
 -- ============================================================
+-- NOTE: uses INT (not INT UNSIGNED) to match users.id which is INT(11)
 CREATE TABLE IF NOT EXISTS `plans` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `id` INT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(100) NOT NULL,
   `description` TEXT,
   `colour` VARCHAR(7) DEFAULT '#3B82F6',
   `icon` VARCHAR(50),
-  `owner_id` INT UNSIGNED NOT NULL,
+  `owner_id` INT NOT NULL,
   `visibility` ENUM('private','shared','department','admin_only') DEFAULT 'private',
   `is_archived` TINYINT(1) DEFAULT 0,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `created_by` INT UNSIGNED NOT NULL,
-  `updated_by` INT UNSIGNED,
+  `created_by` INT NOT NULL,
+  `updated_by` INT,
   `is_deleted` TINYINT(1) DEFAULT 0,
   `status` ENUM('active','archived') DEFAULT 'active',
   PRIMARY KEY (`id`),
@@ -32,9 +33,9 @@ CREATE TABLE IF NOT EXISTS `plans` (
 -- Table: plan_members
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `plan_members` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `plan_id` INT UNSIGNED NOT NULL,
-  `user_id` INT UNSIGNED NOT NULL,
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `plan_id` INT NOT NULL,
+  `user_id` INT NOT NULL,
   `role` ENUM('viewer','editor','admin') DEFAULT 'editor',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -48,18 +49,18 @@ CREATE TABLE IF NOT EXISTS `plan_members` (
 -- Table: buckets
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `buckets` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `plan_id` INT UNSIGNED NOT NULL,
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `plan_id` INT NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `description` TEXT,
   `colour` VARCHAR(7) DEFAULT '#6B7280',
   `icon` VARCHAR(50),
-  `position` INT UNSIGNED DEFAULT 0,
+  `position` INT DEFAULT 0,
   `collapsed` TINYINT(1) DEFAULT 0,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `created_by` INT UNSIGNED NOT NULL,
-  `updated_by` INT UNSIGNED,
+  `created_by` INT NOT NULL,
+  `updated_by` INT,
   `is_deleted` TINYINT(1) DEFAULT 0,
   `status` ENUM('active','archived') DEFAULT 'active',
   PRIMARY KEY (`id`),

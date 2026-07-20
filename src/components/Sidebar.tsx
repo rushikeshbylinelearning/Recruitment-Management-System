@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Users, Briefcase, FileText, MessageSquare, BarChart3, Settings,
-  Home, LogOut, Calendar, ClipboardList, FormInput, Zap,
-  Activity,
+  Home, LogOut, Calendar, CalendarDays, ClipboardList, FormInput, Zap,
+  Activity, Kanban,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,6 +24,8 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed }: S
     { id: 'jobs',              label: 'Jobs',               icon: Briefcase },
     { id: 'candidates',        label: 'Candidates',         icon: Users },
     { id: 'interviews',        label: 'Interviews',         icon: Calendar },
+    { id: 'planner',           label: 'Planner',            icon: Kanban },
+    { id: 'calendar',          label: 'Calendar',           icon: CalendarDays },
     { id: 'team',              label: 'Team',               icon: Users },
     { id: 'tasks',             label: 'Tasks',              icon: FileText },
     { id: 'communications',    label: 'Communications',     icon: MessageSquare },
@@ -37,12 +39,16 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed }: S
 
   const filteredMenuItems = menuItems.filter((item) => {
     if (user?.role === 'Interviewer') return ['dashboard', 'jobs', 'candidates'].includes(item.id);
-    if (user?.role === 'HR Intern') return ['dashboard', 'jobs', 'candidates', 'interviews', 'tasks', 'form-builder'].includes(item.id);
+    if (user?.role === 'HR Intern') {
+      return ['dashboard', 'jobs', 'candidates', 'interviews', 'planner', 'calendar', 'tasks', 'form-builder'].includes(item.id);
+    }
     if (item.id === 'recruiter-monitor') return user?.role === 'Admin';
     if (user?.role?.toLowerCase() === 'recruiter') {
       if (item.id === 'interviews') return true;
     }
     if (item.id === 'dashboard') return true;
+    // No dedicated permission modules yet — show to all non-Interviewer roles
+    if (item.id === 'planner' || item.id === 'calendar') return true;
     return hasPermission(item.id, 'view');
   });
 

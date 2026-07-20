@@ -276,7 +276,7 @@ function finalizeCandidateList(candidates, notesMap) {
 
     candidate.resumeFileId = candidate.resume_file_id;
     candidate.resume = candidate.resume_path;
-    candidate.appliedDate = candidate.applied_date;
+    candidate.appliedDate = formatDate(candidate.applied_date);
     candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
     candidate.assignedToId = candidate.assigned_to || null;
     candidate.uploadedBy = candidate.uploaded_by_name || null;
@@ -860,7 +860,7 @@ router.get('/:id', authenticateToken, checkPermission('candidates', 'view'), val
   // Convert snake_case to camelCase for frontend compatibility
   candidate.resumeFileId = candidate.resume_file_id;
   candidate.resume = candidate.resume_path; // Add resume path for frontend
-  candidate.appliedDate = candidate.applied_date;
+  candidate.appliedDate = formatDate(candidate.applied_date);
   candidate.assignedTo = candidate.assigned_to_name || 'Unassigned';
   candidate.assignedToId = candidate.assigned_to || null; // Add user ID for form submission
   

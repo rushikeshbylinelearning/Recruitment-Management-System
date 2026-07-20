@@ -32,6 +32,7 @@ const STAGES = [
   'Selected (Interview)',
   'Rejected (Interview)',
   // Continue main stages
+  'Selected',
   'Offer',
   'Hired',
   'Rejected',

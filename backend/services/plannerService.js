@@ -297,11 +297,147 @@ export async function checkCrossPlanMove(taskId, targetBucketId, db = null) {
   }
 }
 
+/**
+ * Local calendar date string YYYY-MM-DD for a Date (server local TZ).
+ * @param {Date} [now]
+ * @returns {string}
+ */
+export function toLocalDateKey(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Whether a daily recurring completed task should reset for a new day.
+ * @param {{ recurrence_type?: string, status?: string, last_completed_at?: string|Date|null }} task
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+export function needsDailyReset(task, now = new Date()) {
+  if (!task || task.recurrence_type !== 'daily' || task.status !== 'completed') {
+    return false;
+  }
+  if (!task.last_completed_at) return true;
+  const completed = new Date(task.last_completed_at);
+  if (Number.isNaN(completed.getTime())) return true;
+  return toLocalDateKey(completed) < toLocalDateKey(now);
+}
+
+/**
+ * Pause a running timer into timer_elapsed_seconds (SQL fragment helpers via query).
+ * @param {number} taskId
+ * @param {Function} queryFn
+ */
+async function pauseRunningTimer(taskId, queryFn) {
+  await queryFn(
+    `UPDATE planner_tasks
+        SET timer_elapsed_seconds = timer_elapsed_seconds
+            + GREATEST(0, TIMESTAMPDIFF(SECOND, timer_started_at, NOW())),
+            timer_started_at = NULL
+      WHERE id = ? AND timer_started_at IS NOT NULL AND is_deleted = 0`,
+    [taskId]
+  );
+}
+
+/**
+ * Reset a single daily task to pending for the new day.
+ * Unchecks checklists; pauses any running timer into elapsed (does not zero timer).
+ * @param {number} taskId
+ * @param {Object|null} db
+ * @returns {Promise<boolean>} true if a row was reset
+ */
+export async function resetDailyTask(taskId, db = null) {
+  const queryFn = db ? db.query.bind(db) : query;
+
+  await pauseRunningTimer(taskId, queryFn);
+
+  const result = await queryFn(
+    `UPDATE planner_tasks
+        SET status = 'pending',
+            completion_percentage = 0,
+            last_completed_at = NULL,
+            due_date = CURDATE(),
+            updated_at = NOW()
+      WHERE id = ?
+        AND is_deleted = 0
+        AND recurrence_type = 'daily'
+        AND status = 'completed'`,
+    [taskId]
+  );
+
+  const affected = result?.affectedRows ?? result?.changedRows ?? 0;
+  if (affected > 0) {
+    await queryFn(
+      'UPDATE task_checklists SET is_checked = 0 WHERE task_id = ?',
+      [taskId]
+    );
+  }
+  return affected > 0;
+}
+
+/**
+ * Batch-reset all stale daily tasks (cron / lazy list).
+ * Uses MySQL CURDATE() so comparison matches DB server calendar day.
+ * @param {number[]|null} taskIds - optional filter to specific IDs
+ * @param {Object|null} db
+ * @returns {Promise<number>} number of tasks reset
+ */
+export async function resetStaleDailyTasks(taskIds = null, db = null) {
+  const queryFn = db ? db.query.bind(db) : query;
+
+  let sql = `
+    SELECT id FROM planner_tasks
+     WHERE is_deleted = 0
+       AND recurrence_type = 'daily'
+       AND status = 'completed'
+       AND (
+         last_completed_at IS NULL
+         OR DATE(last_completed_at) < CURDATE()
+       )`;
+  const params = [];
+
+  if (Array.isArray(taskIds) && taskIds.length > 0) {
+    sql += ` AND id IN (${taskIds.map(() => '?').join(',')})`;
+    params.push(...taskIds);
+  }
+
+  const rows = await queryFn(sql, params);
+  if (!rows || rows.length === 0) return 0;
+
+  let count = 0;
+  for (const row of rows) {
+    const ok = await resetDailyTask(row.id, db);
+    if (ok) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Build timer state payload from a task row.
+ * @param {{ timer_elapsed_seconds?: number, timer_started_at?: string|Date|null }} task
+ */
+export function getTimerState(task) {
+  const elapsed = Number(task.timer_elapsed_seconds) || 0;
+  const startedAt = task.timer_started_at || null;
+  return {
+    timer_elapsed_seconds: elapsed,
+    timer_started_at: startedAt,
+    timer_running: Boolean(startedAt),
+  };
+}
+
 // Default export with all functions
 export default {
   checkAssignmentPermission,
   logActivity,
   checkTaskOwnership,
   checkPlanAccess,
-  checkCrossPlanMove
+  checkCrossPlanMove,
+  toLocalDateKey,
+  needsDailyReset,
+  resetDailyTask,
+  resetStaleDailyTasks,
+  getTimerState,
 };

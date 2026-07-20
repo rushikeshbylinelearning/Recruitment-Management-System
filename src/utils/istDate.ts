@@ -43,3 +43,24 @@ export function isISTDateInInclusiveRange(
 export function todayISTYMD(): string {
   return toISTYMD(new Date());
 }
+
+/** Short label for Kanban cards: "7 Nov 2026" (IST calendar date) */
+export function formatISTDateShort(dateLike: Date | string | null | undefined): string {
+  const ymd = toISTYMD(dateLike);
+  if (!ymd) return '';
+  const [y, m, d] = ymd.split('-').map(Number);
+  const local = new Date(y, m - 1, d);
+  return local.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+/** MM/DD/YYYY display — matches Excel mm-dd-yy tracker columns (07/11 = July 11) */
+export function formatISTDateMDY(dateLike: Date | string | null | undefined): string {
+  const ymd = toISTYMD(dateLike);
+  if (!ymd) return '';
+  const [y, m, d] = ymd.split('-');
+  return `${m}/${d}/${y}`;
+}

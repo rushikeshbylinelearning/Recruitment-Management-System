@@ -75,3 +75,23 @@ export function validateLabelName(name) {
 export function validateChecklistItem(text) {
   return validateStringLength(text, 1, 500);
 }
+
+/**
+ * Validate recurrence_type: 'none' | 'daily'
+ * @param {*} value
+ * @returns {boolean}
+ */
+export function validateRecurrenceType(value) {
+  return value === 'none' || value === 'daily';
+}
+
+/**
+ * Validate due_time as HH:mm or HH:mm:ss (or null/empty to clear).
+ * @param {*} value
+ * @returns {boolean}
+ */
+export function validateDueTime(value) {
+  if (value === null || value === '') return true;
+  if (typeof value !== 'string') return false;
+  return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value.trim());
+}

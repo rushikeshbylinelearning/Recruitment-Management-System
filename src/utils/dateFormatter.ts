@@ -47,17 +47,25 @@ export const formatToDDMMYYYY = (date: Date | string | null | undefined): string
 };
 
 /**
- * Format a Date object or ISO string to YYYY-MM-DD format (for input type="date")
+ * Format a Date object or ISO string to YYYY-MM-DD (IST calendar date)
  */
 export const formatToYYYYMMDD = (date: Date | string | null | undefined): string => {
   if (!date) return '';
-  
+
+  if (typeof date === 'string') {
+    const raw = date.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 10);
+  }
+
   const dateObj = typeof date === 'string' ? new Date(date) : date;
-  
-  // Check if date is valid
   if (isNaN(dateObj.getTime())) return '';
-  
-  return dateObj.toISOString().split('T')[0];
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(dateObj);
 };
 
 /**

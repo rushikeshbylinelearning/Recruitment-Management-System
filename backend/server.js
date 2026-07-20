@@ -43,7 +43,10 @@ import candidateNotesRoutes from './routes/candidateNotes.js';
 import interactionMemoryRoutes from './routes/interactionMemory.js';
 import candidateImportRoutes from './routes/candidateImport.js';
 import { startNotificationCron, startAssignmentNotificationCron } from './services/notificationCron.js';
+import { startPlannerDailyResetCron } from './services/plannerCron.js';
 import rmsExportRoutes from './routes/rmsExport.js';
+import plannerRoutes from './routes/planner/index.js';
+import calendarRoutes from './routes/calendar/index.js';
 import emailService from './services/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -145,6 +148,8 @@ app.use('/api/task-updates', taskUpdatesRouter);
 app.use('/api/candidate-notes', candidateNotesRoutes);
 app.use('/api/interaction', interactionMemoryRoutes);
 app.use('/api/rms-export', rmsExportRoutes);
+app.use('/api/planner', plannerRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // API documentation endpoint
 app.get('/health', (req, res) => {
@@ -165,7 +170,9 @@ app.get('/health', (req, res) => {
       files: '/api/files',
       assignments: '/api/assignments',
       automations: '/api/automations',
-      activityLogs: '/api/activity-logs'
+      activityLogs: '/api/activity-logs',
+      planner: '/api/planner',
+      calendar: '/api/calendar'
     },
   });
 });
@@ -290,6 +297,7 @@ const startServer = async () => {
       // Start background jobs
       startNotificationCron();
       startAssignmentNotificationCron();
+      startPlannerDailyResetCron();
     });
 
     // Handle server errors

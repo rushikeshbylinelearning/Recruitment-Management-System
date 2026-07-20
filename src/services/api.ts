@@ -1845,6 +1845,7 @@ export const candidateImportAPI = {
     mappedCount: number;
     unmappedCount: number;
     byJob: Array<{ jobId: number; jobTitle: string; count: number; matchMethod: string }>;
+    unmappedCandidates?: Array<{ rowNumber: number; name: string; position: string; reason: string }>;
     availableJobs: Array<{ id: number; title: string }>;
   }>> => {
     const response = await api.post(`/candidates/import/job-segregation-preview/${uploadId}`, {

@@ -33,6 +33,8 @@ const Settings = lazy(() => import('./components/Settings'));
 const FormBuilder = lazy(() => import('./components/FormBuilder'));
 const WorkflowBuilder = lazy(() => import('./components/WorkflowBuilder'));
 const RecruiterMonitor = lazy(() => import('./components/RecruiterMonitor'));
+const PlannerPage = lazy(() => import('./pages/PlannerPage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-brand-black">
@@ -119,6 +121,9 @@ function HRPortalRoutes() {
           <Route path="form-builder" element={<FormBuilder />} />
           <Route path="workflows" element={<WorkflowBuilder />} />
           <Route path="recruiter-monitor" element={<RecruiterMonitor />} />
+          <Route path="planner" element={<PlannerPage />} />
+          <Route path="planner/task/:taskId" element={<PlannerPage />} />
+          <Route path="calendar" element={<CalendarPage />} />
         </Route>
       )}
 
@@ -174,6 +179,9 @@ function UnifiedDevRoutes() {
           <Route path="form-builder" element={<FormBuilder />} />
           <Route path="workflows" element={<WorkflowBuilder />} />
           <Route path="recruiter-monitor" element={<RecruiterMonitor />} />
+          <Route path="planner" element={<PlannerPage />} />
+          <Route path="planner/task/:taskId" element={<PlannerPage />} />
+          <Route path="calendar" element={<CalendarPage />} />
         </Route>
       )}
 

@@ -118,19 +118,17 @@ describe('FileParserService', () => {
   });
 
   describe('Excel Parsing', () => {
-    test('should parse Excel files with sheet names', async () => {
-      // Note: xlsx library is lenient and can parse some text as Excel
-      // This test verifies that Excel parsing returns the expected structure
-      const buffer = Buffer.from('not a real excel file', 'utf-8');
+    test('should parse real xlsx files with sheet names and colors', async () => {
+      const templatePath = path.join(__dirname, '../../Bulk_Upload_Template.xlsx');
+      const buffer = fs.readFileSync(templatePath);
 
-      const result = await fileParserService.parseFile(buffer, 'test.xlsx');
-      
-      // Verify the result has the expected structure for Excel files
+      const result = await fileParserService.parseFile(buffer, 'Bulk_Upload_Template.xlsx');
+
       expect(result.fileType).toBe('xlsx');
       expect(result).toHaveProperty('sheetNames');
       expect(Array.isArray(result.sheetNames)).toBe(true);
-      expect(result).toHaveProperty('headers');
-      expect(result).toHaveProperty('rows');
+      expect(result.headers.length).toBeGreaterThan(0);
+      expect(result.totalRows).toBeGreaterThan(0);
     });
   });
 });

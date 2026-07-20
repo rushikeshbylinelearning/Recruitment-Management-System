@@ -95,6 +95,9 @@ router.post('/upload',
       if (row.__cellColors) {
         mappedData.__cellColors = row.__cellColors;
       }
+      if (row.__rowColors) {
+        mappedData.__rowColors = row.__rowColors;
+      }
       return normalize(mappedData);
     });
 
@@ -192,6 +195,9 @@ router.post('/confirm',
       // Preserve cell color metadata — NOT a user field, never overwritten by mappings
       if (row.__cellColors) {
         mappedData.__cellColors = row.__cellColors;
+      }
+      if (row.__rowColors) {
+        mappedData.__rowColors = row.__rowColors;
       }
       
       return normalize(mappedData);
@@ -624,7 +630,7 @@ router.post('/job-segregation-preview/:uploadId',
       ? clientMappings
       : cachedData.mappings;
 
-    // Re-normalize raw rows with the active mappings
+    // Re-normalize raw rows with the active mappings (+ color metadata for position inference)
     const freshNormalizedRows = cachedData.parsedFile.rows.map(row => {
       const mappedData = {};
       activeMappings.forEach(mapping => {
@@ -632,14 +638,16 @@ router.post('/job-segregation-preview/:uploadId',
           mappedData[mapping.targetField] = row[mapping.sourceColumn];
         }
       });
+      if (row.__cellColors) mappedData.__cellColors = row.__cellColors;
+      if (row.__rowColors) mappedData.__rowColors = row.__rowColors;
       return normalize(mappedData);
     });
 
     const { buildJobSegregationMap, getCandidateKey } = await import('../services/roleMatchingService.js');
     const { matchResults, jobs } = await buildJobSegregationMap(freshNormalizedRows, null);
 
-    // Build preview summary
     const byJob = new Map();
+    const unmappedCandidates = [];
     let unmappedCount = 0;
 
     freshNormalizedRows.forEach((row, idx) => {
@@ -659,6 +667,15 @@ router.post('/job-segregation-preview/:uploadId',
         byJob.get(match.jobId).count++;
       } else {
         unmappedCount++;
+        const position = norm.position || norm.expertise || '';
+        unmappedCandidates.push({
+          rowNumber: idx + 1,
+          name: norm.name || `Row ${idx + 1}`,
+          position: position || '(empty)',
+          reason: !position.trim()
+            ? 'No position/role on row'
+            : `No matching job for "${position}"`,
+        });
       }
     });
 
@@ -669,6 +686,7 @@ router.post('/job-segregation-preview/:uploadId',
         mappedCount: freshNormalizedRows.length - unmappedCount,
         unmappedCount,
         byJob: Array.from(byJob.values()).sort((a, b) => b.count - a.count),
+        unmappedCandidates: unmappedCandidates.slice(0, 100),
         availableJobs: jobs.map(j => ({ id: j.id, title: j.title })),
       },
     });

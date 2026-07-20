@@ -8,6 +8,7 @@ interface BucketColumnProps {
   tasks: TaskCard[];
   onTaskClick: (taskId: number) => void;
   onAddTask: (bucketId: number, title: string) => Promise<void>;
+  onToggleComplete?: (taskId: number, completed: boolean) => void;
   onToggleCollapse: (bucketId: number) => void;
   onRenameBucket: (bucketId: number, name: string) => Promise<void>;
   onDeleteBucket: (bucketId: number) => Promise<void>;
@@ -19,6 +20,7 @@ export default function BucketColumn({
   tasks,
   onTaskClick,
   onAddTask,
+  onToggleComplete,
   onToggleCollapse,
   onRenameBucket,
   onDeleteBucket,
@@ -47,6 +49,7 @@ export default function BucketColumn({
               key={task.id}
               task={task}
               onClick={onTaskClick}
+              onToggleComplete={onToggleComplete}
             />
           ))}
           <AddTaskInline bucketId={bucket.id} onAdd={onAddTask} />
